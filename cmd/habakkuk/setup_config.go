@@ -2,15 +2,13 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"slices"
-	"strconv"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/habakkuk-ai/habakkuk/internal/config"
+	"github.com/habakkuk-ai/habakkuk/internal/config/yamledit"
 )
 
 // Setup edits config.yaml as a YAML node tree, so a re-run changes only
@@ -28,12 +26,11 @@ const defaultWorkspace = "~/habakkuk-workspace"
 func (s *setup) render() ([]byte, bool, error) {
 	var doc yaml.Node
 	if s.raw != nil {
-		if err := yaml.Unmarshal(s.raw, &doc); err != nil {
-			return nil, false, fmt.Errorf("config.yaml: %w", err)
+		d, err := yamledit.Parse(s.raw)
+		if err != nil {
+			return nil, false, err
 		}
-		if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-			return nil, false, errors.New("config.yaml is not a mapping")
-		}
+		doc = *d
 	} else {
 		root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		setKey(root, "version", intNode(config.CurrentVersion), "")
@@ -59,16 +56,10 @@ func (s *setup) render() ([]byte, bool, error) {
 	if !edited {
 		return s.raw, false, nil
 	}
-	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(&doc); err != nil {
+	out, err := yamledit.Encode(&doc)
+	if err != nil {
 		return nil, false, err
 	}
-	if err := enc.Close(); err != nil {
-		return nil, false, err
-	}
-	out := spaceSections(buf.Bytes())
 	if _, err := config.ParseHome(out, s.home); err != nil {
 		return nil, false, fmt.Errorf("the config setup built does not load, so nothing was written: %w", err)
 	}
@@ -181,101 +172,13 @@ func (s *setup) applyChannel(root *yaml.Node) {
 	}
 }
 
-// spaceSections puts a blank line before each top-level section, which
-// the YAML encoder drops.
-func spaceSections(data []byte) []byte {
-	lines := strings.Split(string(data), "\n")
-	var out []string
-	for i, l := range lines {
-		// A top-level key or comment that follows anything but a blank line
-		// or a top-level comment (which belongs to it) starts a section.
-		if top := l != "" && l[0] != ' ' && l[0] != '-'; top && i > 0 {
-			if prev := lines[i-1]; prev != "" && !strings.HasPrefix(prev, "#") {
-				out = append(out, "")
-			}
-		}
-		out = append(out, l)
-	}
-	return []byte(strings.Join(out, "\n"))
-}
-
-func str(v string) *yaml.Node {
-	n := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}
-	if needsQuotes(v) {
-		n.Style = yaml.DoubleQuotedStyle
-	}
-	return n
-}
-
-// needsQuotes reports whether a plain scalar would read as something else.
-func needsQuotes(v string) bool {
-	var probe any
-	if err := yaml.Unmarshal([]byte(v), &probe); err != nil {
-		return true
-	}
-	s, ok := probe.(string)
-	return !ok || s != v
-}
-
-func intNode(v int) *yaml.Node {
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(v)}
-}
-
-func flowList(vals ...string) *yaml.Node {
-	n := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}
-	for _, v := range vals {
-		n.Content = append(n.Content, str(v))
-	}
-	return n
-}
-
-// getKey returns the value under key in a mapping, or nil.
-func getKey(m *yaml.Node, key string) *yaml.Node {
-	if m == nil || m.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			return m.Content[i+1]
-		}
-	}
-	return nil
-}
-
-// setKey sets key to val in a mapping, replacing the old value (and
-// keeping the key's comments) or appending it. comment, when set, becomes
-// the value's line comment.
-func setKey(m *yaml.Node, key string, val *yaml.Node, comment string) {
-	if comment != "" {
-		val.LineComment = comment
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			old := m.Content[i+1]
-			if comment == "" && old.Kind == yaml.ScalarNode && val.Kind == yaml.ScalarNode {
-				val.LineComment = old.LineComment
-			}
-			m.Content[i+1] = val
-			return
-		}
-	}
-	m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, val)
-}
-
-// ensureMap returns the mapping under key, adding it (with head, a comment
-// above it) when missing. A null value (a bare "channels:") becomes a map.
-func ensureMap(root *yaml.Node, key, head string) *yaml.Node {
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == key {
-			v := root.Content[i+1]
-			if v.Kind != yaml.MappingNode {
-				*v = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", HeadComment: v.HeadComment, LineComment: v.LineComment}
-			}
-			v.Style = 0
-			return v
-		}
-	}
-	v := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-	root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key, HeadComment: head}, v)
-	return v
-}
+// The node helpers are shared with habakkuk migrate.
+var (
+	spaceSections = yamledit.SpaceSections
+	str           = yamledit.Str
+	intNode       = yamledit.Int
+	flowList      = yamledit.FlowList
+	getKey        = yamledit.Get
+	setKey        = yamledit.Set
+	ensureMap     = yamledit.EnsureMap
+)
