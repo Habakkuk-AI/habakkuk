@@ -54,7 +54,7 @@ type HTTPConfig struct {
 
 // ErrNoHTTP means config.yaml has no http section, so habakkuk serve opens no
 // port and there is no dashboard to show.
-var ErrNoHTTP = errors.New("config.yaml has no http section, so habakkuk serve has no dashboard; add one (see docs/guides/desktop-app.md)")
+var ErrNoHTTP = errors.New("config.yaml has no http section, so habakkuk serve has no dashboard; add one (see docs/interfaces/desktop-app.md)")
 
 // ReadHTTP reads the http section of home/config.yaml.
 func ReadHTTP(home string) (HTTPConfig, error) {

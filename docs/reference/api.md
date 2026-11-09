@@ -4,7 +4,7 @@ description: "The JSON API under /api/ that the dashboard is built on: chat, ses
 order: 3
 ---
 
-`habakkuk serve` with an `http` section listens on `listen` (default `127.0.0.1:8484`). Besides the chat page at `/`, the webhooks at `/hooks/<name>` and the OpenAI-compatible API under `/v1/` (see [ARCHITECTURE.md](architecture.md#other-clients)), it serves a control dashboard at `/app/` and the JSON API below, which the dashboard is built on.
+`habakkuk serve` with an `http` section listens on `listen` (default `127.0.0.1:8484`). Besides the chat page at `/`, the webhooks at `/hooks/<name>` and the OpenAI-compatible API under `/v1/` (see [Architecture](architecture.md#other-clients)), it serves a control dashboard at `/app/` and the JSON API below, which the dashboard is built on.
 
 ## Conventions
 
@@ -163,7 +163,7 @@ A note is `{"slug", "title", "tags", "created_at", "updated_at", "body", "snippe
 
 ### Memory history
 
-Every change to an agent's notes, `USER.md`, `IDENTITY.md` and own skills, kept for `memory.history_days` (see [Memory history and undo](../README.md#memory-history-and-undo)).
+Every change to an agent's notes, `USER.md`, `IDENTITY.md` and own skills, kept for `memory.history_days` (see [Memory history and undo](../agents/memory.md#memory-history-and-undo)).
 
 | Request | Body | |
 |---|---|---|

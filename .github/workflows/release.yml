@@ -97,7 +97,7 @@ jobs:
 
   # Habakkuk Desktop (apps/desktop, Wails v3, a module of its own): a universal
   # Habakkuk.app as .zip and .dmg, a Windows .exe and a Linux tar.gz, attached
-  # to the release the binaries job created. Unsigned; see docs/guides/desktop-app.md.
+  # to the release the binaries job created. Unsigned; see docs/interfaces/desktop-app.md.
   desktop:
     needs: binaries
     strategy:
