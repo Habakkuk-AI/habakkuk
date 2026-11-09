@@ -75,11 +75,7 @@ func readOpenClaw(dir string, o Options) (*Found, error) {
 	r.channels()
 	r.schedules()
 	r.leftovers()
-	for k := range r.env {
-		if !r.used[k] && !strings.HasPrefix(k, "OPENCLAW_") {
-			r.f.OtherEnv = append(r.f.OtherEnv, k)
-		}
-	}
+	r.f.otherEnv(r.env, r.used, "OPENCLAW_")
 	return r.f, nil
 }
 

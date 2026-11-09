@@ -242,6 +242,43 @@ func TestReadDetails(t *testing.T) {
 	}
 }
 
+// A key one home copies is not "left behind" because another profile's .env
+// holds it too without using it: here a writer profile on OpenRouter keeps
+// ANTHROPIC_API_KEY, which the main home's fallback copies.
+func TestOtherEnvSkipsKeysCopiedElsewhere(t *testing.T) {
+	src := fixture(t, Hermes)
+	dir := filepath.Join(src, "profiles", "writer")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"config.yaml": "model:\n  default: anthropic/claude-sonnet-4\n  provider: openrouter\n",
+		".env":        "ANTHROPIC_API_KEY=sk-ant-fixture\nOPENROUTER_API_KEY=sk-or-fixture\nWRITER_ONLY=1\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, err := Read(options(Hermes, src, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := h.Secrets["ANTHROPIC_API_KEY"]; !ok {
+		t.Fatal("ANTHROPIC_API_KEY was not copied; the fixture changed")
+	}
+	for _, k := range []string{"ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"} {
+		if slices.Contains(h.OtherEnv, k) {
+			t.Errorf("OtherEnv = %v; %s was copied, so it is not left behind", h.OtherEnv, k)
+		}
+	}
+	for _, k := range []string{"WEATHER_API_KEY", "WRITER_ONLY"} {
+		if !slices.Contains(h.OtherEnv, k) {
+			t.Errorf("OtherEnv = %v; want the unused %s listed", h.OtherEnv, k)
+		}
+	}
+}
+
 func TestPlanNeverShowsSecrets(t *testing.T) {
 	for _, from := range Sources {
 		t.Run(from, func(t *testing.T) {

@@ -125,11 +125,7 @@ func (r *hermesReader) read() error {
 	r.mcp()
 	r.channels()
 	r.schedules()
-	for k := range r.env {
-		if !r.used[k] && !strings.HasPrefix(k, "HERMES_") && !slices.Contains(r.f.OtherEnv, k) {
-			r.f.OtherEnv = append(r.f.OtherEnv, k)
-		}
-	}
+	r.f.otherEnv(r.env, r.used, "HERMES_")
 	return nil
 }
 

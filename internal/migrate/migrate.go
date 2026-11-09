@@ -163,6 +163,29 @@ type Found struct {
 	Skipped []string
 	// OtherEnv are the source .env's other variable names, not copied.
 	OtherEnv []string
+
+	// usedEnv holds every source variable some agent's import used, across
+	// all the homes read (one per profile), so a key the main home copied
+	// is not listed as left behind because a profile's .env also has it.
+	usedEnv map[string]bool
+}
+
+// otherEnv offers the variables of one source .env that this home's import
+// did not use; finish keeps those no other home used either.
+func (f *Found) otherEnv(env map[string]string, used map[string]bool, ownPrefix string) {
+	if f.usedEnv == nil {
+		f.usedEnv = map[string]bool{}
+	}
+	for k := range used {
+		if used[k] {
+			f.usedEnv[k] = true
+		}
+	}
+	for k := range env {
+		if !used[k] && !strings.HasPrefix(k, ownPrefix) && !slices.Contains(f.OtherEnv, k) {
+			f.OtherEnv = append(f.OtherEnv, k)
+		}
+	}
 }
 
 // Agent is one agent to create or fill.
@@ -339,6 +362,10 @@ func (f *Found) finish() {
 		}
 	}
 	slices.Sort(f.Missing)
+	f.OtherEnv = slices.DeleteFunc(f.OtherEnv, func(k string) bool {
+		_, copied := f.Secrets[k]
+		return f.usedEnv[k] || copied
+	})
 	slices.Sort(f.OtherEnv)
 }
 
