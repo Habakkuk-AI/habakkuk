@@ -88,6 +88,9 @@ type Config struct {
 	Budget *Budget `yaml:"budget"`
 	// Judge is an optional decision model (judge.go); nil is none.
 	Judge *Judge `yaml:"judge"`
+	// Retro runs agents' retrospectives on a timer (retro.go); nil runs
+	// them only when asked.
+	Retro *Retro `yaml:"retro"`
 }
 
 type Provider struct {
@@ -331,6 +334,7 @@ func (c *Config) applyDefaults() {
 	c.applyHTTPDefaults()
 	c.applyMediaDefaults()
 	c.applyMemoryDefaults()
+	c.applyRetroDefaults()
 	c.applyOpsDefaults()
 	c.applyIntegrationDefaults()
 	c.applyHomeDefaults()
@@ -480,6 +484,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.validateComputer()...)
 	errs = append(errs, c.validateMeeting()...)
 	errs = append(errs, c.validateMemory()...)
+	errs = append(errs, c.validateRetro()...)
 	errs = append(errs, c.validateOps()...)
 	errs = append(errs, c.validateSkills()...)
 	errs = append(errs, c.validateIntegrations()...)
@@ -944,6 +949,18 @@ agents:
 #   nightly: "03:30"        # or off
 #   stale_days: 365         # -1 never archives
 #   history_days: 90        # changes kept for habakkuk memory history/undo; -1 keeps all
+#
+# Retros: an agent looks back over its own work (failed jobs, denied
+# approvals, slow turns, stalled cards, corrections), finds causes and
+# proposes changes to its skills, memory, SOUL.md, config or schedules.
+# habakkuk retro list, show, apply and reject; /retro in a chat.
+# retro:
+#   every: weekly           # off | daily | weekly | a cron expression
+#   at: "fri 17:00"         # local time for daily (HH:MM) and weekly
+#   agents: []              # default: every agent that had turns in the period
+#   model: anthropic/claude-opus-5-5   # default: the agent's own models
+#   apply: propose          # propose | safe (skill and memory changes applied at once, undoable)
+#   deliver: ""             # CHANNEL:CHAT, none, or empty for the agent's home chat
 #
 # Skills from outside: habakkuk skills install github:owner/repo[/path][@ref],
 # an https URL, a local path, or a name from a registry index. The curator
