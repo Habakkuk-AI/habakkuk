@@ -1,0 +1,25 @@
+version: 1
+
+# The current format (schema version 1).
+providers:
+  anthropic:
+    type: anthropic
+    keys_env: [ANTHROPIC_API_KEY]
+  openrouter:
+    type: openai
+    base_url: https://openrouter.ai/api/v1
+    keys_env: [OPENROUTER_API_KEY]
+
+agents:
+  habakkuk:
+    model: anthropic/claude-opus-5-5
+    fallbacks: [openrouter/anthropic/claude-sonnet-5-5]
+    effort: high
+    permission: workspace
+    workspace: ~/habakkuk-workspace
+
+workers:
+  concurrency: 2
+retention:
+  days: 30
+timezone: America/Toronto

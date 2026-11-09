@@ -1,0 +1,17 @@
+version: 1
+
+# Written by a newer release (or with a typo): two keys this binary does not know.
+providers:
+  anthropic:
+    type: anthropic
+    keys_env: [ANTHROPIC_API_KEY]
+
+agents:
+  habakkuk:
+    model: anthropic/claude-opus-5-5
+    permission: workspace
+    workspace: ~/habakkuk-workspace
+    budget_per_day: 5
+
+future_feature:
+  enabled: true

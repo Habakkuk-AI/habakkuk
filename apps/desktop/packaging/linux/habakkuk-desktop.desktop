@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Habakkuk
+Comment=Desktop app for the Habakkuk agent
+Exec=habakkuk-desktop
+Icon=habakkuk-desktop
+Terminal=false
+Categories=Utility;Network;
+StartupWMClass=habakkuk-desktop

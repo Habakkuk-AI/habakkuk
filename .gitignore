@@ -1,0 +1,11 @@
+/habakkuk
+/dist/
+*.db
+*.db-wal
+*.db-shm
+.env
+.claude/
+node_modules/
+.next/
+/bin/
+/.habakkuk-dev/

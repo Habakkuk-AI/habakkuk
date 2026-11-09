@@ -1,0 +1,71 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+      # Cross-compile checks: every release platform must build and vet.
+      - run: GOOS=windows GOARCH=amd64 go vet ./...
+      - run: GOOS=windows GOARCH=arm64 go build ./...
+      - run: GOOS=darwin GOARCH=arm64 go build ./...
+      # The installer lives at the root or in scripts/.
+      - run: |
+          for f in install.sh scripts/install.sh; do
+            if [ -f "$f" ]; then sh -n "$f" && shellcheck "$f"; fi
+          done
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
+
+  # Windows: build, vet and the full test suite. Tests that need Unix
+  # (sh scripts, permission bits, process-group signals) skip themselves
+  # with testutil.UnixOnly; `git grep -n testutil.UnixOnly` lists them.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+      - name: install.ps1 parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\scripts\install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | Format-List; exit 1 }
+      - name: install.ps1 parses in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\scripts\install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | Format-List; exit 1 }
+
+
+  # Habakkuk Desktop is its own module (CGO, a webview); ./... above skips it.
+  desktop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/desktop/go.mod
+          cache-dependency-path: apps/desktop/go.sum
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - run: go vet ./...
+        working-directory: apps/desktop
+      - run: go test -race ./...
+        working-directory: apps/desktop
+      - run: sh -n apps/desktop/scripts/package.sh && shellcheck apps/desktop/scripts/package.sh

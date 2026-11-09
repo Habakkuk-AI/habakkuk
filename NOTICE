@@ -1,0 +1,10 @@
+Habakkuk
+Copyright 2026 Ayobami Joseph and the Habakkuk contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+It includes third-party Go modules, each under its own license; go.mod lists
+them.
+
+"Habakkuk", the Habakkuk logo and the files in assets/brand are trademarks of
+Ayobami Joseph. They are not licensed under the Apache License; see
+TRADEMARKS.md.

@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in Habakkuk does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not report security vulnerabilities here: see [SECURITY.md](https://github.com/habakkuk-ai/habakkuk/blob/main/SECURITY.md). Remove API keys, tokens, phone numbers and other personal data from anything you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure ...
+        2. Run `habakkuk ...`
+        3. Send ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `habakkuk version`, or the commit you built.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run it
+      options:
+        - Install script or release binary
+        - go install or built from source
+        - Container image
+        - Desktop app
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and architecture
+      placeholder: Ubuntu 24.04 amd64, macOS 26 arm64, ...
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: The channel, provider, tool or command involved, if any.
+      placeholder: telegram channel, gemini provider, browser toolset, habakkuk serve ...
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config
+      description: The parts of config.yaml that matter, with secrets removed.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and doctor output
+      description: "`habakkuk doctor`, and `habakkuk logs -level warn -since 1h` around the problem."
+      render: text

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Zoom</title>
+<style>button,[role=button],[role=switch],[role=menuitem]{display:inline-block;min-width:40px;min-height:24px;margin:4px}</style>
+</head><body>
+<div id="app"></div>
+
+<template id="prejoin">
+  <h1>Enter Meeting Info</h1>
+  <label for="input-for-name">Your Name</label>
+  <input id="input-for-name" data-name type="text" placeholder="Your Name">
+  <button data-dev="mic">Mute</button>
+  <button data-dev="cam">Stop Video</button>
+  <p>By clicking "Join", you agree to our Terms of Service and Privacy Statement</p>
+  <button data-act="join" class="preview-join-button">Join</button>
+</template>
+
+<template id="waiting">
+  <h2>Please wait, the meeting host will let you in soon.</h2>
+  <p>Weekly sync</p>
+</template>
+
+<template id="incall">
+  <div id="captions-slot"></div>
+  <div id="chat-slot"></div>
+  <div id="menu-slot"></div>
+  <footer>
+    <button>Unmute</button>
+    <button>Start Video</button>
+    <button aria-label="open the chat panel" data-act="chat">Chat</button>
+    <button data-act="menu">Captions</button>
+    <button data-act="leave">Leave</button>
+  </footer>
+</template>
+
+<template id="more-menu">
+  <ul role="menu"><li role="menuitem" data-act="captions" data-alt="Hide Captions">Show Captions</li><li role="menuitem">Captions Settings</li></ul>
+</template>
+
+<template id="captions-container">
+  <div id="live-transcription-subtitle" data-items></div>
+</template>
+
+<template id="caption-item">
+  <div class="live-transcription-subtitle__item" data-text-slot></div>
+</template>
+
+<template id="captions-sample">
+  <div id="live-transcription-subtitle">
+    <div class="live-transcription-subtitle__item">I think the meeting has ended early.</div>
+    <div class="live-transcription-subtitle__item">No, we still have the budget to cover.</div>
+  </div>
+</template>
+
+<template id="chat-panel">
+  <div class="chat-container">
+    <div id="chat-list-content" data-chat-log></div>
+    <textarea data-chat placeholder="Type message here ..."></textarea>
+  </div>
+</template>
+
+<template id="denied">
+  <h1>You have been removed from this meeting</h1>
+  <button>OK</button>
+</template>
+
+<template id="ended">
+  <h1>This meeting has been ended by host</h1>
+  <button>OK</button>
+</template>
+
+<template id="left">
+  <h1>You have left the meeting</h1>
+  <button>Rejoin</button>
+</template>
+
+<template id="invalid">
+  <h1>Invalid meeting ID.</h1>
+  <p>Please check and try again.</p>
+</template>
+
+<script>window.SIM = {title: 'Zoom', start: 'prejoin', confirmLeave: true};</script>
+<script src="/sim.js"></script>
+</body></html>

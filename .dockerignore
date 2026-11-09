@@ -1,0 +1,12 @@
+.git
+.github
+.claude
+dist
+*.db
+*.db-wal
+*.db-shm
+.env
+/habakkuk
+**/node_modules
+**/.next
+/bin

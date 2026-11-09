@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Teams</title>
+<style>button,[role=button],[role=switch],[role=menuitem]{display:inline-block;min-width:40px;min-height:24px;margin:4px}</style>
+</head><body>
+<div id="app"></div>
+
+<template id="launcher">
+  <h1>How do you want to join your Teams meeting?</h1>
+  <button>Download the Teams app</button>
+  <button data-go="prejoin">Continue on this browser</button>
+</template>
+
+<template id="prejoin">
+  <h1>Choose your audio and video settings for Weekly sync</h1>
+  <input type="text" data-name data-tid="prejoin-display-name-input" placeholder="Type your name">
+  <div role="switch" aria-label="Camera" aria-checked="true" data-dev="cam" tabindex="0"></div>
+  <div role="switch" aria-label="Microphone" aria-checked="true" data-dev="mic" tabindex="0"></div>
+  <button data-act="join" data-tid="prejoin-join-button">Join now</button>
+</template>
+
+<template id="waiting">
+  <p>Someone in the meeting should let you in soon</p>
+  <button aria-label="Leave" data-go="prejoin"></button>
+</template>
+
+<template id="incall">
+  <div id="captions-slot"></div>
+  <div id="chat-slot"></div>
+  <div id="menu-slot"></div>
+  <div id="submenu-slot"></div>
+  <button aria-label="Chat" data-act="chat"></button>
+  <button aria-label="More" data-act="menu"></button>
+  <button aria-label="Camera" aria-pressed="false"></button>
+  <button aria-label="Mic" aria-pressed="false"></button>
+  <button aria-label="Leave" data-act="leave" id="hangup-button"></button>
+</template>
+
+<template id="more-menu">
+  <div role="menu"><div role="menuitem">Settings</div><div role="menuitem" data-act="submenu">Language and speech</div></div>
+</template>
+
+<template id="captions-menu">
+  <div role="menu"><div role="menuitem" data-act="captions">Turn on live captions</div></div>
+</template>
+
+<template id="captions-container">
+  <div data-tid="closed-caption-v2-window-wrapper" data-items></div>
+</template>
+
+<template id="caption-item">
+  <div class="fui-ChatMessageCompact"><span data-tid="author" data-speaker-slot></span><div data-tid="closed-caption-text" data-text-slot></div></div>
+</template>
+
+<template id="captions-sample">
+  <div data-tid="closed-caption-v2-window-wrapper">
+    <div class="fui-ChatMessageCompact"><span data-tid="author">Alice Chen</span><div data-tid="closed-caption-text">I think the meeting has ended early.</div></div>
+    <div class="fui-ChatMessageCompact"><span data-tid="author">Bob Ortiz</span><div data-tid="closed-caption-text">No, we still have the budget to cover.</div></div>
+  </div>
+</template>
+
+<template id="chat-panel">
+  <div data-tid="message-pane-list-viewport" data-chat-log></div>
+  <div data-chat contenteditable="true" role="textbox" aria-label="Type a message" style="min-height:20px;min-width:100px"></div>
+</template>
+
+<template id="denied">
+  <h1>Sorry, but you were denied access to the meeting.</h1>
+</template>
+
+<template id="ended">
+  <h1>The meeting has ended</h1>
+  <button>Rejoin</button>
+</template>
+
+<template id="left">
+  <h1>You left the meeting</h1>
+  <button>Rejoin</button>
+</template>
+
+<template id="invalid">
+  <h1>We couldn't find the meeting</h1>
+</template>
+
+<script>window.SIM = {title: 'Teams', start: 'launcher'};</script>
+<script src="/sim.js"></script>
+</body></html>

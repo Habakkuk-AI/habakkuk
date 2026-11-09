@@ -1,0 +1,14 @@
+# A config from before the version key existed (schema version 0).
+providers:
+  anthropic:
+    type: anthropic
+    keys_env: [ANTHROPIC_API_KEY]
+
+agents:
+  habakkuk:
+    model: anthropic/claude-opus-5-5
+    permission: workspace # keep this comment
+    workspace: ~/habakkuk-workspace
+
+retention:
+  days: 30

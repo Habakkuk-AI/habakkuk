@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest a new channel, provider, tool or improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For open-ended ideas and questions, start a [discussion](https://github.com/habakkuk-ai/habakkuk/discussions) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What you would like Habakkuk to do. Config, commands or tool names you have in mind are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use now, or other ways to solve it.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Channels
+        - Models and providers
+        - Tools
+        - Memory and skills
+        - Schedules and board
+        - MCP, A2A and plugins
+        - Dashboard, TUI or desktop app
+        - Operations and deployment
+        - Documentation
+        - Other
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to work on this.

@@ -1,0 +1,10 @@
+version: 99
+
+providers:
+  anthropic:
+    type: anthropic
+    keys_env: [ANTHROPIC_API_KEY]
+
+agents:
+  habakkuk:
+    model: anthropic/claude-opus-5-5

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/habakkuk-ai/habakkuk/discussions
+    about: Ask how to set something up or share what you built in GitHub Discussions.
+  - name: Documentation
+    url: https://habakkuk.ai/docs
+    about: Installation, configuration, guides and reference.
+  - name: Security vulnerability
+    url: https://github.com/habakkuk-ai/habakkuk/security/advisories/new
+    about: Report vulnerabilities privately, never in a public issue.

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Meet</title>
+<style>button,[role=button],[role=switch],[role=menuitem]{display:inline-block;min-width:40px;min-height:24px;margin:4px}</style>
+</head><body>
+<div id="app"></div>
+
+<template id="prejoin">
+  <h1>Ready to join?</h1>
+  <p>No one else is here</p>
+  <input type="text" data-name aria-label="Your name" placeholder="Your name">
+  <button data-dev="mic" aria-label="Turn off microphone (ctrl + d)" data-alt="Turn on microphone (ctrl + d)"></button>
+  <button data-dev="cam" aria-label="Turn off camera (ctrl + e)" data-alt="Turn on camera (ctrl + e)"></button>
+  <button data-act="join"><span>Ask to join</span></button>
+  <a href="/other">Other ways to join</a>
+</template>
+
+<template id="waiting">
+  <h2>Asking to be let in…</h2>
+  <p>You’ll join the call when someone lets you in</p>
+  <button data-go="prejoin">Cancel</button>
+</template>
+
+<template id="incall">
+  <div>Weekly sync</div>
+  <div id="captions-slot"></div>
+  <div id="chat-slot"></div>
+  <button aria-label="Turn on microphone (ctrl + d)"></button>
+  <button aria-label="Turn on camera (ctrl + e)"></button>
+  <button data-act="captions" aria-label="Turn on captions (c)" data-alt="Turn off captions (c)"></button>
+  <button data-act="chat" aria-label="Chat with everyone"></button>
+  <button data-act="leave" aria-label="Leave call"></button>
+</template>
+
+<template id="captions-container">
+  <div role="region" aria-label="Captions" data-items></div>
+</template>
+
+<template id="caption-item">
+  <div class="nMcdL"><div class="KcIKyf"><img alt=""><span class="NWpY1d" data-speaker-slot></span></div><div class="ygicle" data-text-slot></div></div>
+</template>
+
+<template id="captions-sample">
+  <div role="region" aria-label="Captions">
+    <div class="nMcdL"><div class="KcIKyf"><span class="NWpY1d">Alice Chen</span></div><div class="ygicle">I think the meeting has ended early.</div></div>
+    <div class="nMcdL"><div class="KcIKyf"><span class="NWpY1d">Bob Ortiz</span></div><div class="ygicle">No, we still have the budget to cover.</div></div>
+  </div>
+</template>
+
+<template id="chat-panel">
+  <aside aria-label="Side panel">
+    <h2>In-call messages</h2>
+    <div data-chat-log role="log"></div>
+    <textarea data-chat aria-label="Send a message" placeholder="Send a message"></textarea>
+  </aside>
+</template>
+
+<template id="denied">
+  <h1>Someone in the call denied your request to join</h1>
+  <button data-go="prejoin">Return to home screen</button>
+</template>
+
+<template id="ended">
+  <h1>The call has ended</h1>
+  <button data-go="prejoin">Rejoin</button>
+</template>
+
+<template id="left">
+  <h1>You left the meeting</h1>
+  <button data-go="prejoin">Rejoin</button>
+  <button>Return to home screen</button>
+</template>
+
+<template id="invalid">
+  <h1>Check your meeting code</h1>
+  <p>Make sure you entered the correct meeting code in the URL</p>
+  <button>Return to home screen</button>
+</template>
+
+<script>window.SIM = {title: 'Meet', start: 'prejoin'};</script>
+<script src="/sim.js"></script>
+</body></html>

@@ -1,0 +1,22 @@
+version: "2"
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Rows).Close
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - flag.(*FlagSet).Parse
+        - (*flag.FlagSet).Parse
+        - os.Remove
+        - crypto/rand.Read
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck]

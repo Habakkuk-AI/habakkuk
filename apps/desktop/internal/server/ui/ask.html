@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask Habakkuk</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="desktop.css">
+<script src="ask.js" defer></script>
+</head>
+<body class="ask">
+<form id="form">
+  <textarea id="q" placeholder="Ask Habakkuk" aria-label="Message" autofocus></textarea>
+  <button type="submit" class="primary">Send</button>
+</form>
+<div id="out" aria-live="polite"></div>
+<footer>
+  <span id="who" class="muted grow"></span>
+  <button id="newBtn" type="button" class="link">New</button>
+  <button id="openBtn" type="button" class="link">Open in Habakkuk</button>
+</footer>
+</body>
+</html>
