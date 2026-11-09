@@ -1,7 +1,8 @@
 // Package state keeps the small per-session and per-conversation settings
 // that chat commands and tools change while a conversation goes on: effort
 // and persona overrides, standing goals, steering notes for a running turn,
-// task lists, a conversation's chosen agent, and progress drafts. It lives
+// task lists, a conversation's chosen agent, progress drafts, and notes of
+// messages a chat got from outside its own turns (notes.go). It lives
 // in its own database, state.db, so it never migrates control.db, and
 // everything in it can be lost without harming a transcript.
 package state
@@ -64,6 +65,21 @@ CREATE TABLE drafts (
 	message_id TEXT NOT NULL,
 	created_at INTEGER NOT NULL
 ) WITHOUT ROWID;
+`}, {Version: 2, SQL: `
+CREATE TABLE chat_notes (
+	id           INTEGER PRIMARY KEY,
+	conversation TEXT NOT NULL,
+	delivery     TEXT NOT NULL UNIQUE,
+	agent        TEXT NOT NULL DEFAULT '',
+	what         TEXT NOT NULL DEFAULT '',
+	text         TEXT NOT NULL,
+	created_at   INTEGER NOT NULL,
+	turn         TEXT NOT NULL DEFAULT '',
+	claimed_at   INTEGER NOT NULL DEFAULT 0,
+	seen         INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX chat_notes_open ON chat_notes (conversation, seen);
+CREATE INDEX chat_notes_turn ON chat_notes (turn);
 `}}
 
 type Store struct {
@@ -362,6 +378,7 @@ func (s *Store) Prune(ctx context.Context, olderThan time.Time) (int64, error) {
 		`DELETE FROM steers WHERE created_at < ?`,
 		`DELETE FROM todos WHERE session_id IN (SELECT session_id FROM todos GROUP BY session_id HAVING MAX(updated_at) < ?)`,
 		`DELETE FROM drafts WHERE created_at < ?`,
+		`DELETE FROM chat_notes WHERE created_at < ?`,
 	} {
 		res, err := s.db.ExecContext(ctx, q, cut)
 		if err != nil {
