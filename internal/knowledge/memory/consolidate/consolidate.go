@@ -30,6 +30,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory/history"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
+	"github.com/habakkuk-ai/habakkuk/internal/llm/judge"
 )
 
 // Job kinds.
@@ -71,6 +72,10 @@ type Consolidator struct {
 	// untrusted and the profile is left alone.
 	Untrusted func(ctx context.Context, sessionID string) bool
 	Wake      func()
+	// Judge, when set, first asks whether a session holds anything worth
+	// remembering; below SkipBelow (default 0.15) the review is skipped.
+	Judge     *judge.Client
+	SkipBelow float64
 	Log       *slog.Logger
 	Now       func() time.Time
 

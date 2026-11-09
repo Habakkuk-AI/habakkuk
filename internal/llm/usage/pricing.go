@@ -75,6 +75,8 @@ var Prices = map[string]Price{
 	"gemini-2.5-flash":      p(0.30, 2.50, 0.03, 0),
 	"gemini-2.5-flash-lite": p(0.10, 0.40, 0.01, 0),
 
+	// TypeSafe decision model (input only; output is free)
+	"jev": p(0.042, 0, 0, 0),
 	// DeepSeek (peak-hour list price; off-peak is half)
 	"deepseek-flash":  p(0.30, 1.20, 0.006, 0),
 	"deepseek-v4-pro": p(1.32, 3.96, 0.044, 0),

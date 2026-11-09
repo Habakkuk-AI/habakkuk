@@ -118,6 +118,9 @@ func (a *App) openConsolidation() {
 		Idle: mc.ReviewIdle, Nightly: nightly, NightlyAt: at, StaleDays: max(mc.StaleDays, 0), Location: loc,
 		Untrusted: a.untrustedSession, Log: a.Log,
 	}
+	if jc := a.Cfg.Judge; jc != nil {
+		a.Consolidate.Judge, a.Consolidate.SkipBelow = a.judgeFor(jc.Memory), jc.SkipMemoryBelow
+	}
 }
 
 // untrustedSession reports sessions whose messages come from a channel

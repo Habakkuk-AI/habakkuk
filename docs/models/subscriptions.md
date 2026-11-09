@@ -2,7 +2,7 @@
 title: Subscription logins
 nav_title: Subscriptions
 description: "Use a ChatGPT or GitHub Copilot plan instead of an API key: device-code sign-in, where tokens are kept, and why there is no Claude plan login."
-order: 3
+order: 4
 ---
 
 A provider can use an account sign-in instead of API keys. Two plans are supported: ChatGPT and GitHub Copilot.

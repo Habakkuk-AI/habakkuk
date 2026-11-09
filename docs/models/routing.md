@@ -15,6 +15,9 @@ agents:
     escalate_after: 4                    # tool steps before a quick turn moves to model
 ```
 
+> [!TIP]
+> With a [decision model](decision-model.md) configured, it decides quick versus real work instead of the word rules below, in well under a second.
+
 ## How `auto` decides
 
 - **Quick messages go to `fast_model`**: greetings, questions, reminders, small lookups.

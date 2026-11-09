@@ -14,5 +14,9 @@ func newReviewer(a *App, name string, ac *config.Agent, chain []llm.Target) tool
 		ref, _ := config.ParseModelRef(ac.ReviewerModel) // validated at load
 		chain = []llm.Target{{Endpoint: ref.Provider, Model: ref.Model}}
 	}
-	return &review.Reviewer{Agent: name, Models: a.Router, Chain: chain, Bus: a.Bus, Log: a.Log}
+	rv := &review.Reviewer{Agent: name, Models: a.Router, Chain: chain, Bus: a.Bus, Log: a.Log}
+	if jc := a.Cfg.Judge; jc != nil {
+		rv.Judge, rv.ApproveAbove = a.judgeFor(jc.Approvals), jc.ApproveAbove
+	}
+	return rv
 }

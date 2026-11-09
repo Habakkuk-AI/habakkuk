@@ -100,6 +100,9 @@ type ApprovalRequest struct {
 	Workspace string
 	// Review is the reviewer's reason when it handed the call to a human.
 	Review string
+	// Tainted: the turn has read content from outside (a web page, an
+	// email). Shortcuts in review are off for such calls.
+	Tainted bool
 }
 
 // Approver decides calls the mode does not allow outright. Unattended runs
@@ -410,6 +413,7 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 // Tools that gate their own actions (node_invoke) use it directly.
 func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
 	req.Session, req.Task, req.Workspace = env.Session, env.Task, env.Workspace
+	req.Tainted = env.Taint.Marked()
 	unattended := fmt.Errorf("%w: %s needs approval and no one is attending this run", ErrDenied, req.Tool)
 	if (env.Approvals == ApproveReviewer || env.Approvals == ApproveReviewerThenHuman) && env.Reviewer != nil {
 		rv := env.Reviewer.Review(ctx, req)

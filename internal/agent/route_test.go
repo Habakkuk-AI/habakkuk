@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
+	"github.com/habakkuk-ai/habakkuk/internal/llm/judge"
 )
 
 func TestSmartReason(t *testing.T) {
@@ -168,5 +171,36 @@ func TestRoutingModesAndOverride(t *testing.T) {
 	h.runner.Choices.SetSessionModel(ctx, s.ID, "")
 	if note := h.runner.ModelCommand(ctx, s.ID, ""); !strings.Contains(note, "Routing: auto") || !strings.Contains(note, "deepseek/flash") {
 		t.Fatalf("/model: %q", note)
+	}
+}
+
+func TestRoutingWithJudge(t *testing.T) {
+	ctx := context.Background()
+	var p float64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"answers": map[string]any{
+			"real_work": map[string]any{"type": "noul", "noul": p}}, "usage": map[string]int{}})
+	}))
+	defer srv.Close()
+	h, rec := routedHarness(t, RouteAuto, 0)
+	h.runner.Judge = &judge.Client{BaseURL: srv.URL, Key: func() string { return "k" }}
+	s, _ := h.runner.NewSession(ctx, "habakkuk")
+
+	p = 0.1 // the judge overrides the word rules both ways
+	runTurn(t, h, s.ID, "can you fix my mood, I'm bored")
+	if got := rec.take(); got[0] != "deepseek/flash" {
+		t.Fatalf("judge said light: %v", got)
+	}
+	p = 0.9
+	runTurn(t, h, s.ID, "what about the thing we discussed")
+	if got := rec.take(); got[0] != "anthropic/big" {
+		t.Fatalf("judge said real work: %v", got)
+	}
+	// Without an answer the word rules decide.
+	h.runner.Judge = &judge.Client{BaseURL: "http://127.0.0.1:1", Key: func() string { return "k" }}
+	h.runner.routes.Delete(s.ID)
+	runTurn(t, h, s.ID, "hello")
+	if got := rec.take(); got[0] != "deepseek/flash" {
+		t.Fatalf("judge down, light: %v", got)
 	}
 }

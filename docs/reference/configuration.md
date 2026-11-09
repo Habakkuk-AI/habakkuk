@@ -36,6 +36,7 @@ order: 2
 | `nodes` | Device nodes: `url`, `allow`, `timeout`, `pair_ttl` | [Integrations](../tools/integrations.md#device-nodes) |
 | `timezone` | The time zone for schedules, e.g. `America/Toronto` (default the server's) | [Schedules](../agents/schedules.md), [Usage and limits](../models/usage-and-limits.md#spending-limits) |
 | `budget` | Spending caps for the whole install: `daily`, `monthly`, `per_turn`, `unknown_price` | [Usage and limits](../models/usage-and-limits.md#spending-limits) |
+| `judge` | A decision model for routing, routine approvals and memory reviews: `model`, `key_env`, `timeout_ms`, `routing`, `approvals`, `memory`, `approve_above`, `skip_memory_below` | [Decision model](../models/decision-model.md) |
 | `language` | The default language of Habakkuk's own text | [Agents](../agents/agents.md#languages) |
 | `workers` | `concurrency` and job `lease` | |
 | `retention` | `days`: transcripts and finished jobs older than this are pruned; `0` disables | [Deployment](../deploy/backups-and-updates.md#retention) |

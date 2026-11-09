@@ -38,6 +38,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/auth"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/budget"
+	"github.com/habakkuk-ai/habakkuk/internal/llm/judge"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/usage"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/hooks"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/secrets"
@@ -87,6 +88,8 @@ type App struct {
 	secrets map[string]string
 	refs    *secrets.Resolver // secrets.refs: secret managers
 	closers []func()
+	// Judge is the optional decision model (judge.go).
+	Judge *judge.Client
 }
 
 // Secret reads a credential from the environment, then a secret manager
@@ -144,6 +147,7 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 	browser.RegisterTools(a.Tools, br)
 	a.closers = append(a.closers, br.Close)
 	a.openComputer(home)
+	a.openJudge()
 	if err := a.openKnowledge(ctx, home); err != nil {
 		a.Close()
 		return nil, err
@@ -192,6 +196,7 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 		specs[name] = spec
 	}
 	a.Runner = &agent.Runner{
+		Judge:  a.judgeForRouting(),
 		Agents: specs, Sessions: a.Sessions, Queue: a.Queue, Models: a.Router, Tools: a.Tools,
 		Bus: a.Bus, BlobDir: blobDir, Log: log, Media: a.Blobs.Get,
 		Env: func(spec *agent.Spec, sessionID string) *tools.Env {

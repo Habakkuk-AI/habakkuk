@@ -106,6 +106,9 @@ func (c *Consolidator) planReview(ctx context.Context, agent string, p reviewPay
 	if strings.TrimSpace(userText) == "" {
 		return nil, nil // nothing the user said: notices, scheduled runs with no reply
 	}
+	if c.skipBoring(ctx, p.Session, transcript) {
+		return nil, nil
+	}
 	untrusted := c.Untrusted != nil && c.Untrusted(ctx, p.Session)
 
 	var in strings.Builder

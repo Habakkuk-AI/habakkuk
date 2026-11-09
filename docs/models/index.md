@@ -24,6 +24,7 @@ agents:
 <!-- cards -->
 - [Providers](providers.md): provider types, presets, custom and local APIs, key rotation and fallbacks.
 - [Routing](routing.md): a cheap model for quick messages, a strong one for real work.
+- [Decision model](decision-model.md): a fast yes/no model for Habakkuk's own choices, such as routing and routine approvals.
 - [Subscription logins](subscriptions.md): use a ChatGPT or GitHub Copilot plan instead of an API key.
 - [Usage and limits](usage-and-limits.md): tokens and cost per model and agent, and hard spending caps.
 - [Speech](speech.md): transcription for voice notes, and text-to-speech for spoken replies.

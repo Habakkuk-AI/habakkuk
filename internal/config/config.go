@@ -86,6 +86,8 @@ type Config struct {
 	// Budget caps model spending for the whole install (budget.go); nil
 	// is no cap.
 	Budget *Budget `yaml:"budget"`
+	// Judge is an optional decision model (judge.go); nil is none.
+	Judge *Judge `yaml:"judge"`
 }
 
 type Provider struct {
@@ -313,6 +315,9 @@ func parseHome(data []byte, home string, lenient bool) (*Config, error) {
 }
 
 func (c *Config) applyDefaults() {
+	if c.Judge != nil {
+		c.Judge.applyDefaults()
+	}
 	c.applyProviderDefaults()
 	if c.Workers.Concurrency == 0 {
 		c.Workers.Concurrency = 4
@@ -400,6 +405,9 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("version %d is not supported (want %d); run `habakkuk config migrate`, or update Habakkuk if this config is from a newer release", c.Version, CurrentVersion))
 	}
 	errs = append(errs, c.validateProviders()...)
+	if c.Judge != nil {
+		errs = append(errs, c.Judge.validate()...)
+	}
 	if len(c.Agents) == 0 {
 		errs = append(errs, errors.New("no agents configured"))
 	}

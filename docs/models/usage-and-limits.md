@@ -1,7 +1,7 @@
 ---
 title: Usage and limits
 description: "Tokens and cost by model, agent and session, adding prices, and hard daily, monthly and per-turn spending caps for the install and each agent."
-order: 4
+order: 5
 ---
 
 ## Usage and cost

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
+	"github.com/habakkuk-ai/habakkuk/internal/llm/judge"
 )
 
 // Routing modes for an agent with a fast model (config agents.X.routing).
@@ -82,18 +84,69 @@ func (t *turn) pickRoute(text string, media []Attachment) {
 		t.useFast("routing: fast")
 		return
 	}
+	if reason := mediaReason(media, t.msgs); reason != "" {
+		t.r.Log.Debug("route: main model", "session", t.sess.ID, "reason", reason)
+		t.r.routes.Store(t.sess.ID, time.Now())
+		return
+	}
+	at, recent := t.r.routes.Load(t.sess.ID)
+	recent = recent && time.Since(at.(time.Time)) < stickyFor
+	if smart, ok := t.askJudge(text, recent); ok {
+		if smart {
+			t.r.routes.Store(t.sess.ID, time.Now())
+			return
+		}
+		t.useFast("decision model: light turn")
+		return
+	}
 	if reason := smartReason(text, media, t.msgs); reason != "" {
 		t.r.Log.Debug("route: main model", "session", t.sess.ID, "reason", reason)
 		t.r.routes.Store(t.sess.ID, time.Now())
 		return
 	}
-	if at, ok := t.r.routes.Load(t.sess.ID); ok && time.Since(at.(time.Time)) < stickyFor &&
-		len(strings.Fields(text)) <= followUpWords {
+	if recent && len(strings.Fields(text)) <= followUpWords {
 		t.r.Log.Debug("route: main model", "session", t.sess.ID, "reason", "follow-up to real work")
 		t.r.routes.Store(t.sess.ID, time.Now())
 		return
 	}
 	t.useFast("light turn")
+}
+
+// mediaReason is the part of smartReason no judge overrides: a fast model
+// may not see images at all.
+func mediaReason(media []Attachment, history []llm.Message) string {
+	switch {
+	case len(media) > 0:
+		return "attachments"
+	case hasMedia(history):
+		return "attachments in the conversation"
+	}
+	return ""
+}
+
+var realWorkQ = judge.Yes(`Does replying well to the latest message need real work: several steps, tools, code, research, careful reasoning, a plan, or writing something long? A greeting, thanks, a quick question, a reminder or a short factual answer is not real work. When previous_turn says the last turn was real work and the latest message is a short go-ahead or follow-up to it, that is real work.`)
+
+// askJudge asks the decision model whether a turn is real work. ok is
+// false when there is no judge or it did not answer in time.
+func (t *turn) askJudge(text string, recent bool) (smart, ok bool) {
+	if t.r.Judge == nil {
+		return false, false
+	}
+	prev := "none"
+	if recent {
+		prev = "the last turn, a few minutes ago, was real work"
+	}
+	state := map[string]string{"latest_message": text, "previous_turn": prev}
+	ans, err := t.r.Judge.Ask(t.ctx, state, map[string]judge.Question{"real_work": realWorkQ})
+	if err != nil {
+		if !errors.Is(err, judge.ErrNoKey) {
+			t.r.Log.Warn("route: decision model failed; using word rules", "session", t.sess.ID, "err", err)
+		}
+		return false, false
+	}
+	p := ans["real_work"].P
+	t.r.Log.Debug("route: decision model", "session", t.sess.ID, "p", p)
+	return p >= 0.5, true
 }
 
 func (t *turn) useFast(reason string) {

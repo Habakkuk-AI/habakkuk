@@ -15,6 +15,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 	"github.com/habakkuk-ai/habakkuk/internal/core/session"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
+	"github.com/habakkuk-ai/habakkuk/internal/llm/judge"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
 )
 
@@ -177,6 +178,10 @@ type Runner struct {
 	approvers sync.Map // session id -> tools.Approver
 	textOnly  sync.Map // session id -> true once the model rejected its media
 	routes    sync.Map // session id -> time of its last turn on the main model (route.go)
+
+	// Judge, when set, decides routing for agents with a fast model; the
+	// word rules decide when it is unset or fails (route.go).
+	Judge *judge.Client
 
 	titles sync.WaitGroup // automatic titles being written
 

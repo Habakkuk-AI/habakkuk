@@ -1,7 +1,7 @@
 ---
 title: Speech
 description: "Configure speech-to-text for voice notes and habakkuk talk, and text-to-speech for the speak tool and spoken replies."
-order: 5
+order: 6
 ---
 
 Speech has two sides, each with its own section in `config.yaml`. How you use them (voice notes, `habakkuk talk`, Live mode) is on the [Voice](../tools/voice.md) page.
