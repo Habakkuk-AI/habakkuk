@@ -123,6 +123,9 @@ func (s *setup) applyModel(root *yaml.Node) {
 		a = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		setKey(agents, s.agent, a, "")
 		setKey(a, "model", str(c.ref()), "")
+		if f := c.fastRef(); f != "" {
+			setKey(a, "fast_model", str(f), "quick messages and chores; real work goes to model (README: Routing)")
+		}
 		setKey(a, "permission", str("workspace"), "it may change files only in its workspace")
 		ws := s.opts.workspace
 		if ws == "" {
@@ -132,6 +135,9 @@ func (s *setup) applyModel(root *yaml.Node) {
 		return
 	}
 	setKey(a, "model", str(c.ref()), "")
+	if f := c.fastRef(); f != "" {
+		setKey(a, "fast_model", str(f), "quick messages and chores; real work goes to model (README: Routing)")
+	}
 }
 
 // applyChannel adds the channel account, or updates the one of that type.

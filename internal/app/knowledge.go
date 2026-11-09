@@ -94,8 +94,11 @@ func (a *App) openConsolidation() {
 		ac := a.Cfg.Agents[name]
 		models := append([]string{ac.Model}, ac.Fallbacks...)
 		first := models[len(models)-1]
-		if mc.ReviewModel != "" {
+		switch {
+		case mc.ReviewModel != "":
 			first = mc.ReviewModel
+		case ac.FastModel != "":
+			first = ac.FastModel // memory review is a chore
 		}
 		chain := []llm.Target{target(first)}
 		for _, m := range models {

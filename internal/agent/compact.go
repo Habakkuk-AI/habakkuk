@@ -118,7 +118,7 @@ func (t *turn) compact() (folded, kept int, err error) {
 		limit = 100000
 	}
 	input := summaryInput(t.summary, t.msgs[t.base:keep], limit*3)
-	resp, err := t.r.Models.Send(t.ctx, t.chain, llm.Request{
+	resp, err := t.r.Models.Send(t.ctx, t.choreChain(), llm.Request{
 		System: summarySystem, Messages: []llm.Message{llm.UserText(input)},
 		MaxTokens: min(t.spec.MaxTokens, summaryMaxTokens),
 	}, nil)

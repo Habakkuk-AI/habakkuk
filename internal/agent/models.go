@@ -15,19 +15,19 @@ type SessionModels interface {
 }
 
 // chainFor is the model chain a session's turns use: a /model choice first,
-// then the agent's own chain as fallbacks.
-func (r *Runner) chainFor(ctx context.Context, session string, spec *Spec) []llm.Target {
+// then the agent's own chain as fallbacks. overridden reports a /model choice.
+func (r *Runner) chainFor(ctx context.Context, session string, spec *Spec) (chain []llm.Target, overridden bool) {
 	if r.Choices == nil {
-		return spec.Chain
+		return spec.Chain, false
 	}
 	ref, err := r.Choices.SessionModel(ctx, session)
 	if err != nil {
 		r.Log.Warn("read session model failed", "session", session, "err", err)
-		return spec.Chain
+		return spec.Chain, false
 	}
 	p, m, ok := strings.Cut(ref, "/")
 	if !ok || p == "" || m == "" {
-		return spec.Chain
+		return spec.Chain, false
 	}
 	first := llm.Target{Endpoint: p, Model: m}
 	out := []llm.Target{first}
@@ -36,7 +36,7 @@ func (r *Runner) chainFor(ctx context.Context, session string, spec *Spec) []llm
 			out = append(out, t)
 		}
 	}
-	return out
+	return out, true
 }
 
 // Chain returns the model chain a session uses now.
@@ -49,7 +49,8 @@ func (r *Runner) Chain(ctx context.Context, session string) ([]llm.Target, error
 	if !ok {
 		return nil, fmt.Errorf("agent %q is not configured", sess.Agent)
 	}
-	return r.chainFor(ctx, session, spec), nil
+	chain, _ := r.chainFor(ctx, session, spec)
+	return chain, nil
 }
 
 // ModelCommand runs /model for a session: with no argument it shows the
@@ -74,6 +75,12 @@ func (r *Runner) ModelCommand(ctx context.Context, session, arg string) string {
 		msg := "Models: " + strings.Join(names, " → ")
 		if cur != "" {
 			msg += "\n(this session was switched to " + cur + "; /model default goes back)"
+		} else if sess, err := r.Sessions.Get(ctx, session); err == nil {
+			if spec, ok := r.Agents[sess.Agent]; ok {
+				if note := routingNote(spec); note != "" {
+					msg += "\n" + note
+				}
+			}
 		}
 		return msg + "\nSwitch with /model <provider>/<model>."
 	case "default", "reset":

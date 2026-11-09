@@ -45,6 +45,12 @@ type Spec struct {
 	// first turn, on TitleChain (default Chain).
 	AutoTitle  bool
 	TitleChain []llm.Target
+	// FastChain is the agent's fast model followed by Chain (route.go);
+	// nil without one. Routing is auto, fast or smart; EscalateAfter is the
+	// tool rounds a fast turn may take before moving to Chain.
+	FastChain     []llm.Target
+	Routing       string
+	EscalateAfter int
 	// Home is the agent's home chat, CHANNEL:CONVERSATION[:THREAD], where
 	// it tells its owner about work that started elsewhere; "" is none.
 	// ReportHome is off, results or all (home.go).
@@ -170,6 +176,7 @@ type Runner struct {
 
 	approvers sync.Map // session id -> tools.Approver
 	textOnly  sync.Map // session id -> true once the model rejected its media
+	routes    sync.Map // session id -> time of its last turn on the main model (route.go)
 
 	titles sync.WaitGroup // automatic titles being written
 
@@ -267,7 +274,8 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	ctx = llm.WithCaller(ctx, caller)
 	ctx = withOrigin(ctx, p.Origin)
-	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: r.chainFor(ctx, sess.ID, spec)}
+	chain, overridden := r.chainFor(ctx, sess.ID, spec)
+	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden}
 	t.useSub(p.Sub)
 	hook := TurnHookPayload{Event: HookTurnStart, Agent: spec.Name, Session: sess.ID, Job: j.ID, Text: p.Text}
 	r.Fire(ctx, HookTurnStart, spec.Name, hook)
@@ -320,9 +328,14 @@ type turn struct {
 	sess  *session.Session
 	spec  *Spec
 	chain []llm.Target // the agent's chain, after any /model override
-	sub   *SubturnSpec // a delegated task's options, or nil
-	msgs  []llm.Message
-	final string
+	// Routing (route.go): overridden is a /model choice; onFast means the
+	// turn runs on FastChain and mainChain is where it escalates to.
+	overridden bool
+	onFast     bool
+	mainChain  []llm.Target
+	sub        *SubturnSpec // a delegated task's options, or nil
+	msgs       []llm.Message
+	final      string
 
 	// Compaction state (compact.go). msgs is always the whole transcript;
 	// the model sees summary plus msgs[base:].
@@ -379,7 +392,8 @@ func (t *turn) run(userText string, media []Attachment) error {
 	specs := t.toolSpecs()
 
 	system, effort := t.r.system(t.ctx, t.sess.SystemPrompt, t.sess.ID), t.r.effort(t.ctx, t.spec, t.sess.ID)
-	paused := false
+	t.pickRoute(userText, media)
+	paused, rounds := false, 0
 	for i := 0; i < t.spec.MaxIterations; i++ {
 		last := t.msgs[len(t.msgs)-1]
 		if last.Role == llm.Assistant && len(last.ToolUses()) == 0 && !paused {
@@ -451,6 +465,8 @@ func (t *turn) run(userText string, media []Attachment) error {
 		if err := t.append(llm.Message{Role: llm.User, Blocks: results}, "", nil); err != nil {
 			return err
 		}
+		rounds++
+		t.escalate(rounds)
 	}
 	return jobs.Permanent{Err: fmt.Errorf("turn stopped after %d iterations without finishing", t.spec.MaxIterations)}
 }

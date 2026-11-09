@@ -169,6 +169,11 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 			ref, _ := config.ParseModelRef(m) // validated at load
 			spec.Chain = append(spec.Chain, llm.Target{Endpoint: ref.Provider, Model: ref.Model})
 		}
+		if ac.FastModel != "" {
+			ref, _ := config.ParseModelRef(ac.FastModel) // validated at load
+			spec.FastChain = agent.FastChain(llm.Target{Endpoint: ref.Provider, Model: ref.Model}, spec.Chain)
+			spec.Routing, spec.EscalateAfter = ac.Routing, ac.EscalateAfter
+		}
 		agentFeatures(ac, spec)
 		spec.Home, spec.ReportHome = ac.Home, ac.ReportHome
 		if spec.Approvals != tools.ApproveHuman {

@@ -44,6 +44,26 @@ var recommendedModels = map[string]string{
 	"chatgpt":    "gpt-5.6-sol",
 }
 
+// fastModels is the cheaper model setup pairs with a provider's
+// recommended one (agents.X.fast_model): quick messages and chores go to it,
+// real work to the recommended model. Same provider, so the same key.
+var fastModels = map[string]string{
+	"anthropic": "claude-haiku-5-5",
+	"openai":    "gpt-5.6-luna",
+	"gemini":    "gemini-3.8-flash",
+	"deepseek":  "deepseek-flash",
+}
+
+// fastRef is the fast model to pair with the choice, or "" when the user
+// picked a model other than the recommended one or the provider has none.
+func (c *modelChoice) fastRef() string {
+	f, ok := fastModels[c.provider]
+	if !ok || c.auth != "" || c.model != recommendedModels[c.provider] {
+		return ""
+	}
+	return c.provider + "/" + f
+}
+
 var providerLabels = map[string]string{
 	"anthropic": "Anthropic", "openai": "OpenAI", "gemini": "Google Gemini", "openrouter": "OpenRouter",
 	"deepseek": "DeepSeek", "xai": "xAI", "mistral": "Mistral", "groq": "Groq", "cerebras": "Cerebras",

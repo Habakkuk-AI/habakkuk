@@ -12,7 +12,7 @@ An agent is a configured assistant: its models, permission mode, workspace, tool
 agents:
   habakkuk:
     model: anthropic/claude-opus-5-5
-    fallbacks: [deepseek/deepseek-chat]
+    fallbacks: [deepseek/deepseek-v4-pro]
     effort: high                    # low | medium | high | xhigh | max
     permission: workspace           # read-only | ask | workspace (default) | full
     approvals: human                # human (default) | reviewer | reviewer_then_human
@@ -23,6 +23,7 @@ agents:
 | Setting | Meaning |
 |---|---|
 | `model`, `fallbacks` | `<provider>/<model id>`, then models tried in order when one fails in a way another can fix. See [Models and providers](models.md) |
+| `fast_model`, `routing`, `escalate_after` | A cheaper model for quick messages and chores, and how turns are split between it and `model`. See [Routing](models.md#routing-a-cheap-model-for-quick-messages-a-strong-one-for-real-work) |
 | `effort` | The reasoning effort sent with each request; `/think` overrides it per session |
 | `max_tokens`, `max_iterations` | Output tokens per model call (default 64000) and model calls per turn (default 200) |
 | `permission`, `approvals`, `reviewer_model` | What the agent may do without asking, and who decides when it must ask. See [Tools and approvals](tools-and-approvals.md) |
@@ -30,7 +31,7 @@ agents:
 | `toolsets` | The tools it gets. Without the setting, an agent gets `core`, `memory`, `skills`, `schedule`, `delegate` and `board`; a config that lists `toolsets` gets exactly that list |
 | `web` | Use the provider's hosted web search and fetch where the model supports it (default `true`) |
 | `compact_at` | Summarize older messages once a prompt reaches this many tokens (default 600000 on `anthropic` providers, 150000 otherwise; `-1` turns it off) |
-| `title_model` | The model that writes session titles (default the agent's chain; `off` disables titles) |
+| `title_model` | The model that writes session titles (default `fast_model`, else the agent's chain; `off` disables titles) |
 | `sandbox`, `checkpoints`, `tool_search_over` | Where commands run, workspace snapshots, and when to switch to tool search. See [Tools and approvals](tools-and-approvals.md) |
 
 ## Personality and instructions

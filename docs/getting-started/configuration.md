@@ -20,8 +20,9 @@ providers:
     keys_env: [DEEPSEEK_API_KEY]
 agents:
   habakkuk:
-    model: anthropic/claude-opus-5-5
-    fallbacks: [deepseek/deepseek-chat]
+    model: anthropic/claude-opus-5-5     # real work
+    fast_model: deepseek/deepseek-flash  # quick messages and chores (Routing in the models guide)
+    fallbacks: [deepseek/deepseek-v4-pro]
     effort: high
     permission: workspace     # read-only | ask | workspace | full
     approvals: reviewer_then_human   # human (default) | reviewer | reviewer_then_human

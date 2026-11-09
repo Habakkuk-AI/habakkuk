@@ -550,3 +550,20 @@ func TestRedactHidesKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSetupPairsFastModel(t *testing.T) {
+	for _, c := range []struct {
+		choice modelChoice
+		want   string
+	}{
+		{modelChoice{provider: "anthropic", model: "claude-opus-5-5"}, "anthropic/claude-haiku-5-5"},
+		{modelChoice{provider: "deepseek", model: "deepseek-v4-pro"}, "deepseek/deepseek-flash"},
+		{modelChoice{provider: "anthropic", model: "claude-sonnet-5-5"}, ""}, // the user's own pick
+		{modelChoice{provider: "chatgpt", auth: "chatgpt", model: "gpt-5.6-sol"}, ""},
+		{modelChoice{provider: "ollama", model: "llama"}, ""},
+	} {
+		if got := c.choice.fastRef(); got != c.want {
+			t.Errorf("%s/%s: fast %q, want %q", c.choice.provider, c.choice.model, got, c.want)
+		}
+	}
+}

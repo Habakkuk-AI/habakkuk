@@ -63,6 +63,9 @@ Enabled plugins add MCP servers, skills, hooks and commands to the loaded config
 |---|---|---|
 | `model` | | `<provider>/<model id>` |
 | `fallbacks` | | Models tried in order after `model` |
+| `fast_model` | | A cheaper model for quick messages and chores ([routing](../guides/models.md#routing-a-cheap-model-for-quick-messages-a-strong-one-for-real-work)) |
+| `routing` | `auto` with a `fast_model` | `auto`, `fast` or `smart` |
+| `escalate_after` | 4 | Tool steps a quick turn takes on `fast_model` before moving to `model` |
 | `effort` | | `low`, `medium`, `high`, `xhigh` or `max` |
 | `max_tokens` | 64000 | Output tokens per model call |
 | `max_iterations` | 200 | Model calls per turn |
@@ -77,7 +80,7 @@ Enabled plugins add MCP servers, skills, hooks and commands to the loaded config
 | `checkpoints` | `true` | Snapshot the workspace before turns change it |
 | `checkpoint_max_mb` | 200 | Skip a snapshot larger than this |
 | `tool_search_over` | 60 | Switch to tool search above this many tools; `-1` turns it off |
-| `title_model` | the agent's chain | The model that writes session titles; `off` disables them |
+| `title_model` | `fast_model`, else the agent's chain | The model that writes session titles; `off` disables them |
 
 ## Channels
 

@@ -13,7 +13,7 @@ agents:
     permission: workspace
   research:
     model: anthropic/claude-sonnet-5-5
-    fallbacks: [deepseek/deepseek-chat]
+    fallbacks: [deepseek/deepseek-v4-pro]
     permission: read-only
     toolsets: [core, memory, browser]
   ops:

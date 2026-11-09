@@ -39,7 +39,7 @@ habakkuk status       # what is running, queue, today's cost
 
 - **Crash-proof work.** Leased jobs, transcript repair, exactly-once replies and resumable deliveries.
 - **Many channels.** Telegram, Slack, WhatsApp (linked device, WhatsApp agents, Business Cloud API), Discord, Signal, Matrix, email, SMS, Teams, Google Chat, iMessage, LINE, Mattermost, IRC, ntfy, Messenger, Instagram, Feishu, DingTalk, WeCom, Zulip, Rocket.Chat, Nextcloud Talk, Twitch and a web chat.
-- **Any model.** Anthropic, OpenAI-compatible APIs, Gemini and Bedrock, with presets, key rotation, fallbacks, subscription logins and cost tracking.
+- **Any model, and the right one for each message.** Claude, GPT, Gemini, DeepSeek, Grok, Mistral, Qwen, Kimi, GLM, Bedrock, OpenRouter and 20 more presets, or a local model through Ollama, LM Studio, vLLM or llama.cpp. Quick messages go to a cheap model and real work to a strong one, automatically. Key rotation, fallbacks, subscription logins, spending caps and cost tracking.
 - **Tools with guardrails.** Permission modes, an approval reviewer, sandboxes, workspace checkpoints, a browser, computer use and meeting notes.
 - **Memory and skills.** Markdown notes with semantic search, a user profile, `SKILL.md` skills and plugins.
 - **Teams of agents.** Several agents, delegation, schedules and a shared task board.

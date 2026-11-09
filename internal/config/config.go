@@ -102,12 +102,19 @@ type Provider struct {
 }
 
 type Agent struct {
-	Model         string   `yaml:"model"`     // "<provider>/<model id>"
-	Fallbacks     []string `yaml:"fallbacks"` // same format, tried in order
-	Effort        string   `yaml:"effort"`
-	MaxTokens     int      `yaml:"max_tokens"`
-	MaxIterations int      `yaml:"max_iterations"`
-	Permission    string   `yaml:"permission"` // read-only | ask | workspace | full
+	Model     string   `yaml:"model"`     // "<provider>/<model id>"
+	Fallbacks []string `yaml:"fallbacks"` // same format, tried in order
+	// FastModel ("<provider>/<model>") is a cheaper model for light turns
+	// and chores (titles, summaries, memory review). Routing decides which
+	// turns use it: auto (default), fast or smart. EscalateAfter is how many
+	// tool rounds a turn may take on it before moving to Model (default 4).
+	FastModel     string `yaml:"fast_model"`
+	Routing       string `yaml:"routing"`
+	EscalateAfter int    `yaml:"escalate_after"`
+	Effort        string `yaml:"effort"`
+	MaxTokens     int    `yaml:"max_tokens"`
+	MaxIterations int    `yaml:"max_iterations"`
+	Permission    string `yaml:"permission"` // read-only | ask | workspace | full
 	// Approvals decides calls the permission mode does not allow outright:
 	// human (default), reviewer (a model alone) or reviewer_then_human.
 	Approvals     string   `yaml:"approvals"`
@@ -354,6 +361,12 @@ func (c *Config) applyDefaults() {
 		if a.MaxTokens == 0 {
 			a.MaxTokens = 64000
 		}
+		if a.FastModel != "" && a.Routing == "" {
+			a.Routing = "auto"
+		}
+		if a.EscalateAfter == 0 {
+			a.EscalateAfter = 4
+		}
 		if a.MaxIterations == 0 {
 			a.MaxIterations = 200
 		}
@@ -395,6 +408,9 @@ func (c *Config) Validate() error {
 		if a.ReviewerModel != "" {
 			models = append(models, a.ReviewerModel)
 		}
+		if a.FastModel != "" {
+			models = append(models, a.FastModel)
+		}
 		for _, m := range models {
 			ref, err := ParseModelRef(m)
 			if err != nil {
@@ -414,6 +430,17 @@ func (c *Config) Validate() error {
 		case "human", "reviewer", "reviewer_then_human":
 		default:
 			errs = append(errs, fmt.Errorf("agent %s: approvals %q must be human, reviewer or reviewer_then_human", name, a.Approvals))
+		}
+		switch a.Routing {
+		case "", "auto", "fast", "smart":
+			if a.Routing != "" && a.FastModel == "" {
+				errs = append(errs, fmt.Errorf("agent %s: routing %q needs a fast_model", name, a.Routing))
+			}
+		default:
+			errs = append(errs, fmt.Errorf("agent %s: routing %q must be auto, fast or smart", name, a.Routing))
+		}
+		if a.EscalateAfter < 1 {
+			errs = append(errs, fmt.Errorf("agent %s: escalate_after must be at least 1", name))
 		}
 		switch a.Effort {
 		case "", "low", "medium", "high", "xhigh", "max":

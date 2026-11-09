@@ -14,6 +14,10 @@ func agentFeatures(ac *config.Agent, spec *agent.Spec) {
 		return
 	}
 	spec.AutoTitle = true
+	if ac.TitleModel == "" && len(spec.FastChain) > 0 {
+		spec.TitleChain = spec.FastChain // a chore: the fast model writes titles
+		return
+	}
 	if ref, err := config.ParseModelRef(ac.TitleModel); err == nil { // validated at load
 		first := llm.Target{Endpoint: ref.Provider, Model: ref.Model}
 		spec.TitleChain = []llm.Target{first}
