@@ -382,9 +382,15 @@ func TestCommandsAndAgentPick(t *testing.T) {
 	if out["turn"] != "" {
 		t.Fatalf("a command started a turn: %v", out)
 	}
+	// The reply to "hi" may land after the acknowledgement, so look at all.
 	waitFor(t, "ack", func() bool {
 		evs, _ := r.s.Store.After(ctx, "c1", 0, 10)
-		return len(evs) > 0 && strings.Contains(evs[len(evs)-1].Text, "fresh conversation")
+		for _, e := range evs {
+			if strings.Contains(e.Text, "fresh conversation") {
+				return true
+			}
+		}
+		return false
 	})
 	after, _ := r.s.Gateway.Store.Conversation(ctx, to)
 	if after.SessionID == before.SessionID || after.Agent != "ops" {
