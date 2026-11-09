@@ -133,6 +133,9 @@ In a chat, `/help` lists the commands. The ones you will use most:
 
 [Sessions and chat commands](../agents/sessions.md) explains them, and the [CLI reference](../reference/cli.md#chat-commands) lists them all.
 
+> [!TIP]
+> Coming from another agent? On a new install `habakkuk setup` offers to import it, or run `habakkuk migrate --dry-run` to see what would move. See [Move from another agent](migrate.md).
+
 ## Next steps
 
 <!-- cards -->

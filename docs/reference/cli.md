@@ -12,7 +12,12 @@ order: 1
 habakkuk init                       write a starter config to $HABAKKUK_HOME (default ~/.habakkuk)
 habakkuk setup [model|channel [TYPE]|name|service] [-y] [flags]
                                     a one-minute wizard: model, where to talk (WhatsApp agent,
-                                    Telegram, web, ...), names; -y runs it from flags (habakkuk setup -h)
+                                    Telegram, web, ...), names; -y runs it from flags (habakkuk setup -h);
+                                    on a new home it offers to import another agent (-y -migrate does it)
+habakkuk migrate [-from SOURCE] [-source DIR] [-agent NAME] [-dry-run] [-secrets copy|skip] [-force] [-y]
+                                    bring agents, persona files, profile, memory, skills, schedules
+                                    (paused), MCP servers, providers, channels and keys over from
+                                    another agent (see Move from another agent)
 habakkuk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped
@@ -111,6 +116,7 @@ Where each command is explained:
 | `expose` | [Remote access](../deploy/remote-access.md) |
 | `backup`, `restore` | [Backups and updates](../deploy/backups-and-updates.md) |
 | `update`, `config migrate`, `doctor --upgrade-check`, `version` | [Updating](../get-started/updating.md) |
+| `migrate` | [Move from another agent](../get-started/migrate.md) |
 | `channels`, `pair`, `send` | [Channels](../channels/index.md), [Access, groups and delivery](../channels/settings.md) |
 | `whatsapp link` | [WhatsApp](../channels/whatsapp.md#linked-device) |
 | `models` | [Providers](../models/providers.md) |

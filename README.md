@@ -41,6 +41,8 @@ habakkuk doctor       # check config, keys and channels
 habakkuk status       # what is running, queue, today's cost
 ```
 
+Coming from another agent? `habakkuk setup` offers to import it on a new install, or run `habakkuk migrate --dry-run` to see what would move. See [Move from another agent](docs/get-started/migrate.md).
+
 ## Features
 
 - **Crash-proof work.** Leased jobs, transcript repair, exactly-once replies and resumable deliveries.
