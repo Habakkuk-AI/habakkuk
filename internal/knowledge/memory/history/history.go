@@ -60,6 +60,10 @@ const (
 	KindProfile  = "profile"  // agents/<agent>/USER.md
 	KindIdentity = "identity" // agents/<agent>/IDENTITY.md
 	KindSkill    = "skill"    // agents/<agent>/skills/<name>/SKILL.md
+	// KindSoul is agents/<agent>/SOUL.md. It is tracked once Habakkuk
+	// first changes it (an approved retro proposal); from then on hand
+	// edits are recorded too. Scan does not pick it up before that.
+	KindSoul = "soul"
 )
 
 // Who made a change.
@@ -68,6 +72,7 @@ const (
 	ByUser    = "user"    // the user: a chat command, the CLI, the dashboard
 	ByReview  = "review"  // background memory review and the nightly pass
 	ByCurator = "curator" // the skills curator
+	ByRetro   = "retro"   // a retrospective applying its own safe changes
 	ByHand    = "hand"    // an edit made on disk, noticed afterwards
 	BySystem  = "system"  // anything that did not say
 )
@@ -77,6 +82,7 @@ const (
 	ProfileFile  = "USER.md"
 	IdentityFile = "IDENTITY.md"
 	SkillFile    = "SKILL.md"
+	SoulFile     = "SOUL.md"
 )
 
 // ErrPinned refuses a background change to a pinned file.
@@ -298,6 +304,11 @@ func IdentityTarget(home, agent string) Target {
 	return Target{Agent: agent, Kind: KindIdentity, Name: IdentityFile, Path: filepath.Join(AgentDir(home, agent), IdentityFile)}
 }
 
+// SoulTarget is an agent's SOUL.md.
+func SoulTarget(home, agent string) Target {
+	return Target{Agent: agent, Kind: KindSoul, Name: SoulFile, Path: filepath.Join(AgentDir(home, agent), SoulFile)}
+}
+
 // SkillTarget is the SKILL.md of one of an agent's own skills.
 func SkillTarget(home, agent, name string) Target {
 	return Target{Agent: agent, Kind: KindSkill, Name: name, Path: filepath.Join(AgentDir(home, agent), "skills", name, SkillFile)}
@@ -317,7 +328,7 @@ func (t Target) check() error {
 		return err
 	}
 	switch t.Kind {
-	case KindNote, KindProfile, KindIdentity, KindSkill:
+	case KindNote, KindProfile, KindIdentity, KindSkill, KindSoul:
 	default:
 		return fmt.Errorf("unknown kind %q", t.Kind)
 	}
