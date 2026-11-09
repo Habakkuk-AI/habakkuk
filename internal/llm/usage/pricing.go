@@ -78,8 +78,9 @@ var Prices = map[string]Price{
 	// TypeSafe decision model (input only; output is free)
 	"jev": p(0.042, 0, 0, 0),
 	// DeepSeek (peak-hour list price; off-peak is half)
-	"deepseek-flash":  p(0.30, 1.20, 0.006, 0),
-	"deepseek-v4-pro": p(1.32, 3.96, 0.044, 0),
+	"deepseek-flash":    p(0.30, 1.20, 0.006, 0),
+	"deepseek-v4-flash": p(0.30, 1.20, 0.006, 0), // the older name the API still accepts
+	"deepseek-v4-pro":   p(1.32, 3.96, 0.044, 0),
 
 	// xAI (prompts of 200k tokens or more bill at the higher rate)
 	"grok-4.7":       tiered(p(2, 6, 0.50, 0), 199_999, p(4, 12, 1, 0)),

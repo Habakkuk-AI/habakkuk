@@ -34,11 +34,16 @@ func TestPriceMatching(t *testing.T) {
 		{"models/gemini-3.1-pro-preview", "gemini-3.1-pro"},
 		{"gemini-2.5-flash-lite", "gemini-2.5-flash-lite"},
 		{"x-ai/grok-4.20-0309-reasoning", "grok-4.20"},
+		{"deepseek-flash", "deepseek-flash"},
+		{"deepseek/deepseek-v4-flash", "deepseek-v4-flash"}, // the older name the API still accepts
 		{"llama-4-scout", ""},
 		{"gpt-50", ""},
 	} {
 		got, ok := pr.Lookup("p", tc.model)
 		want, wantOK := Prices[tc.want]
+		if tc.want != "" && !wantOK {
+			t.Fatalf("%s: no price %q in the table", tc.model, tc.want)
+		}
 		if ok != wantOK || ok && got.Input != want.Input || ok && got.Output != want.Output {
 			t.Errorf("%s: got %+v %v, want %s", tc.model, got, ok, tc.want)
 		}
