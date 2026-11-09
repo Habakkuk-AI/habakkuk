@@ -1,0 +1,46 @@
+{
+  "jobs": [
+    {
+      "id": "a1b2c3d4e5f6",
+      "name": "Morning brief",
+      "prompt": "Summarise my calendar and unread mail.",
+      "schedule": {"kind": "cron", "expr": "0 8 * * 1-5", "display": "0 8 * * 1-5"},
+      "timezone": "America/Toronto",
+      "deliver": "telegram:4242",
+      "enabled": true
+    },
+    {
+      "id": "b2c3d4e5f6a1",
+      "name": "Inbox sweep",
+      "prompt": "Check the inbox for anything urgent.",
+      "skills": ["notes-helper"],
+      "schedule": {"kind": "interval", "minutes": 30, "display": "every 30m"},
+      "deliver": "telegram",
+      "enabled": true
+    },
+    {
+      "id": "c3d4e5f6a1b2",
+      "name": "Digest script",
+      "prompt": "",
+      "script": "digest.py",
+      "no_agent": true,
+      "schedule": {"kind": "cron", "expr": "30 18 * * *"},
+      "deliver": "local",
+      "enabled": true
+    },
+    {
+      "id": "d4e5f6a1b2c3",
+      "name": "Old reminder",
+      "prompt": "Water the plants.",
+      "schedule": {"kind": "interval", "minutes": 1440},
+      "enabled": false
+    },
+    {
+      "id": "e5f6a1b2c3d4",
+      "name": "One-off long past",
+      "prompt": "Renew the domain.",
+      "schedule": {"kind": "once", "run_at": "2020-01-01T09:00:00-05:00"},
+      "enabled": true
+    }
+  ]
+}

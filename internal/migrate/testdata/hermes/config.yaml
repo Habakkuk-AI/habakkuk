@@ -1,0 +1,30 @@
+# A small, synthetic home for the import tests.
+_config_version: 52
+model:
+  default: "anthropic/claude-sonnet-4"
+  provider: "openrouter"
+  base_url: "https://openrouter.ai/api/v1"
+fallback_providers:
+  - provider: anthropic
+    model: claude-haiku-4-5
+agent:
+  system_prompt: "Always answer in British English."
+terminal:
+  backend: local
+  cwd: "."
+mcp_servers:
+  time:
+    command: uvx
+    args: ["mcp-server-time"]
+  github:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_fixtureTokenValue123"
+  notion:
+    url: https://mcp.notion.example/mcp
+    headers:
+      Authorization: "Bearer ${NOTION_TOKEN}"
+  retired:
+    command: retired-server
+    enabled: false
