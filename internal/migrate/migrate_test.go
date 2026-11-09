@@ -206,7 +206,7 @@ func TestReadDetails(t *testing.T) {
 		t.Errorf("inbox sweep = %+v (to %+v)", sweep, sweep.To)
 	}
 	digest := h.Schedules[2]
-	if !strings.HasPrefix(digest.Command, "python3 ") || !strings.HasSuffix(digest.Command, filepath.Join("scripts", "digest.py")) || digest.OnOutput != "silent" {
+	if !strings.HasPrefix(digest.Command, "python3 ") || !strings.HasSuffix(strings.Trim(digest.Command, `'"`), filepath.Join("scripts", "digest.py")) || digest.OnOutput != "silent" {
 		t.Errorf("digest = %+v", digest)
 	}
 
