@@ -942,7 +942,7 @@ agents:
 # merges near-duplicate skills agents wrote and archives unused ones (with
 # backups; habakkuk skills restore NAME). Plugins (habakkuk plugins install,
 # enable) add MCP servers, skills, hooks and commands without editing this
-# file; see docs/guides/plugins.md. habakkuk mcp catalog lists ready-made MCP servers.
+# file; see docs/tools/plugins.md. habakkuk mcp catalog lists ready-made MCP servers.
 # skills:
 #   registries:
 #     - {name: team, url: "https://skills.example.com/index.json"}

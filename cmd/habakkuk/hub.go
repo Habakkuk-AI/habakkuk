@@ -465,7 +465,7 @@ const pluginsUsage = `usage: habakkuk plugins [list]
        habakkuk plugins restore [-id ID] NAME | restore -list [NAME]
 Sources are as for skills; a plugin does nothing until it is enabled`
 
-// pluginsCmd installs and manages plugins (docs/guides/plugins.md).
+// pluginsCmd installs and manages plugins (docs/tools/plugins.md).
 func pluginsCmd(ctx context.Context, home string, args []string) error {
 	sub := "list"
 	if len(args) > 0 {

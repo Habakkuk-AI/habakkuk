@@ -24,7 +24,7 @@ type Skills struct {
 	ArchiveAfterDays int `yaml:"archive_after_days"`
 }
 
-// SkillRegistry is one index of skills and plugins (see docs/guides/plugins.md
+// SkillRegistry is one index of skills and plugins (see docs/tools/plugins.md
 // for the format).
 type SkillRegistry struct {
 	Name string `yaml:"name"`

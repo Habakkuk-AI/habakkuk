@@ -101,7 +101,7 @@ Usage:
   habakkuk skills [search|install|update|remove|approve|restore|curate]
                                     skills from GitHub, URLs, paths and registries (habakkuk skills help)
   habakkuk plugins [list|search|install|enable|disable|update|remove|restore]
-                                    plugins: MCP servers, skills, hooks and commands (docs/guides/plugins.md)
+                                    plugins: MCP servers, skills, hooks and commands (docs/tools/plugins.md)
   habakkuk checkpoints [-agent A]     list workspace snapshots taken before turns changed files
   habakkuk rollback [-agent A] [-y] ID [PATH]
                                     restore the workspace (or one path) to a checkpoint

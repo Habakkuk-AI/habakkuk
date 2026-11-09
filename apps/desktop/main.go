@@ -1,7 +1,7 @@
 // Command habakkuk-desktop is Habakkuk Desktop: a native window around the
 // dashboard of a Habakkuk running on this computer or elsewhere, with a tray
 // icon, notifications for approvals and replies, and a quick ask window on
-// a global hotkey. See docs/guides/desktop-app.md.
+// a global hotkey. See docs/interfaces/desktop-app.md.
 //
 // It is its own Go module, so the habakkuk binary keeps building without CGO
 // and without any GUI library.

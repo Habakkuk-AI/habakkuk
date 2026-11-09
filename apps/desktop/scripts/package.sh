@@ -7,7 +7,7 @@
 #
 # VERSION (default: dev) goes into the binaries and file names. The builds
 # are unsigned: macOS gets an ad-hoc signature only, Windows none (see
-# docs/guides/desktop-app.md). Wails v3 apps are plain Go programs, so this uses go
+# docs/interfaces/desktop-app.md). Wails v3 apps are plain Go programs, so this uses go
 # build directly rather than the wails3 Taskfile scaffolding.
 set -eu
 

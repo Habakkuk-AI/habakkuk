@@ -3,7 +3,7 @@
 // commands. Installing goes through the hub (same sources, lock file and
 // scan as skills); a plugin does nothing until it is enabled, which also
 // approves it, and config.Load merges every enabled plugin into the running
-// configuration. See docs/guides/plugins.md.
+// configuration. See docs/tools/plugins.md.
 package plugins
 
 import (

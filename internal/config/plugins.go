@@ -23,7 +23,7 @@ import (
 const PluginManifestName = "habakkuk-plugin.yaml"
 
 // PluginManifest is a plugin's habakkuk-plugin.yaml. Every section is
-// optional. See docs/guides/plugins.md.
+// optional. See docs/tools/plugins.md.
 type PluginManifest struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
