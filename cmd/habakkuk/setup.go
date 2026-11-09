@@ -59,6 +59,7 @@ type setupOpts struct {
 	timeout    time.Duration
 	serve      bool
 	service    bool
+	migrate    bool
 }
 
 // endpoints are the services setup checks against; tests point them at
@@ -133,6 +134,9 @@ type setup struct {
 	runChat  func(ctx context.Context, home string) error
 	// goos picks the background service flavour (tests set it).
 	goos string
+	// userHome is where setup looks for another agent's home to import
+	// (tests set it).
+	userHome string
 
 	cfgPath  string
 	raw      []byte         // config.yaml as it was, nil when new
@@ -150,6 +154,7 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 		getenv: os.Getenv, now: time.Now, runServe: serve, goos: runtime.GOOS,
 		runChat: func(ctx context.Context, home string) error { return chatCmd(ctx, home, nil) },
 		cfgPath: filepath.Join(home, "config.yaml"), secrets: map[string]string{}}
+	s.userHome, _ = os.UserHomeDir()
 	var steps []string
 	for len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		steps, args = append(steps, args[0]), args[1:]
@@ -196,6 +201,7 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 	fs.DurationVar(&o.timeout, "timeout", 30*time.Second, "how long each live check may take")
 	fs.BoolVar(&o.serve, "serve", false, "start habakkuk serve when done")
 	fs.BoolVar(&o.service, "service", false, "write a background service file (systemd or launchd) and print how to enable it")
+	fs.BoolVar(&o.migrate, "migrate", false, "with -y on a new home: first import another agent's setup found on this computer (see habakkuk migrate)")
 	fs.Usage = func() {
 		fmt.Fprint(out, setupUsage)
 		fs.PrintDefaults()
@@ -233,6 +239,11 @@ func (s *setup) run() error {
 	}
 	if err := s.load(); err != nil {
 		return err
+	}
+	if s.raw == nil && len(s.steps) == 0 {
+		if err := s.offerImport(); err != nil {
+			return err
+		}
 	}
 	if s.raw == nil {
 		s.say("Habakkuk setup: three short steps, about a minute. Nothing is written until the end.")

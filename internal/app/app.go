@@ -275,6 +275,13 @@ func (a *App) here(ctx context.Context, sessionID string) json.RawMessage {
 // where it sits in this list.
 var controlMigrations = sortedMigrations(slices.Concat(jobs.Migrations, channel.Migrations, schedule.Migrations, board.Migrations))
 
+// OpenControl opens home's control.db on its own (creating and migrating
+// it as needed), for commands that need its stores without the rest of the
+// app.
+func OpenControl(ctx context.Context, home string) (*sql.DB, error) {
+	return store.Open(ctx, filepath.Join(home, "control.db"), controlMigrations)
+}
+
 func sortedMigrations(ms []store.Migration) []store.Migration {
 	slices.SortStableFunc(ms, func(a, b store.Migration) int { return a.Version - b.Version })
 	return ms

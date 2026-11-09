@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "job-1",
+      "name": "Weekly money summary",
+      "enabled": true,
+      "agentId": "main",
+      "schedule": {"kind": "cron", "expr": "0 9 * * 1", "tz": "Europe/Lisbon"},
+      "payload": {"kind": "agentTurn", "message": "Summarise last week's spending."},
+      "delivery": {"mode": "announce", "channel": "telegram", "to": "4242"}
+    },
+    {
+      "id": "job-2",
+      "name": "Disk check",
+      "enabled": true,
+      "agentId": "work",
+      "schedule": {"kind": "every", "everyMs": 3600000},
+      "payload": {"kind": "command", "argv": ["sh", "-lc", "df -h /"]},
+      "delivery": {"mode": "none"}
+    },
+    {
+      "id": "job-3",
+      "name": "Paused one",
+      "enabled": false,
+      "schedule": {"kind": "every", "everyMs": 60000},
+      "payload": {"kind": "agentTurn", "message": "Ping."}
+    }
+  ]
+}

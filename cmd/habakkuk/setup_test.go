@@ -166,11 +166,12 @@ func newFakeTelegram(t *testing.T, bodies *[]string) *httptest.Server {
 }
 
 type setupRun struct {
-	env    map[string]string
-	ep     endpoints
-	stdin  string
-	goos   string
-	served bool
+	userHome string // where another agent's home may be; "" is an empty folder
+	env      map[string]string
+	ep       endpoints
+	stdin    string
+	goos     string
+	served   bool
 }
 
 func (r *setupRun) run(t *testing.T, home string, args ...string) (string, error) {
@@ -181,6 +182,10 @@ func (r *setupRun) run(t *testing.T, home string, args ...string) (string, error
 		return out.String(), err
 	}
 	s.getenv = func(k string) string { return r.env[k] }
+	s.userHome = r.userHome
+	if s.userHome == "" {
+		s.userHome = t.TempDir() // never find this machine's other agents
+	}
 	s.ep = r.ep
 	if s.ep.local == nil {
 		s.ep.local = map[string]string{} // never probe this machine's servers

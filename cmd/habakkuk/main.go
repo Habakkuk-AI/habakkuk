@@ -45,6 +45,9 @@ Usage:
   habakkuk setup [model|channel [TYPE]|name|service] [-y] [flags]
                                     a one-minute wizard: model, where to talk (WhatsApp agent,
                                     Telegram, web, ...), names; -y runs it from flags (habakkuk setup -h)
+  habakkuk migrate [--from SOURCE] [--dry-run] [--secrets copy|skip] [--force] [-y]
+                                    move agents, memory, skills, schedules, MCP servers, channels
+                                    and keys over from another agent (sources: habakkuk migrate -h)
   habakkuk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped
@@ -146,6 +149,8 @@ func main() {
 	switch cmd {
 	case "setup":
 		err = setupCmd(ctx, home, args)
+	case "migrate":
+		err = migrateCmd(ctx, home, args)
 	case "update":
 		err = updateCmd(ctx, home, args)
 	case "config":

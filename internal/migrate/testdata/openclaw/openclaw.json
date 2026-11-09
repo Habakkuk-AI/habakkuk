@@ -1,0 +1,56 @@
+// A small, synthetic state folder for the import tests (JSON5).
+{
+  env: {
+    vars: { GROQ_API_KEY: 'gsk-fixture-4444' },
+  },
+  agents: {
+    defaults: {
+      model: { primary: "opus", fallbacks: ["groq/llama-3.3-70b-versatile"] },
+      models: {
+        "anthropic/claude-opus-4-6": { alias: "opus" },
+      },
+    },
+    entries: {
+      main: {
+        identity: { name: "Clawd", emoji: "🦞", theme: "dry wit" },
+      },
+      work: {
+        model: "my-studio/qwen3.8",
+      },
+    },
+  },
+  models: {
+    providers: {
+      "my-studio": {
+        baseUrl: "https://studio.example.net/v1",
+        api: "openai-completions",
+        apiKey: "${STUDIO_KEY}",
+        models: [{ id: "qwen3.8", name: "Qwen3.8" }],
+      },
+    },
+  },
+  channels: {
+    telegram: { botToken: "${TG_TOKEN}", allowFrom: ["tg:4242"], },
+    discord: {
+      accounts: {
+        ops: { token: "discord-fixture-5555", allowFrom: ["99"] },
+      },
+    },
+    whatsapp: { allowFrom: ["+15551234567"] },
+    imessage: { enabled: true },
+  },
+  bindings: [
+    { agentId: "work", match: { channel: "discord", accountId: "ops" } },
+  ],
+  mcp: {
+    servers: {
+      docs: { command: "uvx", args: ["mcp-server-fetch"] },
+      remote: {
+        url: "https://mcp.example.invalid/mcp",
+        transport: "streamable-http",
+        headers: { Authorization: "Bearer ${MCP_REMOTE_TOKEN}" },
+      },
+      parked: { command: "parked-server", enabled: false },
+    },
+  },
+}
