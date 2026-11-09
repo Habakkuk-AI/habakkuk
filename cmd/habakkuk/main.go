@@ -40,6 +40,8 @@ var version = "0.3.0-dev"
 
 const usage = `Habakkuk: a durable personal AI agent.
 
+Every command also runs as hk, the short name: hk chat is habakkuk chat.
+
 Usage:
   habakkuk init                       write a starter config to $HABAKKUK_HOME (default ~/.habakkuk)
   habakkuk setup [model|channel [TYPE]|name|service] [-y] [flags]

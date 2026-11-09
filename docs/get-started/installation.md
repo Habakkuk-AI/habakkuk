@@ -26,6 +26,7 @@ The script downloads the release for your platform, checks it against the releas
 
 - **macOS and Linux** put `habakkuk` in `~/.local/bin` and tell you when that folder is not on your `PATH`. Under Rosetta on Apple silicon it still picks the arm64 build.
 - **Windows** puts `habakkuk.exe` in `%LOCALAPPDATA%\Programs\Habakkuk` and adds it to your user `PATH`. No admin rights are needed.
+- **`hk`, the short name.** Both scripts add `hk` beside `habakkuk` (a link on macOS and Linux, `hk.cmd` on Windows), so every command works either way: `hk chat` is `habakkuk chat`. If a different program named `hk` is already in that folder, it is left alone and the script says so; it also warns when another `hk` comes first on your `PATH`.
 
 Both scripts are in the repository ([`scripts/install.sh`](../../scripts/install.sh), [`scripts/install.ps1`](../../scripts/install.ps1)), so you can also fetch them from GitHub:
 
@@ -41,6 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/habakkuk-ai/habakkuk/main/scripts/i
 | `--dir DIR` | `-Dir DIR` | `HABAKKUK_INSTALL_DIR` | Install into `DIR` |
 | `--system` | | `HABAKKUK_SYSTEM=1` | Install into `/usr/local/bin`, with sudo if needed |
 | | `-NoPath` | | Do not add the folder to your user `PATH` |
+| `--no-hk` | `-NoHk` | `HABAKKUK_NO_HK=1` | Do not add `hk`, the short name |
 | | | `HABAKKUK_DOWNLOAD_URL` | A mirror holding the release files |
 
 Under `irm ... | iex` the Windows script reads its options only from the environment variables.
@@ -61,9 +63,15 @@ go install github.com/habakkuk-ai/habakkuk/cmd/habakkuk@latest
 
 Or from a clone, with `make build` (see [CONTRIBUTING.md](../../CONTRIBUTING.md)).
 
+`go install` gives you `habakkuk` only. For the short name, add the link yourself:
+
+```bash
+ln -s habakkuk "$(go env GOPATH)/bin/hk"
+```
+
 ## Container image
 
-The image runs `habakkuk serve`, with `HABAKKUK_HOME` set to `/data`:
+The image runs `habakkuk serve`, with `HABAKKUK_HOME` set to `/data`. `hk` works inside it too (`docker exec habakkuk hk status`):
 
 ```bash
 docker run --rm -it -v habakkuk-data:/data ghcr.io/habakkuk-ai/habakkuk:latest init   # once

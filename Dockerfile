@@ -13,6 +13,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates bash git curl && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/habakkuk /usr/local/bin/habakkuk
+RUN ln -s habakkuk /usr/local/bin/hk
 ENV HABAKKUK_HOME=/data
 VOLUME /data
 ENTRYPOINT ["habakkuk"]

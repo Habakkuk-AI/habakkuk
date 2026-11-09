@@ -8,6 +8,7 @@ Version in development: `0.3.0-dev`. No release has been tagged yet; this sectio
 
 ### Added
 
+- **`hk`, the short name.** The installers add `hk` beside `habakkuk` (a link, or `hk.cmd` on Windows; `--no-hk` / `-NoHk` skips it) and the container image has it too, so `hk chat` is `habakkuk chat`. Another program already called `hk` is never replaced.
 - **Durable core.** Every turn is a job with a lease and heartbeat in a SQLite queue; a process killed at any point loses no committed work, and a restart reclaims jobs whose owner died. Interrupted tool calls are repaired, not repeated. Storage is split into `control.db`, `transcripts.db`, `state.db`, `web.db`, `usage.db`, `nodes.db` and content-addressed blobs, with retention on by default.
 - **Decision model.** An optional `judge:` (TypeSafe's Jev) makes Habakkuk's own small decisions: which model a message needs, whether a tool call is plainly routine before the reviewer model is asked (never for a turn that read outside content), and whether a chat is worth a memory review. Without a key, or when it is slow, everything works as before.
 - **Model routing.** An agent's `fast_model` takes quick messages and chores (titles, summaries, memory review) while `model` takes real work; long tool loops move up to `model` automatically (`routing: auto | fast | smart`, `escalate_after`). `habakkuk setup` pairs each provider's recommended model with its cheaper one.

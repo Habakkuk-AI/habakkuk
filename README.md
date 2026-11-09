@@ -29,7 +29,7 @@ On Windows (PowerShell):
 irm https://habakkuk.ai/install.ps1 | iex
 ```
 
-The scripts check the release against its `SHA256SUMS` and install `habakkuk` in `~/.local/bin` (`%LOCALAPPDATA%\Programs\Habakkuk` on Windows). The same scripts are in [`scripts/`](scripts). You can also use `go install github.com/habakkuk-ai/habakkuk/cmd/habakkuk@latest` or the container image `ghcr.io/habakkuk-ai/habakkuk`; see [Installation](docs/get-started/installation.md).
+The scripts check the release against its `SHA256SUMS` and install `habakkuk` in `~/.local/bin` (`%LOCALAPPDATA%\Programs\Habakkuk` on Windows), with `hk` beside it as the short name: `hk chat` is `habakkuk chat`. The same scripts are in [`scripts/`](scripts). You can also use `go install github.com/habakkuk-ai/habakkuk/cmd/habakkuk@latest` or the container image `ghcr.io/habakkuk-ai/habakkuk`; see [Installation](docs/get-started/installation.md).
 
 ## Quick start
 

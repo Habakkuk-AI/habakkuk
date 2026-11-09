@@ -4,7 +4,7 @@ description: "Every habakkuk command and its flags, and every slash command avai
 order: 1
 ---
 
-`habakkuk` with no arguments prints this list. `HABAKKUK_HOME` (default `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows) selects the home every command works on.
+`habakkuk` with no arguments prints this list. `hk` is the short name: the installers put it beside `habakkuk`, and every command below works with either (`hk chat`, `hk doctor`). `HABAKKUK_HOME` (default `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows) selects the home every command works on.
 
 ## Commands
 

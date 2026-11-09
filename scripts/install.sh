@@ -11,9 +11,10 @@
 #   --version TAG   install this release, e.g. v0.3.0 (default: the latest)
 #   --dir DIR       install into DIR (default: ~/.local/bin)
 #   --system        install into /usr/local/bin, with sudo if needed
+#   --no-hk         do not add hk, the short name for habakkuk
 #
-# The same can be set with HABAKKUK_VERSION, HABAKKUK_INSTALL_DIR and
-# HABAKKUK_SYSTEM=1. HABAKKUK_DOWNLOAD_URL points at a mirror holding the
+# The same can be set with HABAKKUK_VERSION, HABAKKUK_INSTALL_DIR,
+# HABAKKUK_SYSTEM=1 and HABAKKUK_NO_HK=1. HABAKKUK_DOWNLOAD_URL points at a mirror holding the
 # release files.
 set -eu
 
@@ -21,6 +22,7 @@ repo="habakkuk-ai/habakkuk"
 version="${HABAKKUK_VERSION:-latest}"
 dir="${HABAKKUK_INSTALL_DIR:-}"
 system="${HABAKKUK_SYSTEM:-0}"
+no_hk="${HABAKKUK_NO_HK:-0}"
 
 say() { printf '%s\n' "$*"; }
 fail() {
@@ -32,11 +34,12 @@ usage() {
 	cat <<'EOF'
 Install Habakkuk from its GitHub releases.
 
-Usage: install.sh [--version TAG] [--dir DIR] [--system]
+Usage: install.sh [--version TAG] [--dir DIR] [--system] [--no-hk]
 
   --version TAG   install this release, e.g. v0.3.0 (default: the latest)
   --dir DIR       install into DIR (default: ~/.local/bin)
   --system        install into /usr/local/bin, with sudo if needed
+  --no-hk         do not add hk, the short name for habakkuk
 EOF
 	exit 0
 }
@@ -55,6 +58,10 @@ while [ $# -gt 0 ]; do
 		;;
 	--system)
 		system=1
+		shift
+		;;
+	--no-hk)
+		no_hk=1
 		shift
 		;;
 	-h | --help) usage ;;
@@ -158,6 +165,33 @@ as_owner cp "$tmp/x/habakkuk" "$dir/.habakkuk.new"
 as_owner mv -f "$dir/.habakkuk.new" "$dir/habakkuk"
 
 say "Installed $("$dir/habakkuk" version 2>/dev/null || echo habakkuk) to $dir/habakkuk"
+
+# hk is the short name: a link to habakkuk beside it. Another program called
+# hk is never replaced.
+if [ "$no_hk" != 1 ]; then
+	hk="$dir/hk"
+	if [ -L "$hk" ]; then
+		case "$(readlink "$hk")" in
+		habakkuk | */habakkuk) ours=1 ;;
+		*) ours=0 ;;
+		esac
+	elif [ -e "$hk" ]; then
+		ours=0
+	else
+		ours=1
+	fi
+	if [ "$ours" = 1 ]; then
+		as_owner ln -sf habakkuk "$hk"
+		found=$(command -v hk 2>/dev/null || true)
+		if [ -n "$found" ] && [ "$found" != "$hk" ]; then
+			say "Added $hk, but $found comes first on your PATH, so hk runs that program. Use habakkuk."
+		else
+			say "Added hk, the short name: hk chat is habakkuk chat."
+		fi
+	else
+		say "Left $hk alone: it is another program. Use habakkuk, or pass --no-hk to skip this note."
+	fi
+fi
 case ":${PATH:-}:" in
 *":$dir:"*) ;;
 *)

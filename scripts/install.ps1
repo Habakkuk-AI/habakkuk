@@ -12,6 +12,7 @@
 #   -Version TAG   install this release, e.g. v0.4.0 (default: the latest)
 #   -Dir DIR       install into DIR (default: %LOCALAPPDATA%\Programs\Habakkuk)
 #   -NoPath        do not add DIR to your user PATH
+#   -NoHk          do not add hk, the short name for habakkuk (or HABAKKUK_NO_HK=1)
 #
 # It downloads habakkuk_windows_<arch>.zip and SHA256SUMS, refuses an archive
 # whose SHA-256 does not match, and puts habakkuk.exe in DIR. No admin rights
@@ -21,11 +22,12 @@
 param(
     [string]$Version = $env:HABAKKUK_VERSION,
     [string]$Dir = $env:HABAKKUK_INSTALL_DIR,
-    [switch]$NoPath
+    [switch]$NoPath,
+    [switch]$NoHk
 )
 
 function Install-Habakkuk {
-    param([string]$Version, [string]$Dir, [bool]$NoPath)
+    param([string]$Version, [string]$Dir, [bool]$NoPath, [bool]$NoHk)
 
     # Errors throw rather than exit: under `irm | iex`, exit would close the
     # user's PowerShell window.
@@ -114,6 +116,23 @@ function Install-Habakkuk {
         if (-not $installed) { $installed = 'habakkuk' }
         Write-Host "Installed $installed to $exe"
 
+        # hk is the short name: hk.cmd beside habakkuk.exe. Another program
+        # called hk is never replaced.
+        if (-not $NoHk -and $env:HABAKKUK_NO_HK -ne '1') {
+            $hk = Join-Path $Dir 'hk.cmd'
+            $shim = '@"%~dp0habakkuk.exe" %*'
+            $other = Test-Path -LiteralPath (Join-Path $Dir 'hk.exe')
+            if (-not $other -and (Test-Path -LiteralPath $hk)) {
+                $other = ((Get-Content -Raw -LiteralPath $hk).Trim() -ne $shim)
+            }
+            if ($other) {
+                Write-Host "Left hk in $Dir alone: it is another program. Use habakkuk."
+            } else {
+                Set-Content -LiteralPath $hk -Value $shim -Encoding ASCII
+                Write-Host 'Added hk, the short name: hk chat is habakkuk chat.'
+            }
+        }
+
         if (-not $NoPath) {
             $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
             $parts = @()
@@ -138,4 +157,4 @@ function Install-Habakkuk {
     Write-Host '  habakkuk chat'
 }
 
-Install-Habakkuk -Version $Version -Dir $Dir -NoPath:$NoPath.IsPresent
+Install-Habakkuk -Version $Version -Dir $Dir -NoPath:$NoPath.IsPresent -NoHk:$NoHk.IsPresent
