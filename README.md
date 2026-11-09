@@ -23,7 +23,13 @@ On Linux or macOS (amd64 or arm64):
 curl -fsSL https://habakkuk.ai/install.sh | sh
 ```
 
-The script checks the release against its `SHA256SUMS` and installs `habakkuk` in `~/.local/bin`. The same script is at `https://raw.githubusercontent.com/habakkuk-ai/habakkuk/main/scripts/install.sh`. You can also use `go install github.com/habakkuk-ai/habakkuk/cmd/habakkuk@latest` or the container image `ghcr.io/habakkuk-ai/habakkuk`; see [Installation](docs/getting-started/installation.md).
+On Windows (PowerShell):
+
+```powershell
+irm https://habakkuk.ai/install.ps1 | iex
+```
+
+The scripts check the release against its `SHA256SUMS` and install `habakkuk` in `~/.local/bin` (`%LOCALAPPDATA%\Programs\Habakkuk` on Windows). The same scripts are in [`scripts/`](scripts). You can also use `go install github.com/habakkuk-ai/habakkuk/cmd/habakkuk@latest` or the container image `ghcr.io/habakkuk-ai/habakkuk`; see [Installation](docs/get-started/installation.md).
 
 ## Quick start
 
@@ -50,8 +56,11 @@ habakkuk status       # what is running, queue, today's cost
 
 The docs are in [`docs/`](docs/index.md) and at [habakkuk.ai/docs](https://habakkuk.ai/docs).
 
-- **Getting started:** [installation](docs/getting-started/installation.md), [quick start](docs/getting-started/quickstart.md), [configuration](docs/getting-started/configuration.md)
-- **Guides:** [channels](docs/guides/channels.md), [WhatsApp](docs/guides/whatsapp.md), [agents](docs/guides/agents.md), [models](docs/guides/models.md), [memory and skills](docs/guides/memory-and-skills.md), [tools and approvals](docs/guides/tools-and-approvals.md), [MCP](docs/guides/mcp.md), [schedules and the board](docs/guides/schedules-and-board.md), [deployment](docs/guides/deployment.md) and [more](docs/index.md#where-to-go-next)
+- **Get started:** [quickstart](docs/get-started/quickstart.md), [installation](docs/get-started/installation.md), [configuration](docs/get-started/configuration.md), [use cases](docs/get-started/use-cases.md)
+- **Channels:** [overview](docs/channels/index.md), [WhatsApp](docs/channels/whatsapp.md), [Telegram](docs/channels/telegram.md), [Slack](docs/channels/slack.md), [Discord](docs/channels/discord.md) and [the rest](docs/channels/index.md#all-channels)
+- **Agents:** [agents and identity](docs/agents/agents.md), [multi-agent teams](docs/agents/multi-agent.md), [memory](docs/agents/memory.md), [skills](docs/agents/skills.md), [schedules](docs/agents/schedules.md), [permissions and approvals](docs/agents/approvals.md)
+- **Models and tools:** [providers](docs/models/providers.md), [routing](docs/models/routing.md), [tools](docs/tools/index.md), [MCP](docs/tools/mcp.md), [plugins](docs/tools/plugins.md)
+- **Run it:** [on a server](docs/deploy/server.md), [security](docs/deploy/security.md), [FAQ](docs/help/faq.md), [troubleshooting](docs/help/troubleshooting.md)
 - **Reference:** [CLI](docs/reference/cli.md), [configuration](docs/reference/configuration.md), [HTTP API](docs/reference/api.md), [architecture](docs/reference/architecture.md)
 
 ## Project layout
@@ -67,7 +76,7 @@ The docs are in [`docs/`](docs/index.md) and at [habakkuk.ai/docs](https://habak
 
 ## Security
 
-Safe by default: chat-driven and tainted turns need approval for commands, strangers never get them, skills are pinned and scanned, private files are readable only by you, and nothing phones out unless you turn it on. See [Security model](docs/guides/security.md); report problems as described in [SECURITY.md](SECURITY.md).
+Safe by default: chat-driven and tainted turns need approval for commands, strangers never get them, skills are pinned and scanned, private files are readable only by you, and nothing phones out unless you turn it on. See [Security](docs/deploy/security.md); report problems as described in [SECURITY.md](SECURITY.md).
 
 ## Contributing
 

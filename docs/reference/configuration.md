@@ -4,47 +4,48 @@ description: "Every section of config.yaml, the settings for providers, agents a
 order: 2
 ---
 
-`$HABAKKUK_HOME/config.yaml` is strict YAML: unknown keys are errors. Settings ending in `_env` name an environment variable (or a `.env` entry, or a [secret manager](../guides/deployment.md#secret-managers) reference) that holds the value; secrets never go in the file. `habakkuk init` writes a commented starter config, and `habakkuk doctor` checks one.
+`$HABAKKUK_HOME/config.yaml` is strict YAML: unknown keys are errors. Settings ending in `_env` name an environment variable (or a `.env` entry, or a [secret manager](../deploy/security.md#secret-managers) reference) that holds the value; secrets never go in the file. `habakkuk init` writes a commented starter config, and `habakkuk doctor` checks one.
 
 ## Top-level sections
 
 | Key | What it configures | Guide |
 |---|---|---|
 | `version` | The config format version; must be `1` | |
-| `providers` | Model APIs, keyed by a name you choose | [Models and providers](../guides/models.md) |
-| `agents` | Agents, keyed by name | [Agents](../guides/agents.md) |
-| `channels` | Chat accounts, keyed by account name | [Channels](../guides/channels.md) |
-| `mcp_servers` | MCP servers whose tools agents can use | [MCP servers](../guides/mcp.md) |
-| `mcp_server` | Habakkuk as an MCP server over HTTP (`http`, `allow_send`) | [MCP servers](../guides/mcp.md#habakkuk-as-an-mcp-server) |
-| `http` | The HTTP server: `listen`, `token_env`, `public_url`, `webhooks` | [Dashboard and web chat](../guides/dashboard.md) |
-| `transcription` | Speech-to-text for voice notes and `habakkuk talk`: `provider`, `model`, `prompt` | [Models and providers](../guides/models.md#speech-to-text) |
-| `tts` | Speech for `speak` and voice replies: `provider`, `key_env`, `base_url`, `model`, `voice`, `format`, `instructions`, `max_chars` | [Voice](../guides/voice.md) |
-| `realtime` | Live voice mode in the dashboard: `provider`, `model`, `voice`, `key_env`, `base_url`, `transcription`, `instructions`, `ttl` | [Voice](../guides/voice.md#live-mode-in-the-dashboard) |
-| `talk` | `habakkuk talk`: `wake`, `follow_up`, `silence`, `threshold`, `input`, `device`, `player`, `barge_in` | [Voice](../guides/voice.md) |
-| `images` | `image_generate`: `provider`, `key_env`, `base_url`, `model`, `edit_model`, `size` | [Tools and approvals](../guides/tools-and-approvals.md#media-tools) |
-| `video` | `video_generate`: `provider`, `key_env`, `base_url`, `model`, `image_model`, `size`, `seconds`, `timeout` | [Tools and approvals](../guides/tools-and-approvals.md#media-tools) |
-| `search` | `web_search`: `provider`, `key_env`, `url` | [Tools and approvals](../guides/tools-and-approvals.md#media-tools) |
-| `browser` | The browser toolset: `mode`, `path`, `cdp_url`, `headless`, `args`, `allowed_urls`, `blocked_urls`, `allow_private`, `idle_timeout`, `timeout` | [Browser and computer use](../guides/browser-and-computer.md) |
-| `computer` | The computer toolset: `backend`, `display`, `screen`, `max_actions`, `confirm_apps`, `native`, `timeout` | [Browser and computer use](../guides/browser-and-computer.md#computer) |
-| `meeting` | Meeting attendance: `name`, `announce`, `max_duration`, `lobby_timeout`, `alone_timeout`, `headless`, `summary_model` | [Meetings](../guides/meetings.md) |
-| `memory` | `embeddings` (`provider`, `model`, `dimensions`), `review`, `review_model`, `review_idle`, `nightly`, `stale_days` | [Memory and skills](../guides/memory-and-skills.md) |
-| `skills` | `registries`, `default_registry`, `curate`, `archive_after_days` | [Memory and skills](../guides/memory-and-skills.md#skills) |
-| `hooks` | A list of `{event, command, timeout, match}` | [Tools and approvals](../guides/tools-and-approvals.md#hooks) |
-| `pricing` | Model prices per million tokens: `input`, `output`, `cache_read`, `cache_write` | [Models and providers](../guides/models.md#usage-and-cost) |
-| `a2a` | Agent2Agent: `serve`, `token_env`, `name`, `description`, `agents`, `peers` | [Integrations](../guides/integrations.md#agent2agent) |
-| `homeassistant` | `url`, `token_env`, `allow_domains`, `confirm`, `triggers` | [Integrations](../guides/integrations.md#home-assistant) |
-| `nodes` | Device nodes: `url`, `allow`, `timeout`, `pair_ttl` | [Integrations](../guides/integrations.md#device-nodes) |
-| `timezone` | The time zone for schedules, e.g. `America/Toronto` (default the server's) | [Schedules](../guides/schedules-and-board.md) |
-| `language` | The default language of Habakkuk's own text | [Agents](../guides/agents.md#languages) |
+| `providers` | Model APIs, keyed by a name you choose | [Models and providers](../models/providers.md) |
+| `agents` | Agents, keyed by name | [Agents](../agents/agents.md) |
+| `channels` | Chat accounts, keyed by account name | [Channels](../channels/index.md) |
+| `mcp_servers` | MCP servers whose tools agents can use | [MCP servers](../tools/mcp.md) |
+| `mcp_server` | Habakkuk as an MCP server over HTTP (`http`, `allow_send`) | [MCP servers](../tools/mcp.md#habakkuk-as-an-mcp-server) |
+| `http` | The HTTP server: `listen`, `token_env`, `public_url`, `webhooks` | [Dashboard and web chat](../interfaces/dashboard.md) |
+| `transcription` | Speech-to-text for voice notes and `habakkuk talk`: `provider`, `model`, `prompt` | [Models and providers](../models/speech.md#speech-to-text) |
+| `tts` | Speech for `speak` and voice replies: `provider`, `key_env`, `base_url`, `model`, `voice`, `format`, `instructions`, `max_chars` | [Voice](../tools/voice.md) |
+| `realtime` | Live voice mode in the dashboard: `provider`, `model`, `voice`, `key_env`, `base_url`, `transcription`, `instructions`, `ttl` | [Voice](../tools/voice.md#live-mode-in-the-dashboard) |
+| `talk` | `habakkuk talk`: `wake`, `follow_up`, `silence`, `threshold`, `input`, `device`, `player`, `barge_in` | [Voice](../tools/voice.md) |
+| `images` | `image_generate`: `provider`, `key_env`, `base_url`, `model`, `edit_model`, `size` | [Tools and approvals](../tools/media.md) |
+| `video` | `video_generate`: `provider`, `key_env`, `base_url`, `model`, `image_model`, `size`, `seconds`, `timeout` | [Tools and approvals](../tools/media.md) |
+| `search` | `web_search`: `provider`, `key_env`, `url` | [Tools and approvals](../tools/media.md) |
+| `browser` | The browser toolset: `mode`, `path`, `cdp_url`, `headless`, `args`, `allowed_urls`, `blocked_urls`, `allow_private`, `idle_timeout`, `timeout` | [Browser and computer use](../tools/browser.md) |
+| `computer` | The computer toolset: `backend`, `display`, `screen`, `max_actions`, `confirm_apps`, `native`, `timeout` | [Browser and computer use](../tools/computer-use.md) |
+| `meeting` | Meeting attendance: `name`, `announce`, `max_duration`, `lobby_timeout`, `alone_timeout`, `headless`, `summary_model` | [Meetings](../tools/meetings.md) |
+| `memory` | `embeddings` (`provider`, `model`, `dimensions`), `review`, `review_model`, `review_idle`, `nightly`, `stale_days`, `history_days` | [Memory and skills](../agents/memory.md) |
+| `skills` | `registries`, `default_registry`, `curate`, `archive_after_days` | [Memory and skills](../agents/skills.md) |
+| `hooks` | A list of `{event, command, timeout, match}` | [Tools and approvals](../agents/approvals.md#hooks) |
+| `pricing` | Model prices per million tokens: `input`, `output`, `cache_read`, `cache_write` | [Models and providers](../models/usage-and-limits.md#usage-and-cost) |
+| `a2a` | Agent2Agent: `serve`, `token_env`, `name`, `description`, `agents`, `peers` | [Integrations](../tools/integrations.md#agent2agent) |
+| `homeassistant` | `url`, `token_env`, `allow_domains`, `confirm`, `triggers` | [Integrations](../tools/integrations.md#home-assistant) |
+| `nodes` | Device nodes: `url`, `allow`, `timeout`, `pair_ttl` | [Integrations](../tools/integrations.md#device-nodes) |
+| `timezone` | The time zone for schedules, e.g. `America/Toronto` (default the server's) | [Schedules](../agents/schedules.md), [Usage and limits](../models/usage-and-limits.md#spending-limits) |
+| `budget` | Spending caps for the whole install: `daily`, `monthly`, `per_turn`, `unknown_price` | [Usage and limits](../models/usage-and-limits.md#spending-limits) |
+| `language` | The default language of Habakkuk's own text | [Agents](../agents/agents.md#languages) |
 | `workers` | `concurrency` and job `lease` | |
-| `retention` | `days`: transcripts and finished jobs older than this are pruned; `0` disables | [Deployment](../guides/deployment.md#retention) |
-| `metrics` | `public`: serve `/metrics` without the API token | [Deployment](../guides/deployment.md#metrics-traces-and-logs) |
-| `telemetry` | OTLP traces: `otlp_endpoint`, `headers_env`, `include_content`, `service_name` | [Deployment](../guides/deployment.md#metrics-traces-and-logs) |
-| `logging` | `max_mb`, `backups` for `habakkuk.log` rotation | [Deployment](../guides/deployment.md#metrics-traces-and-logs) |
-| `tools` | `allow_private_urls` for `fetch_url` and A2A | [Tools and approvals](../guides/tools-and-approvals.md#safety-guards) |
-| `secrets` | `sources` and `refs` for secret managers | [Deployment](../guides/deployment.md#secret-managers) |
+| `retention` | `days`: transcripts and finished jobs older than this are pruned; `0` disables | [Deployment](../deploy/backups-and-updates.md#retention) |
+| `metrics` | `public`: serve `/metrics` without the API token | [Deployment](../deploy/observability.md#metrics-and-traces) |
+| `telemetry` | OTLP traces: `otlp_endpoint`, `headers_env`, `include_content`, `service_name` | [Deployment](../deploy/observability.md#metrics-and-traces) |
+| `logging` | `max_mb`, `backups` for `habakkuk.log` rotation | [Deployment](../deploy/observability.md#metrics-and-traces) |
+| `tools` | `allow_private_urls` for `fetch_url` and A2A | [Tools and approvals](../agents/approvals.md#safety-guards) |
+| `secrets` | `sources` and `refs` for secret managers | [Deployment](../deploy/security.md#secret-managers) |
 
-Enabled plugins add MCP servers, skills, hooks and commands to the loaded configuration without changing the file; see [Plugins](../guides/plugins.md).
+Enabled plugins add MCP servers, skills, hooks and commands to the loaded configuration without changing the file; see [Plugins](../tools/plugins.md).
 
 ## Providers
 
@@ -63,7 +64,7 @@ Enabled plugins add MCP servers, skills, hooks and commands to the loaded config
 |---|---|---|
 | `model` | | `<provider>/<model id>` |
 | `fallbacks` | | Models tried in order after `model` |
-| `fast_model` | | A cheaper model for quick messages and chores ([routing](../guides/models.md#routing-a-cheap-model-for-quick-messages-a-strong-one-for-real-work)) |
+| `fast_model` | | A cheaper model for quick messages and chores ([routing](../models/routing.md)) |
 | `routing` | `auto` with a `fast_model` | `auto`, `fast` or `smart` |
 | `escalate_after` | 4 | Tool steps a quick turn takes on `fast_model` before moving to `model` |
 | `effort` | | `low`, `medium`, `high`, `xhigh` or `max` |
@@ -81,12 +82,15 @@ Enabled plugins add MCP servers, skills, hooks and commands to the loaded config
 | `checkpoint_max_mb` | 200 | Skip a snapshot larger than this |
 | `tool_search_over` | 60 | Switch to tool search above this many tools; `-1` turns it off |
 | `title_model` | `fast_model`, else the agent's chain | The model that writes session titles; `off` disables them |
+| `home`, `report_home` | | The agent's home chat (`CHANNEL:CONVERSATION[:THREAD]`) and what is reported there: `results` (default with a home), `all` or `off` ([multi-agent](../agents/multi-agent.md#teams-and-home-chats)) |
+| `budget` | | This agent's spending caps: `daily`, `monthly`, `per_turn` ([limits](../models/usage-and-limits.md#spending-limits)) |
+| `trust`, `channel_allow`, `allow_tainted_exec` | | Lift the extra checks on chat-driven and tainted turns ([security](../deploy/security.md)) |
 
 ## Channels
 
 | Key | Meaning |
 |---|---|
-| `type` | The platform: see [Channels](../guides/channels.md#supported-types) |
+| `type` | The platform: see [Channels](../channels/index.md#all-channels) |
 | `agent` | The default agent for this account's conversations |
 | `routes` | Conversation (or Slack team) id to agent |
 | `allow_from` | Sender ids allowed to talk; `"*"` allows everyone |
@@ -100,6 +104,6 @@ Enabled plugins add MCP servers, skills, hooks and commands to the loaded config
 | `progress` | `draft` (default) or `off` |
 | `reactions` | React to the user's message when a turn starts and ends |
 | `language` | The language of Habakkuk's own messages on this channel |
-| `email`, `sms`, `msteams`, `googlechat`, `bluebubbles`, `line`, `mattermost`, `irc`, `ntfy`, `whatsappcloud`, `messenger`, `instagram`, `feishu`, `dingtalk`, `wecom`, `zulip`, `rocketchat`, `nextcloudtalk`, `twitch` | The block for that type; see [Telegram, Slack, Discord and more](../guides/chat-platforms.md) |
+| `email`, `sms`, `msteams`, `googlechat`, `bluebubbles`, `line`, `mattermost`, `irc`, `ntfy`, `whatsappcloud`, `messenger`, `instagram`, `feishu`, `dingtalk`, `wecom`, `zulip`, `rocketchat`, `nextcloudtalk`, `twitch` | The block for that type; see the [channel's page](../channels/index.md#all-channels) |
 
 The source of truth is `internal/config`: each setting is documented beside its field.

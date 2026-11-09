@@ -1,16 +1,18 @@
 ---
 title: CLI
-description: Every habakkuk command and its flags, and the slash commands available in a chat.
+description: "Every habakkuk command and its flags, and every slash command available in a chat."
 order: 1
 ---
 
-`habakkuk` with no arguments prints this list. `HABAKKUK_HOME` (default `~/.habakkuk`) selects the home every command works on.
+`habakkuk` with no arguments prints this list. `HABAKKUK_HOME` (default `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows) selects the home every command works on.
 
 ## Commands
 
 ```text
 habakkuk init                       write a starter config to $HABAKKUK_HOME (default ~/.habakkuk)
-habakkuk setup                      interactive setup: provider, API key, model, workspace, Telegram
+habakkuk setup [model|channel [TYPE]|name|service] [-y] [flags]
+                                    a one-minute wizard: model, where to talk (WhatsApp agent,
+                                    Telegram, web, ...), names; -y runs it from flags (habakkuk setup -h)
 habakkuk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped
@@ -58,59 +60,81 @@ habakkuk sessions archive|unarchive|rm [-y] ID...
                                     hide, restore or delete sessions; sessions archived lists them
 habakkuk show SESSION               print a transcript
 habakkuk memory [-agent A] [search QUERY | show SLUG | forget SLUG | trust SLUG [yes|no] | profile | log]
+habakkuk memory history [-agent A] [-file NAME] [-since 7d] | diff ID | restore ID [-after] | pin|unpin NOTE
                                     list, search, read, remove or vouch for an agent's memories;
-                                    print its user profile or the background review log
+                                    print its user profile or the background review log;
+                                    list, diff and undo changes to memory, profile, identity
+                                    and skills; pin what background jobs must not rewrite
 habakkuk skills [-agent A]          list the skills an agent can use
 habakkuk skills [search|install|update|remove|approve|restore|curate]
                                     skills from GitHub, URLs, paths and registries (habakkuk skills help)
 habakkuk plugins [list|search|install|enable|disable|update|remove|restore]
-                                    plugins: MCP servers, skills, hooks and commands
+                                    plugins: MCP servers, skills, hooks and commands (docs/tools/plugins.md)
 habakkuk checkpoints [-agent A]     list workspace snapshots taken before turns changed files
 habakkuk rollback [-agent A] [-y] ID [PATH]
                                     restore the workspace (or one path) to a checkpoint
 habakkuk models                     list providers and the models each one serves
 habakkuk auth [login|list|logout]   subscription logins (login chatgpt|copilot)
-habakkuk usage [-days N] [-agent A] tokens and cost by model and agent
+habakkuk usage [-days N] [-agent A] tokens and cost by model and agent, and spend against the limits
 habakkuk doctor                     check config, credentials and storage
 habakkuk status                     version, serve uptime, channels, queue, recent errors, today's cost
 habakkuk computer view              how to watch the agents' virtual desktops (computer backend xvfb)
 habakkuk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
                                     print habakkuk.log readably (-f keeps following it)
-habakkuk security audit [-fix]      check permissions, exposure and risky settings (-fix: safe fixes)
+habakkuk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
+                                    settings (-fix: safe fixes; -network: every outbound endpoint)
 habakkuk expose tailscale [-port 443] [-print] | status | off
                                     share the HTTP listener on your tailnet (tailscale serve, never public)
 habakkuk backup [-o FILE] [-env] [-workspaces]
                                     archive config, agents, skills and database snapshots
 habakkuk restore [-force] FILE      unpack a backup into $HABAKKUK_HOME
-habakkuk update [-check] [-force]   install the latest release (checksum verified)
-habakkuk version
+habakkuk update [-check] [-force] [-channel stable|beta]
+                                    install the newest release on the channel: checksum (and signature)
+                                    verified, checked against this home by the new binary, after a
+                                    backup of config and databases
+habakkuk update --rollback [-force] put back the previous binary, databases and config
+habakkuk config migrate [-dry-run]  rewrite config.yaml in the current format (keeps a timestamped copy)
+habakkuk doctor --upgrade-check     check that this binary can run on $HABAKKUK_HOME, changing nothing
+habakkuk version                    version, commit, build date and database schema versions
 ```
 
 Where each command is explained:
 
 | Commands | Guide |
 |---|---|
-| `init`, `setup`, `chat`, `run`, `doctor` | [Quick start](../getting-started/quickstart.md) |
-| `tui`, `talk` | [Quick start](../getting-started/quickstart.md), [Voice](../guides/voice.md) |
-| `serve`, `status`, `logs`, `security`, `expose`, `backup`, `restore`, `update` | [Deployment](../guides/deployment.md) |
-| `channels`, `pair`, `send`, `whatsapp` | [Channels](../guides/channels.md), [WhatsApp](../guides/whatsapp.md) |
-| `models`, `auth`, `usage` | [Models and providers](../guides/models.md) |
-| `mcp` | [MCP servers](../guides/mcp.md) |
-| `skills`, `plugins`, `memory` | [Memory and skills](../guides/memory-and-skills.md), [Plugins](../guides/plugins.md) |
-| `schedules`, `board` | [Schedules and the task board](../guides/schedules-and-board.md) |
-| `sessions`, `show` | [Agents](../guides/agents.md#sessions) |
-| `checkpoints`, `rollback` | [Tools and approvals](../guides/tools-and-approvals.md#checkpoints) |
-| `meetings` | [Meetings](../guides/meetings.md) |
-| `computer` | [Browser and computer use](../guides/browser-and-computer.md#computer) |
-| `acp`, `node`, `nodes` | [Integrations](../guides/integrations.md) |
+| `init`, `setup`, `chat`, `run`, `doctor` | [Quickstart](../get-started/quickstart.md) |
+| `chat`, `tui`, `run` | [CLI and TUI](../interfaces/cli-and-tui.md) |
+| `talk` | [Voice](../tools/voice.md) |
+| `serve`, `setup service` | [Run it on a server](../deploy/server.md) |
+| `status`, `logs`, `doctor` | [Observability](../deploy/observability.md) |
+| `security` | [Security](../deploy/security.md) |
+| `expose` | [Remote access](../deploy/remote-access.md) |
+| `backup`, `restore` | [Backups and updates](../deploy/backups-and-updates.md) |
+| `update`, `config migrate`, `doctor --upgrade-check`, `version` | [Updating](../get-started/updating.md) |
+| `channels`, `pair`, `send` | [Channels](../channels/index.md), [Access, groups and delivery](../channels/settings.md) |
+| `whatsapp link` | [WhatsApp](../channels/whatsapp.md#linked-device) |
+| `models` | [Providers](../models/providers.md) |
+| `auth` | [Subscription logins](../models/subscriptions.md) |
+| `usage` | [Usage and limits](../models/usage-and-limits.md) |
+| `mcp` | [MCP](../tools/mcp.md) |
+| `memory` | [Memory](../agents/memory.md) |
+| `skills` | [Skills](../agents/skills.md), [Plugins](../tools/plugins.md) |
+| `plugins` | [Plugins](../tools/plugins.md) |
+| `schedules` | [Schedules](../agents/schedules.md) |
+| `board` | [Task board](../agents/board.md) |
+| `sessions`, `show` | [Sessions](../agents/sessions.md) |
+| `checkpoints`, `rollback` | [Files and shell](../tools/files-and-shell.md#checkpoints) |
+| `meetings` | [Meetings](../tools/meetings.md) |
+| `computer` | [Computer use](../tools/computer-use.md) |
+| `acp`, `node`, `nodes` | [Integrations](../tools/integrations.md) |
 
 ## Chat commands
 
-These work in every chat channel, the web chat and `habakkuk chat`. `/help` lists them in the chat's language.
+These work in every chat channel, the web chat and `habakkuk chat`. `/help` lists them in the chat's language. The terminal UI has a few of its own; see [CLI and TUI](../interfaces/cli-and-tui.md#commands).
 
 | Command | What it does |
 |---|---|
-| `/new` | Start a fresh conversation |
+| `/new` (`/reset`) | Start a fresh conversation |
 | `/stop` | Stop the turn in progress |
 | `/status` | The agent, session and channel health |
 | `/compact` | Summarize the older part of the conversation now |
@@ -119,18 +143,21 @@ These work in every chat channel, the web chat and `habakkuk chat`. `/help` list
 | `/btw <question>` | A side question, answered without adding it to the conversation |
 | `/steer <text>` | Guidance for the task in progress, taken in before the next step |
 | `/queue <text>` | A message to start on once the current task is done |
-| `/think low\|medium\|high\|xhigh\|max` | The reasoning effort for this conversation |
-| `/personality <name>` | Switch persona for this conversation (`concise`, `warm`, `formal`, `technical`, `playful`, or your own) |
-| `/goal [-turns N] <text>` | A standing goal worked on turn after turn until done or blocked |
+| `/think low\|medium\|high\|xhigh\|max\|default` | The reasoning effort for this conversation |
+| `/personality <name>\|off` (`/persona`) | Switch persona for this conversation (`concise`, `warm`, `formal`, `technical`, `playful`, or your own) |
+| `/goal [-turns N] <text>\|off` | A standing goal worked on turn after turn until done or blocked |
 | `/model [provider/model\|default]` | Show or switch the model for this conversation |
 | `/usage` | Tokens and cost of this conversation |
+| `/budget` | Spending today and this month against the limits |
 | `/export` | Send the conversation as a Markdown file |
 | `/whoami` | Who you are to the bot, and where you are talking |
-| `/agents`, `/agent <name>` | List agents; switch this conversation to another (`/agent default` goes back) |
+| `/agents`, `/agent <name>\|default` | List agents; switch this conversation to another (`/agent default` goes back) |
 | `/remember <text>`, `/forget <what>` | Save a memory word for word; remove one |
+| `/memory`, `/undo-memory <id>` | The latest changes to memory, profile, identity and skills; undo one |
 | `/skills`, `/skill NAME [request]`, `/learn <topic, URL or path>` | List skills, run one, or have the agent write a new one |
-| `/fork`, `/rewind [N]` | Carry on in a copy of the conversation, optionally without the last N messages |
+| `/fork`, `/rewind [N]` | Carry on in a copy of the conversation, optionally without your last N messages |
 | `/title [text]` | Show or set the conversation's title |
-| `/subagents [stop ID]` | List or stop the sub-agent tasks running for this conversation |
+| `/subagents [stop ID]` (`/tasks`) | List or stop the sub-agent tasks running for this conversation |
+| `/help` (`/start`) | List the commands |
 
-Plugins can add more commands; see [Plugins](../guides/plugins.md).
+Plugins can add more commands; see [Plugins](../tools/plugins.md#manifest).

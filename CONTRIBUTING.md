@@ -11,7 +11,7 @@ You need:
 - **Go 1.27** (the exact version is in `go.mod`). The `habakkuk` binary builds without CGO.
 - **git**, and **make** for the shortcuts below.
 - [golangci-lint](https://golangci-lint.run) v2 for `make lint` (CI uses v2.15.0 with `.golangci.yml`).
-- Optional: [shellcheck](https://www.shellcheck.net) for `scripts/install.sh`; a C toolchain and the platform webview for the desktop app (see [docs/guides/desktop-app.md](docs/guides/desktop-app.md#building)); Node.js and pnpm for the website.
+- Optional: [shellcheck](https://www.shellcheck.net) for `scripts/install.sh`; a C toolchain and the platform webview for the desktop app (see [docs/interfaces/desktop-app.md](docs/interfaces/desktop-app.md#building)); Node.js and pnpm for the website.
 
 ```bash
 git clone git@github.com:habakkuk-ai/habakkuk.git
@@ -86,7 +86,7 @@ Dependencies point downward: `agent` uses `llm`, `tools` and `core/session`; `co
 1. Create `internal/channel/<type>/` with an adapter that implements `channel.Adapter` (`Run`, `Send`, `Format`, `MaxLen`, `StaleAfter` in `internal/channel/channel.go`). Call the inbox's beat on every message and keepalive, so the supervisor can tell a hung connection from a quiet one. Implement the optional interfaces the platform supports: `Typer`, `FileSender`, `Editor`, `ButtonSender`, `Reactor`, `Poller`, `VoiceSender`.
 2. Add the type's settings. Simple types use the fields on `config.Channel`; newer ones get a block named after the type in `internal/config/platforms.go` or `platforms2.go`, with validation beside it. Secrets are always named by an `*_env` field, never stored in the config.
 3. Build the adapter in `internal/app` (`app.go`, `platforms.go` or `platforms2.go`). Webhook adapters are mounted at `/channels/<account>` and must check every request's signature themselves.
-4. Add tests with a fake platform server (see the existing adapters' `_test.go` files), and document the type in [docs/guides/channels.md](docs/guides/channels.md) and the page for that platform.
+4. Add tests with a fake platform server (see the existing adapters' `_test.go` files), and document it: a row in the catalog in [docs/channels/index.md](docs/channels/index.md) and in the support table in [docs/channels/settings.md](docs/channels/settings.md), and a page of its own in `docs/channels/` (or a section in `more-platforms.md` for a small platform).
 
 ### Add a tool
 
@@ -97,7 +97,7 @@ Dependencies point downward: `agent` uses `llm`, `tools` and `core/session`; `co
 
 ### Add a model provider
 
-- **An OpenAI-compatible service** needs no code beyond a preset: add an entry to `Presets` in `internal/config/providers.go` (type, base URL, key variable, whether the key is optional), a test in `providers_test.go`, and a row in the preset table in [docs/guides/models.md](docs/guides/models.md).
+- **An OpenAI-compatible service** needs no code beyond a preset: add an entry to `Presets` in `internal/config/providers.go` (type, base URL, key variable, whether the key is optional), a test in `providers_test.go`, and a row in the provider directory in [docs/models/index.md](docs/models/index.md).
 - **A new API** needs an adapter in `internal/llm/<name>/` that implements `llm.Provider` (`Stream` in `internal/llm/types.go`) and maps its errors onto the router's classes (rate limit, overload, auth, billing, context overflow, bad request, network), so retry, key rotation and fallback work. Disable the SDK's own retries. Wire the new `type` in `internal/app/models.go` and accept it in config validation.
 - Add list prices for its models to the built-in pricing table in `internal/llm/usage/pricing.go` when they are published.
 
@@ -129,17 +129,25 @@ CI (`.github/workflows/ci.yml`) runs vet, the race tests, shellcheck on `scripts
 
 ## Documentation
 
-The docs live in `docs/` and are published at [habakkuk.ai/docs](https://habakkuk.ai/docs). Every page starts with YAML frontmatter:
+The docs live in `docs/` and are published at [habakkuk.ai/docs](https://habakkuk.ai/docs). Each folder is a sidebar section (`get-started`, `channels`, `agents`, `models`, `tools`, `interfaces`, `deploy`, `reference`, `help`, `contributing`), and `docs/index.md` is the docs home. Describe what the code does today, and check the code when unsure.
+
+Every page starts with YAML frontmatter:
 
 ```yaml
 ---
-title: Quick start
-description: One sentence for search results and link previews.
-order: 2
+title: Quickstart
+nav_title: Quickstart          # optional: a shorter sidebar label
+description: One sentence for cards, search results and link previews.
+order: 1
 ---
 ```
 
-`order` sorts pages within their folder. Use relative links between pages (`../guides/mcp.md`), and describe what the code does today: check the code when unsure.
+- `order` sorts pages within their folder. Each folder's `index.md` is its overview; its `title` is the section's sidebar label and its `order` the section's position.
+- Link between pages with relative paths (`../tools/mcp.md`, anchors allowed).
+- Callouts use GitHub's alert syntax: `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`. Use them for prerequisites, gotchas and security, not on every paragraph.
+- Tabs are consecutive fenced code blocks with `tab="Label"` in the info string, such as ` ```bash tab="macOS / Linux" ` followed by ` ```powershell tab="Windows" `.
+- Card lists are an HTML comment `<!-- cards -->` on its own line, directly before a list whose items are `- [Title](path.md): one-line description`.
+- When you move or rename a page, add the old path to `docs/redirects.json`.
 
 ## License
 
