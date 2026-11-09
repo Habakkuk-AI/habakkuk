@@ -11,7 +11,7 @@ You need:
 - **Go 1.27** (the exact version is in `go.mod`). The `habakkuk` binary builds without CGO.
 - **git**, and **make** for the shortcuts below.
 - [golangci-lint](https://golangci-lint.run) v2 for `make lint` (CI uses v2.15.0 with `.golangci.yml`).
-- Optional: [shellcheck](https://www.shellcheck.net) for `scripts/install.sh`; a C toolchain and the platform webview for the desktop app (see [docs/interfaces/desktop-app.md](docs/interfaces/desktop-app.md#building)); Node.js and pnpm for the website.
+- Optional: [shellcheck](https://www.shellcheck.net) for `scripts/install.sh`; a C toolchain and the platform webview for the desktop app (see [docs/interfaces/desktop-app.md](docs/interfaces/desktop-app.md#building)).
 
 ```bash
 git clone git@github.com:habakkuk-ai/habakkuk.git

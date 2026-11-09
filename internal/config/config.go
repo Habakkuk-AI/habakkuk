@@ -397,7 +397,7 @@ func (c *Config) applyDefaults() {
 func (c *Config) Validate() error {
 	var errs []error
 	if c.Version != CurrentVersion {
-		errs = append(errs, fmt.Errorf("version %d is not supported (want %d); run `habakkuk doctor --fix`", c.Version, CurrentVersion))
+		errs = append(errs, fmt.Errorf("version %d is not supported (want %d); run `habakkuk config migrate`, or update Habakkuk if this config is from a newer release", c.Version, CurrentVersion))
 	}
 	errs = append(errs, c.validateProviders()...)
 	if len(c.Agents) == 0 {
