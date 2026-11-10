@@ -762,7 +762,7 @@ agents:
 #     type: discord
 #     token_env: DISCORD_BOT_TOKEN   # enable the Message Content intent in the developer portal
 #   signal:
-#     type: signal          # needs a running signal-cli daemon in HTTP mode (see the README)
+#     type: signal          # needs a running signal-cli daemon in HTTP mode (habakkuk.ai/docs/channels/signal)
 #     account: "+15551234567"
 #     api_url: http://127.0.0.1:8080
 #   matrix:

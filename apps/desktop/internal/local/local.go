@@ -210,7 +210,7 @@ func FindBinary(explicit string) (string, error) {
 			return filepath.Clean(p), nil
 		}
 	}
-	return "", errors.New("no habakkuk executable found: install it (see https://habakkuk.ai/docs/getting-started/installation) or set its path on the connection")
+	return "", errors.New("no habakkuk executable found: install it (see https://habakkuk.ai/docs/get-started/installation) or set its path on the connection")
 }
 
 func isExec(p string) bool {

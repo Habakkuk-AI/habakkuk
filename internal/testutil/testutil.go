@@ -11,7 +11,7 @@ import (
 // which has a Windows counterpart tested elsewhere or none at all.
 //
 // Keep these rare: `git grep -n testutil.UnixOnly` is the Windows skip
-// list (see Development in README.md).
+// list.
 func UnixOnly(t testing.TB, reason string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {

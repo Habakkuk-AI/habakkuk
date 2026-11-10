@@ -16,8 +16,8 @@ import (
 // from a short header and gets only what was chosen.
 
 const setupHeader = `Habakkuk settings, written by habakkuk setup. Run it again to change them,
-or edit this file: every option is explained in the README, under Configuration
-(https://github.com/habakkuk-ai/habakkuk#configuration).
+or edit this file: every option is explained at
+https://habakkuk.ai/docs/reference/configuration
 Keys and tokens are kept in .env next to this file, never here.`
 
 const defaultWorkspace = "~/habakkuk-workspace"
@@ -73,7 +73,7 @@ func (s *setup) render() ([]byte, bool, error) {
 // the agent at the model, creating the agent when it is new.
 func (s *setup) applyModel(root *yaml.Node) {
 	c := s.model
-	providers := ensureMap(root, "providers", "Where the model comes from. Known services need only a preset;\nREADME: Models and providers. habakkuk models lists what each one serves.")
+	providers := ensureMap(root, "providers", "Where the model comes from. Known services need only a preset;\nhabakkuk models lists what each one serves. Docs: habakkuk.ai/docs/models/providers")
 	var existing *config.Provider
 	if s.cfg != nil {
 		existing = s.cfg.Providers[c.provider]
@@ -111,14 +111,14 @@ func (s *setup) applyModel(root *yaml.Node) {
 			setKey(p, "keys_env", flowList(keys...), "the variable in .env that holds the key")
 		}
 	}
-	agents := ensureMap(root, "agents", "Your agent. permission: read-only | ask | workspace | full (README: Approvals).")
+	agents := ensureMap(root, "agents", "Your agent. permission: read-only | ask | workspace | full\n(habakkuk.ai/docs/agents/approvals).")
 	a := getKey(agents, s.agent)
 	if a == nil || a.Kind != yaml.MappingNode {
 		a = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		setKey(agents, s.agent, a, "")
 		setKey(a, "model", str(c.ref()), "")
 		if f := c.fastRef(); f != "" {
-			setKey(a, "fast_model", str(f), "quick messages and chores; real work goes to model (README: Routing)")
+			setKey(a, "fast_model", str(f), "quick messages and chores; real work goes to model (habakkuk.ai/docs/models/routing)")
 		}
 		setKey(a, "permission", str("workspace"), "it may change files only in its workspace")
 		ws := s.opts.workspace
@@ -130,7 +130,7 @@ func (s *setup) applyModel(root *yaml.Node) {
 	}
 	setKey(a, "model", str(c.ref()), "")
 	if f := c.fastRef(); f != "" {
-		setKey(a, "fast_model", str(f), "quick messages and chores; real work goes to model (README: Routing)")
+		setKey(a, "fast_model", str(f), "quick messages and chores; real work goes to model (habakkuk.ai/docs/models/routing)")
 	}
 }
 
@@ -141,7 +141,7 @@ func (s *setup) applyChannel(root *yaml.Node) {
 		s.applyHTTP(root)
 		return
 	}
-	chans := ensureMap(root, "channels", "Where you talk to your agent; habakkuk serve connects them.\nREADME: Channels. Add another with habakkuk setup channel.")
+	chans := ensureMap(root, "channels", "Where you talk to your agent; habakkuk serve connects them.\nAdd another with habakkuk setup channel. Docs: habakkuk.ai/docs/channels")
 	ch := getKey(chans, c.name)
 	if ch == nil || ch.Kind != yaml.MappingNode {
 		ch = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
@@ -179,7 +179,7 @@ func (s *setup) applyHTTP(root *yaml.Node) {
 		return
 	}
 	l := s.webListen()
-	h := ensureMap(root, "http", "The dashboard at http://"+l+"/app/ and the web chat at http://"+l+"/,\nwhile habakkuk serve runs. README: Dashboard; Web chat, API and webhooks.")
+	h := ensureMap(root, "http", "The dashboard at http://"+l+"/app/ and the web chat at http://"+l+"/,\nwhile habakkuk serve runs. Docs: habakkuk.ai/docs/interfaces/dashboard")
 	setKey(h, "listen", str(l), "loopback only; another address needs token_env")
 }
 
@@ -189,7 +189,7 @@ func (s *setup) applyHTTP(root *yaml.Node) {
 func (s *setup) applyStarterDefaults(root *yaml.Node) {
 	s.applyHTTP(root)
 	if getKey(root, "memory") == nil {
-		m := ensureMap(root, "memory", "Memory review: when a chat goes quiet, the agent saves what is worth keeping\n(the fast model does it when there is one). README: Memory.")
+		m := ensureMap(root, "memory", "Memory review: when a chat goes quiet, the agent saves what is worth keeping\n(the fast model does it when there is one). Docs: habakkuk.ai/docs/agents/memory")
 		setKey(m, "review", yamledit.Bool(true), "")
 	}
 }
