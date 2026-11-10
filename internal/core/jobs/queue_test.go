@@ -183,6 +183,49 @@ func TestReleaseDeadOwner(t *testing.T) {
 	}
 }
 
+// Several pools release dead leases as they start. One that listed a dead
+// lease before another pool's worker took the job over must not expire the
+// new, live lease: that used up an attempt on every restart, and failed a
+// job outright on its last one.
+func TestReleaseDeadLeavesAJobALiveWorkerTook(t *testing.T) {
+	ctx := context.Background()
+	q := newQueue(t)
+	id, _ := q.Enqueue(ctx, NewJob{Kind: "k", Agent: "a"})
+	host, _, _ := parseOwner(OwnerID())
+	dead := fmt.Sprintf("worker:%s:%d:x", host, 1<<30)
+	if j, _ := q.Claim(ctx, dead, time.Hour, "k"); j == nil {
+		t.Fatal("no claim")
+	}
+	// Two pools list the dead lease at the same moment.
+	first, err := q.deadLeases(ctx)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first pool listed %d dead leases, %v", len(first), err)
+	}
+	second, err := q.deadLeases(ctx)
+	if err != nil || len(second) != 1 {
+		t.Fatalf("second pool listed %d dead leases, %v", len(second), err)
+	}
+	// The first pool expires it and one of its workers takes the job.
+	if ok, err := q.expireLease(ctx, first[0].id, first[0].owner); err != nil || !ok {
+		t.Fatalf("first pool did not expire the dead lease: %v, %v", ok, err)
+	}
+	live := OwnerID()
+	j, _ := q.Claim(ctx, live, time.Minute, "k")
+	if j == nil || j.ID != id || j.Attempts != 2 {
+		t.Fatalf("live worker did not take the job over: %+v", j)
+	}
+	// The second pool acts on its older list.
+	if ok, err := q.expireLease(ctx, second[0].id, second[0].owner); err != nil || ok {
+		t.Fatalf("second pool expired a live worker's lease: %v, %v", ok, err)
+	}
+	if err := q.Owns(ctx, id, live); err != nil {
+		t.Fatalf("live worker lost its lease: %v", err)
+	}
+	if again, _ := q.Claim(ctx, OwnerID(), time.Minute, "k"); again != nil {
+		t.Fatalf("the job was claimed a second time, attempt %d", again.Attempts)
+	}
+}
+
 func TestPoolRunsAndRetries(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
