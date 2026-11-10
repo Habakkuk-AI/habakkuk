@@ -63,7 +63,7 @@ func Policies(c *config.Config) []AgentPolicy {
 	return out
 }
 
-// Lines renders the policy for habakkuk status and habakkuk security.
+// Lines renders the policy for hk status and hk security.
 func (p AgentPolicy) Lines() []string {
 	out := []string{fmt.Sprintf("agent %s: permission %s, approvals %s", p.Agent, p.Permission, p.Approvals)}
 	tainted := "after reading outside content (web, email, webhooks), exec, process and writes outside the workspace need a human, even in full mode"

@@ -48,7 +48,7 @@ func Run(ctx context.Context, be Backend, o Options, start func() (stop func()),
 		stop()
 	}
 	if sid != "" && out != nil {
-		fmt.Fprintf(out, "Session %s. Continue it with: habakkuk chat -session %s\n", sid, sid)
+		fmt.Fprintf(out, "Session %s. Continue it with: hk chat -session %s\n", sid, sid)
 		if busy {
 			fmt.Fprintln(out, "A turn was still running; it resumes the next time Habakkuk runs.")
 		}

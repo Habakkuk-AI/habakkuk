@@ -209,7 +209,7 @@ func (s *setup) talk() *channelChoice {
 	return &channelChoice{typ: "terminal"}
 }
 
-// nextStep says how to reach the agent once habakkuk serve runs.
+// nextStep says how to reach the agent once hk serve runs.
 func (s *setup) nextStep(c *channelChoice) string {
 	var next string
 	switch c.typ {
@@ -233,7 +233,7 @@ func (s *setup) nextStep(c *channelChoice) string {
 		next = "send the bot a direct message in Discord"
 	}
 	if len(c.allow) == 0 && c.typ != "web" && c.typ != "terminal" {
-		next += " (the first message gets a pairing code: approve it with habakkuk pair CODE)"
+		next += " (the first message gets a pairing code: approve it with hk pair CODE)"
 	}
 	return next
 }
@@ -250,14 +250,14 @@ func (s *setup) finish() error {
 		}
 		s.say("\nLinking WhatsApp: on your phone, open Settings > Linked devices > Link a device.")
 		if err := whatsappCmd(s.ctx, s.home, args); err != nil {
-			s.say("Linking did not finish: %v\nRun habakkuk whatsapp link when you are ready.", err)
+			s.say("Linking did not finish: %v\nRun hk whatsapp link when you are ready.", err)
 		}
 	}
 	name := s.agentName()
 	s.summary(c)
 	if c.typ == "terminal" {
 		if s.opts.serve {
-			s.say("\nStarting habakkuk serve (Ctrl-C stops it); talk to %s with habakkuk chat in another terminal.", name)
+			s.say("\nStarting hk serve (Ctrl-C stops it); talk to %s with hk chat in another terminal.", name)
 			return s.runServe(s.ctx, s.home)
 		}
 		if !s.interactive { // a script: never open a chat it cannot type in
@@ -292,15 +292,15 @@ func (s *setup) finish() error {
 	start := s.opts.serve
 	if !start && s.interactive {
 		var err error
-		if start, err = s.yes("Start habakkuk serve in this terminal now?", true); err != nil {
+		if start, err = s.yes("Start hk serve in this terminal now?", true); err != nil {
 			return err
 		}
 	}
 	if start {
-		s.say("\n%s now. (habakkuk serve is running; Ctrl-C stops it.)", capitalize(next))
+		s.say("\n%s now. (hk serve is running; Ctrl-C stops it.)", capitalize(next))
 		return s.runServe(s.ctx, s.home)
 	}
-	s.say("\nNext: run `habakkuk serve`, then %s.", next)
+	s.say("\nNext: run `hk serve`, then %s.", next)
 	return nil
 }
 
@@ -312,7 +312,7 @@ var channelLabels = map[string]string{
 	"web":           "the web chat in your browser",
 	"slack":         "Slack",
 	"discord":       "Discord",
-	"terminal":      "this terminal, with habakkuk chat",
+	"terminal":      "this terminal, with hk chat",
 }
 
 // starterPrompts are things a fresh agent does well with no extra setup:
@@ -348,7 +348,7 @@ func (s *setup) summary(c *channelChoice) {
 	case len(c.allow) > 1:
 		talk += fmt.Sprintf("; %d people can message it", len(c.allow))
 	default:
-		talk += "; you approve each new person with habakkuk pair"
+		talk += "; you approve each new person with hk pair"
 	}
 	if c.typ == "terminal" && cfg.HTTP != nil {
 		talk += ", or Chat in the dashboard"
@@ -360,19 +360,19 @@ func (s *setup) summary(c *channelChoice) {
 		row("Memory", "notes only (turn on review: memory.review in config.yaml)")
 	}
 	if cfg.HTTP != nil {
-		row("Dashboard", "http://"+cfg.HTTP.Listen+"/app/ while habakkuk serve runs")
+		row("Dashboard", "http://"+cfg.HTTP.Listen+"/app/ while hk serve runs")
 	}
 	row("Settings", s.cfgPath+" (keys in .env beside it)")
 
 	s.say("\nTry these first:")
 	first := capitalize(s.nextStep(c)) + "."
 	if c.typ == "terminal" {
-		first = "Run habakkuk chat and say hi."
+		first = "Run hk chat and say hi."
 	}
 	s.say("  1. %s", first)
 	s.say("  2. Get a morning brief: %q", starterPrompts[0])
 	s.say("  3. Teach it about you: %q", starterPrompts[1])
-	s.say("\nSchedules, channels and memory reviews run while habakkuk serve does.")
+	s.say("\nSchedules, channels and memory reviews run while hk serve does.")
 }
 
 // installService copies the service file where the system looks for it
@@ -431,7 +431,7 @@ func (s *setup) installService() bool {
 			return true
 		}
 		if time.Now().After(deadline) {
-			s.say("  The service is installed but has not started yet; habakkuk logs -f shows why.")
+			s.say("  The service is installed but has not started yet; hk logs -f shows why.")
 			return false
 		}
 		select {
@@ -465,7 +465,7 @@ func capitalize(s string) string {
 const launchdLabel = "ai.habakkuk.agent"
 
 // serviceStep writes a systemd user unit (Linux) or a launchd agent
-// (macOS) that runs habakkuk serve, into $HABAKKUK_HOME, and prints the
+// (macOS) that runs hk serve, into $HABAKKUK_HOME, and prints the
 // commands that install and start it. It installs nothing itself.
 func (s *setup) serviceStep(heading bool) error {
 	if heading {
@@ -506,7 +506,7 @@ func (s *setup) serviceStep(heading bool) error {
 			"launchctl bootstrap gui/$(id -u) " + dest,
 		}
 	default:
-		return fmt.Errorf("background services are set up for Linux (systemd) and macOS (launchd); on %s, run habakkuk serve with your system's service manager", s.goos)
+		return fmt.Errorf("background services are set up for Linux (systemd) and macOS (launchd); on %s, run hk serve with your system's service manager", s.goos)
 	}
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return err
@@ -518,7 +518,7 @@ func (s *setup) serviceStep(heading bool) error {
 	for _, c := range cmds {
 		s.say("  %s", c)
 	}
-	s.say("\nIts log: habakkuk logs -f. Stop habakkuk serve in other terminals first: only one may poll each channel.")
+	s.say("\nIts log: hk logs -f. Stop hk serve in other terminals first: only one may poll each channel.")
 	return nil
 }
 
@@ -527,7 +527,7 @@ func systemdUnit(exe, home, path string) string {
 		return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "%", "%%").Replace(v) + `"`
 	}
 	var b strings.Builder
-	b.WriteString("# Written by habakkuk setup. Install: see the commands it printed.\n")
+	b.WriteString("# Written by hk setup. Install: see the commands it printed.\n")
 	b.WriteString("[Unit]\nDescription=Habakkuk personal AI agent\nWants=network-online.target\nAfter=network-online.target\n\n")
 	b.WriteString("[Service]\n")
 	fmt.Fprintf(&b, "ExecStart=%s serve\n", q(exe))
@@ -544,7 +544,7 @@ func launchdPlist(exe, home, path string) string {
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Written by habakkuk setup. Install: see the commands it printed. -->
+<!-- Written by hk setup. Install: see the commands it printed. -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>` + launchdLabel + `</string>

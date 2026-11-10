@@ -155,7 +155,7 @@ func TestRefreshRejectedNeedsNewLogin(t *testing.T) {
 	st.ChatGPTIssuer = srv.URL
 	st.Put(context.Background(), ChatGPT, Entry{Kind: ChatGPT, AccessToken: "old", RefreshToken: "rt", ExpiresAt: time.Now()})
 	_, err := st.Token(context.Background(), ChatGPT)
-	if !errors.Is(err, ErrLoginExpired) || !strings.Contains(err.Error(), "habakkuk auth login chatgpt") {
+	if !errors.Is(err, ErrLoginExpired) || !strings.Contains(err.Error(), "hk auth login chatgpt") {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err := newStore(t).Token(context.Background(), "chatgpt"); !errors.Is(err, ErrNotLoggedIn) {

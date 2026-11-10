@@ -136,7 +136,7 @@ func (c *Controller) stopLocal(id string) {
 		ctx, cancel := context.WithTimeout(context.Background(), c.grace()+5*time.Second)
 		defer cancel()
 		if err := sup.Stop(ctx); err != nil {
-			c.log().Warn("stop habakkuk serve", "err", err)
+			c.log().Warn("stop hk serve", "err", err)
 		}
 	}
 }

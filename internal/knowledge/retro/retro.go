@@ -88,7 +88,7 @@ type Runner struct {
 	// Schedules lists an agent's schedules for the model and pauses one
 	// when the owner approves.
 	Schedules *schedule.Store
-	// Deliver queues a summary to a `habakkuk send` target; id makes it
+	// Deliver queues a summary to a `hk send` target; id makes it
 	// idempotent.
 	Deliver func(ctx context.Context, id, target, text string) error
 	Wake    func()

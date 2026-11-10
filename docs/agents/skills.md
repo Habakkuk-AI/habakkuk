@@ -30,22 +30,22 @@ The prompt of each new session lists the description of every skill. The list is
 ## Using skills
 
 - **In a chat**, `/skills` lists them and `/skill NAME [request]` runs one explicitly. `/learn <topic, URL or path>` has the agent study a source and write a new skill.
-- **From the terminal**, `habakkuk run -skill NAME [request]` does the same. `habakkuk skills [-agent A]` lists the skills an agent can use, where each one comes from, and whether it's approved.
+- **From the terminal**, `hk run -skill NAME [request]` does the same. `hk skills [-agent A]` lists the skills an agent can use, where each one comes from, and whether it's approved.
 
 ## Installing skills from elsewhere
 
 Install a skill, read it, then approve it:
 
 ```bash
-habakkuk skills install github:owner/repo/skill     # also URLs, local paths and registry names
-habakkuk skills approve NAME                         # after reading it
+hk skills install github:owner/repo/skill           # also URLs, local paths and registry names
+hk skills approve NAME                               # after reading it
 ```
 
-An installed skill is untrusted until you run `habakkuk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
+An installed skill is untrusted until you run `hk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
 
 ## The curator
 
-The curator tidies up the skills that agents write. When `skills.curate` is set, `habakkuk serve` merges near-duplicate skills the agents wrote. It also archives skills that haven't been loaded for `skills.archive_after_days` (default 90). It keeps backups.
+The curator tidies up the skills that agents write. When `skills.curate` is set, `hk serve` merges near-duplicate skills the agents wrote. It also archives skills that haven't been loaded for `skills.archive_after_days` (default 90). It keeps backups.
 
 ```yaml
 skills:
@@ -56,9 +56,9 @@ skills:
 ```
 
 ```bash
-habakkuk skills curate [-dry-run] [-agent A]   # run it by hand
-habakkuk skills restore NAME                    # undo a merge or archive
-habakkuk memory pin skill:NAME                  # keep the curator away from one skill
+hk skills curate [-dry-run] [-agent A]         # run it by hand
+hk skills restore NAME                          # undo a merge or archive
+hk memory pin skill:NAME                        # keep the curator away from one skill
 ```
 
 Every change to an agent's own skills is recorded in the [memory history](memory.md#memory-history-and-undo).

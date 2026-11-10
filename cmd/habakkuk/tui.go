@@ -10,7 +10,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/tui"
 )
 
-// chatCmd is `habakkuk chat`: the terminal UI when stdin and stdout are a
+// chatCmd is `hk chat`: the terminal UI when stdin and stdout are a
 // terminal, the line-based chat otherwise or with -plain.
 func chatCmd(ctx context.Context, home string, args []string) error {
 	plain := false
@@ -30,7 +30,7 @@ func chatCmd(ctx context.Context, home string, args []string) error {
 	return tuiCmd(ctx, home, rest)
 }
 
-// tuiCmd is `habakkuk tui`: the full-screen terminal UI.
+// tuiCmd is `hk tui`: the full-screen terminal UI.
 func tuiCmd(ctx context.Context, home string, args []string) error {
 	fs := flag.NewFlagSet("tui", flag.ExitOnError)
 	agentName := fs.String("agent", "", "agent to talk to")

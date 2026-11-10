@@ -84,7 +84,7 @@ func rollbackCmd(ctx context.Context, home string, args []string) error {
 	yes := fs.Bool("y", false, "restore without asking")
 	fs.Parse(args)
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return errors.New("usage: habakkuk rollback [-agent A] [-y] ID [PATH]")
+		return errors.New("usage: hk rollback [-agent A] [-y] ID [PATH]")
 	}
 	id, path := strings.ToLower(fs.Arg(0)), fs.Arg(1)
 	cfg, err := config.Load(home)
@@ -103,7 +103,7 @@ func rollbackCmd(ctx context.Context, home string, args []string) error {
 			}
 		}
 		if name == "" {
-			return fmt.Errorf("no agent has checkpoint %s (see habakkuk checkpoints)", id)
+			return fmt.Errorf("no agent has checkpoint %s (see hk checkpoints)", id)
 		}
 	} else if cfg.Agents[name] == nil {
 		return fmt.Errorf("unknown agent %q", name)

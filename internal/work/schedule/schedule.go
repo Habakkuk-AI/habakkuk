@@ -404,7 +404,7 @@ const statusStarted = "started"
 // Settle records how started runs ended. A prompt run's job only queues a
 // turn, so its outcome is the turn's; a script records its own, but a slot
 // advanced after the script already finished is caught here too. Tick
-// calls it; habakkuk schedules list calls it before listing.
+// calls it; hk schedules list calls it before listing.
 func (s *Scheduler) Settle(ctx context.Context) error {
 	rows, err := s.Store.db.QueryContext(ctx, `SELECT id, last_job FROM schedules
 		WHERE last_status = ? AND last_job != ''`, statusStarted)

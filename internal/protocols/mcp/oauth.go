@@ -14,7 +14,7 @@ import (
 )
 
 // Tokens supplies OAuth access tokens for servers with auth: oauth. The app
-// backs it with auth.json (habakkuk mcp login), whose refreshes hold the file
+// backs it with auth.json (hk mcp login), whose refreshes hold the file
 // lock, so several Habakkuk processes share one login.
 type Tokens interface {
 	// MCPToken returns a valid access token for the server, refreshing it
@@ -31,7 +31,7 @@ var errNoTokens = errors.New("no OAuth token store")
 
 // oauthHandler is the SDK transport's OAuthHandler for one server. It never
 // runs a browser flow itself: a server that refuses the token after a
-// refresh needs `habakkuk mcp login`.
+// refresh needs `hk mcp login`.
 type oauthHandler struct {
 	s *server
 
@@ -71,7 +71,7 @@ func (h *oauthHandler) Token() (*oauth2.Token, error) {
 func (h *oauthHandler) Authorize(ctx context.Context, _ *http.Request, resp *http.Response) error {
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 	resp.Body.Close()
-	login := fmt.Sprintf("run `habakkuk mcp login %s`", h.s.name)
+	login := fmt.Sprintf("run `hk mcp login %s`", h.s.name)
 	if resp.StatusCode == http.StatusForbidden {
 		return fmt.Errorf("the server refused access (HTTP 403); the login may lack a scope it needs: %s, or set scopes on the server", login)
 	}

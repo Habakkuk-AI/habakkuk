@@ -58,7 +58,7 @@ func Markdown(ret *Retro, loc *time.Location) string {
 		line("## Proposals")
 		if ret.ID != DryRunID {
 			line("")
-			line("Approve with `habakkuk retro apply %s N`, or `/retro apply N` in a chat; reject with `reject`. Skill and memory changes can also be applied on their own with `retro: {apply: safe}`. SOUL.md, config, schedule changes and questions always wait for you.", ret.ID)
+			line("Approve with `hk retro apply %s N`, or `/retro apply N` in a chat; reject with `reject`. Skill and memory changes can also be applied on their own with `retro: {apply: safe}`. SOUL.md, config, schedule changes and questions always wait for you.", ret.ID)
 		}
 		for _, a := range ret.Actions {
 			line("")

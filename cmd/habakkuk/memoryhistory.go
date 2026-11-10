@@ -16,12 +16,12 @@ import (
 )
 
 const memoryHistoryUsage = `usage:
-  habakkuk memory history [-agent A] [-file NAME] [-since 7d] [-n N]
-  habakkuk memory diff ID
-  habakkuk memory restore ID [-after]
-  habakkuk memory pin NOTE | skill:NAME | profile [-agent A]
-  habakkuk memory unpin NOTE | skill:NAME | profile [-agent A]
-  habakkuk memory pins [-agent A]`
+  hk memory history [-agent A] [-file NAME] [-since 7d] [-n N]
+  hk memory diff ID
+  hk memory restore ID [-after]
+  hk memory pin NOTE | skill:NAME | profile [-agent A]
+  hk memory unpin NOTE | skill:NAME | profile [-agent A]
+  hk memory pins [-agent A]`
 
 // cliActor marks changes made from the command line as the user's.
 func cliActor(ctx context.Context) context.Context {
@@ -39,7 +39,7 @@ func openMemoryHistory(ctx context.Context, home string, mem *memory.Store) (fun
 	return h.Close, nil
 }
 
-// memoryHistoryCmd runs the history subcommands of `habakkuk memory`.
+// memoryHistoryCmd runs the history subcommands of `hk memory`.
 // agentName is the agent from the flags before the subcommand ("" when
 // none was given) and def the default agent.
 func memoryHistoryCmd(ctx context.Context, cfg *config.Config, mem *memory.Store, agentName, def string, args []string) error {
@@ -137,7 +137,7 @@ func memoryHistoryCmd(ctx context.Context, cfg *config.Config, mem *memory.Store
 			fmt.Printf("%s already holds the version %s change %s\n", c.Path, version, c.ID)
 			return nil
 		}
-		fmt.Printf("restored %s to the version %s change %s; recorded as change %s (habakkuk memory restore %s undoes it)\n",
+		fmt.Printf("restored %s to the version %s change %s; recorded as change %s (hk memory restore %s undoes it)\n",
 			c.Path, version, c.ID, r.ID, r.ID)
 	case "pin", "unpin":
 		if len(pos) != 1 {

@@ -267,7 +267,7 @@ func TestBrokenConfigStillChecksFiles(t *testing.T) {
 	}
 }
 
-// habakkuk security lists an agent's trusted folders, says what they allow,
+// hk security lists an agent's trusted folders, says what they allow,
 // and flags them on an agent that outsiders' content can reach.
 func TestTrustedWritePathsAreListed(t *testing.T) {
 	home := t.TempDir()

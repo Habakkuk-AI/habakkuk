@@ -859,7 +859,7 @@ func (p *Plan) writeFiles(w io.Writer) {
 	case fp.Chosen:
 		fmt.Fprintf(w, "  They will not be copied (--files skip): the imported text keeps naming %s.\n", src)
 	default:
-		fmt.Fprintf(w, "  They are not copied unless you say so: habakkuk migrate --files copy brings them over.\n")
+		fmt.Fprintf(w, "  They are not copied unless you say so: hk migrate --files copy brings them over.\n")
 	}
 	for _, n := range fp.Notes {
 		fmt.Fprintf(w, "  Note: %s\n", n)

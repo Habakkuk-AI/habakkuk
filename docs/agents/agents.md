@@ -43,7 +43,7 @@ Each agent keeps its files in `$HABAKKUK_HOME/agents/<name>/`:
 
 | File | What it is |
 |---|---|
-| `SOUL.md` | The agent's personality. `habakkuk init` writes one for the default agent |
+| `SOUL.md` | The agent's personality. `hk init` writes one for the default agent |
 | `AGENTS.md` | Standing instructions |
 | `IDENTITY.md` | The name, emoji and manner the user chose in chat |
 | `USER.md` | The agent's profile of the user. See [Memory](memory.md#the-user-profile) |
@@ -56,7 +56,7 @@ Send `/personality NAME` in a chat to add a persona to the end of the session's 
 
 ## The first chat
 
-The first one-to-one conversation an agent has with you opens with a welcome. That conversation can be a direct message on any channel, `habakkuk chat` or the TUI. The agent greets you and introduces itself. It suggests three things to try right away, each written as a message you could send. It picks them from the tools it actually has, and puts a morning brief first when it can schedule tasks. Then it asks three questions: what to call you, whether it should keep its name and how it should talk, and where you are, for time zones. If your first message asks for something real, the agent answers that first.
+The first one-to-one conversation an agent has with you opens with a welcome. That conversation can be a direct message on any channel, `hk chat` or the TUI. The agent greets you and introduces itself. It suggests three things to try right away, each written as a message you could send. It picks them from the tools it actually has, and puts a morning brief first when it can schedule tasks. Then it asks three questions: what to call you, whether it should keep its name and how it should talk, and where you are, for time zones. If your first message asks for something real, the agent answers that first.
 
 Your answers go to `agents/<name>/IDENTITY.md` (the name, emoji and manner, written through the `set_identity` tool) and to the user profile, `USER.md`. You can change the identity later too, by saying something like "call yourself Jarvis". The prompt states the identity after `SOUL.md`. That way a soul you wrote by hand keeps its place, and the name you chose wins.
 

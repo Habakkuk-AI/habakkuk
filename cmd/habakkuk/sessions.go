@@ -15,11 +15,11 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 )
 
-// sessionVerbs are the `habakkuk sessions` subcommands handled here.
+// sessionVerbs are the `hk sessions` subcommands handled here.
 var sessionVerbs = map[string]bool{"export": true, "rm": true, "delete": true, "archive": true,
 	"unarchive": true, "archived": true, "search": true}
 
-// sessionCommand runs `habakkuk sessions export|rm|archive|unarchive|archived|search`.
+// sessionCommand runs `hk sessions export|rm|archive|unarchive|archived|search`.
 // It reports false for anything else, which `sessions` handles itself.
 func sessionCommand(ctx context.Context, home string, args []string) (bool, error) {
 	if len(args) == 0 || !sessionVerbs[args[0]] {
@@ -79,7 +79,7 @@ func runSessionVerb(ctx context.Context, s *session.Store, args []string, out io
 	switch verb {
 	case "export":
 		if len(rest) != 1 {
-			return errors.New("usage: habakkuk sessions export ID [-format md|json|html] [-o FILE]")
+			return errors.New("usage: hk sessions export ID [-format md|json|html] [-o FILE]")
 		}
 		sess, err := s.Get(ctx, rest[0])
 		if err != nil {
@@ -104,7 +104,7 @@ func runSessionVerb(ctx context.Context, s *session.Store, args []string, out io
 		return err
 	case "rm", "delete":
 		if len(rest) == 0 {
-			return errors.New("usage: habakkuk sessions rm [-y] ID [ID ...]")
+			return errors.New("usage: hk sessions rm [-y] ID [ID ...]")
 		}
 		for _, id := range rest {
 			sess, err := s.Get(ctx, id)
@@ -129,7 +129,7 @@ func runSessionVerb(ctx context.Context, s *session.Store, args []string, out io
 		return nil
 	case "archive", "unarchive":
 		if len(rest) == 0 {
-			return fmt.Errorf("usage: habakkuk sessions %s ID [ID ...]", verb)
+			return fmt.Errorf("usage: hk sessions %s ID [ID ...]", verb)
 		}
 		for _, id := range rest {
 			if err := s.SetArchived(ctx, id, verb == "archive"); err != nil {
@@ -150,7 +150,7 @@ func runSessionVerb(ctx context.Context, s *session.Store, args []string, out io
 	case "search":
 		query := strings.Join(rest, " ")
 		if strings.TrimSpace(query) == "" {
-			return errors.New("usage: habakkuk sessions search [-agent A] [-n N] QUERY")
+			return errors.New("usage: hk sessions search [-agent A] [-n N] QUERY")
 		}
 		hits, err := s.Search(ctx, flags["agent"], query, "", limit)
 		if err != nil {

@@ -10,24 +10,24 @@ After a WhatsApp agent, a Telegram bot is the quickest channel to set up. Habakk
 
 1. In Telegram, open a chat with [@BotFather](https://t.me/BotFather) and send `/newbot`. Pick a name, then copy the token it gives you.
 2. Open your new bot and press **Start**.
-3. Run `habakkuk setup` and pick **Telegram bot**. Setup checks the token with `getMe`, finds your Start message and lets you in. If you'd rather add the channel by hand, use this:
+3. Run `hk setup` and pick **Telegram bot**. Setup checks the token with `getMe`, finds your Start message and lets you in. If you'd rather add the channel by hand, use this:
 
 ```yaml
 channels:
   telegram:
     type: telegram
     token_env: TELEGRAM_BOT_TOKEN
-    allow_from: ["123456789"]   # your numeric user id; or leave empty and approve people with habakkuk pair
+    allow_from: ["123456789"]   # your numeric user id; or leave empty and approve people with hk pair
 ```
 
 ```bash
 echo 'TELEGRAM_BOT_TOKEN=123456:ABC...' >> ~/.habakkuk/.env
-habakkuk serve
+hk serve
 ```
 
 ## Access
 
-`allow_from` takes numeric Telegram user ids. Anyone else who writes to the bot gets a pairing code, which you approve with `habakkuk pair CODE`. To see your own id, send `/whoami` to the bot.
+`allow_from` takes numeric Telegram user ids. Anyone else who writes to the bot gets a pairing code, which you approve with `hk pair CODE`. To see your own id, send `/whoami` to the bot.
 
 ## Groups
 
@@ -56,7 +56,7 @@ While the agent hasn't met its user yet, a `/start` goes through to the agent, s
 | Symptom | Cause and fix |
 |---|---|
 | `telegram getMe: 401 Unauthorized` and the channel stops | The token is wrong or was revoked. Copy it again from BotFather. |
-| The bot does not answer, and another program uses the same token | Only one program may poll a bot. Stop the other `habakkuk serve` or bot. Habakkuk removes a webhook set elsewhere when it starts, so polling wins. |
+| The bot does not answer, and another program uses the same token | Only one program may poll a bot. Stop the other `hk serve` or bot. Habakkuk removes a webhook set elsewhere when it starts, so polling wins. |
 | `telegram bots can only download files up to 20 MB` | A Bot API limit. Send a smaller file, or a link. |
 | The bot ignores group messages | Mention it or reply to it, or see the privacy mode tip above for `groups: all`. |
-| The bot answers with a pairing code | You are not in `allow_from`. Run `habakkuk pair CODE` on the server. |
+| The bot answers with a pairing code | You are not in `allow_from`. Run `hk pair CODE` on the server. |

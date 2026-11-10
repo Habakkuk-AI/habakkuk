@@ -11,7 +11,7 @@ You can see what your model calls cost, and put a hard cap on that cost. Come he
 Habakkuk records the tokens of every model call in `usage.db`: input, output, cache read and write. Each record also has the call's provider, model, agent and session.
 
 ```bash
-habakkuk usage [-days 30] [-agent A] [-session S]   # totals and cost by model and by agent, and spend against the limits
+hk usage [-days 30] [-agent A] [-session S]         # totals and cost by model and by agent, and spend against the limits
 ```
 
 In a chat, send `/usage` to see the current conversation. Send `/budget` to see the spend against the limits.
@@ -45,7 +45,7 @@ agents:
 ### How limits are enforced
 
 - **Every model call is checked first.** Turns, sub-agents, compaction, automatic titles, the approval reviewer, memory review and meeting notes all go through the same router. The router checks the limits before it sends a call. Once a limit is reached, the call isn't sent. A call that's already under way isn't cut off, though. So spend can pass a limit by what the calls running at that moment cost, and then it stops.
-- **Spend is kept in memory.** Habakkuk loads it from `usage.db` at start and updates it as each call finishes, so the check costs nothing measurable. The prices are the same ones `habakkuk usage` uses.
+- **Spend is kept in memory.** Habakkuk loads it from `usage.db` at start and updates it as each call finishes, so the check costs nothing measurable. The prices are the same ones `hk usage` uses.
 - **Who pays.** Each call counts toward the agent that made it, and also toward the install. A sub-agent's calls count toward the sub-agent's own daily and monthly limits. They also count toward the per-turn limit of the turn that delegated to it.
 - **Changing limits** doesn't need a restart. Edit them in `config.yaml` and the change applies within seconds.
 
@@ -65,4 +65,4 @@ If a model is missing from the price table, it counts as $0, and the log gets on
 
 ### Checking spend
 
-There are three places to see spend against the limits. Run `habakkuk usage` for today and this month, for the install and each agent. Send `/budget` in a chat for this conversation's agent and the install. Or call `GET /api/budget` (see [HTTP API](../reference/api.md#get-apibudgetagent)).
+There are three places to see spend against the limits. Run `hk usage` for today and this month, for the install and each agent. Send `/budget` in a chat for this conversation's agent and the install. Or call `GET /api/budget` (see [HTTP API](../reference/api.md#get-apibudgetagent)).

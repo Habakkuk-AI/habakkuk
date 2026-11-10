@@ -51,7 +51,7 @@ hk -r srv chat  # the same commands, on the Habakkuk on your server
 
 `hk` and `habakkuk` are the same program. The [quickstart](docs/get-started/quickstart.md) walks through the first run.
 
-Coming from another agent? `habakkuk setup` offers to import it on a new install, or run `habakkuk migrate --dry-run` to see what would move. See [Move from another agent](docs/get-started/migrate.md).
+Coming from another agent? `hk setup` offers to import it on a new install, or run `hk migrate --dry-run` to see what would move. See [Move from another agent](docs/get-started/migrate.md).
 
 ## Features
 

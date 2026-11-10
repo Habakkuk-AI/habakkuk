@@ -55,7 +55,7 @@ func TestMemoryReviewWiring(t *testing.T) {
 	}
 	for _, p := range a.Pools(false) {
 		if _, ok := p.Handlers[consolidate.KindReview]; ok {
-			t.Fatal("reviews run outside habakkuk serve")
+			t.Fatal("reviews run outside hk serve")
 		}
 	}
 

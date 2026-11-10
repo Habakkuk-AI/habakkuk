@@ -20,7 +20,7 @@ import (
 
 // Kinds of connection.
 const (
-	Local  = "local"  // a habakkuk serve on this computer, started by the app or already running
+	Local  = "local"  // a hk serve on this computer, started by the app or already running
 	Remote = "remote" // any Habakkuk reachable over HTTP(S), with a token
 )
 
@@ -41,7 +41,7 @@ type Connection struct {
 	// Binary is the habakkuk executable a local connection runs; empty means
 	// the one bundled with the app, else the first found on the usual paths.
 	Binary string `json:"binary,omitempty"`
-	// Manual leaves a local habakkuk serve alone when the connection is
+	// Manual leaves a local hk serve alone when the connection is
 	// activated; the user starts it from the tray or the connections page.
 	Manual bool `json:"manual,omitempty"`
 }

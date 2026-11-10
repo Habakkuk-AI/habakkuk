@@ -1,7 +1,7 @@
 // Package nodes lets other machines lend Habakkuk capabilities. A device (a
 // laptop, a Raspberry Pi, a phone running the dashboard) pairs once with a
 // one-time code, which gives it a per-node secret, then holds a connection
-// to the server: a websocket at /nodes for `habakkuk node run`, or a
+// to the server: a websocket at /nodes for `hk node run`, or a
 // Server-Sent Events stream plus result posts for the browser. The server
 // sends invocations ("take a screenshot") down the connection and the node
 // answers with text and files. Agents reach nodes through nodes_list and

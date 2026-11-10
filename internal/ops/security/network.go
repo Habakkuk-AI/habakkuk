@@ -56,14 +56,14 @@ var mediaHosts = map[string]string{
 // Network lists every outbound destination Habakkuk can contact and
 // whether this config turns it on. Nothing is contacted unless config.yaml
 // (or a command the user runs) asks for it: Habakkuk sends no usage
-// statistics, checks for updates only on `habakkuk update`, and has no
+// statistics, checks for updates only on `hk update`, and has no
 // web search provider until search: names one.
 func Network(c *config.Config) []Endpoint {
 	var out []Endpoint
 	add := func(e Endpoint) { out = append(out, e) }
 
 	add(Endpoint{Kind: "telemetry", Name: "(usage statistics)", When: "never: Habakkuk has no usage telemetry"})
-	add(Endpoint{Kind: "update", Name: "habakkuk update", Target: "api.github.com, github.com", When: "only when you run habakkuk update"})
+	add(Endpoint{Kind: "update", Name: "hk update", Target: "api.github.com, github.com", When: "only when you run hk update"})
 
 	for _, name := range sortedKeys(c.Providers) {
 		p := c.Providers[name]
@@ -99,7 +99,7 @@ func Network(c *config.Config) []Endpoint {
 		case target == "":
 			target = "the " + ch.Type + " server in its settings"
 		}
-		add(Endpoint{Kind: "channel", Name: "channels." + name + " (" + ch.Type + ")", Target: target, When: "while habakkuk serve runs", Enabled: true})
+		add(Endpoint{Kind: "channel", Name: "channels." + name + " (" + ch.Type + ")", Target: target, When: "while hk serve runs", Enabled: true})
 	}
 
 	if s := c.Search; s != nil {
@@ -201,7 +201,7 @@ func Network(c *config.Config) []Endpoint {
 		names = append(names, host(r.URL))
 	}
 	add(Endpoint{Kind: "hub", Name: "skills.registries", Target: listOr(names, ""),
-		When: "only on habakkuk skills/plugins search, install, update", Enabled: len(regs) > 0})
+		When: "only on hk skills/plugins search, install, update", Enabled: len(regs) > 0})
 	add(Endpoint{Kind: "hub", Name: "skills install github:...", Target: "api.github.com, codeload.github.com",
 		When: "only when you install or update from GitHub"})
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Enabled && !out[j].Enabled })

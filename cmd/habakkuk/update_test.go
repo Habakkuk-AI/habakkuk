@@ -547,7 +547,7 @@ func TestUpgradeCheck(t *testing.T) {
 	// An older binary refuses to start on that home, with directions.
 	_, err = app.Open(ctx, home, nil)
 	var tooNew *store.SchemaTooNewError
-	if !errors.As(err, &tooNew) || !strings.Contains(err.Error(), "habakkuk update --rollback") {
+	if !errors.As(err, &tooNew) || !strings.Contains(err.Error(), "hk update --rollback") {
 		t.Fatalf("app.Open: %v", err)
 	}
 

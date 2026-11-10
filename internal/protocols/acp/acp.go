@@ -1,5 +1,5 @@
 // Package acp serves the Agent Client Protocol, so a code editor can use a
-// Habakkuk agent as its coding agent: `habakkuk acp` speaks JSON-RPC on stdin
+// Habakkuk agent as its coding agent: `hk acp` speaks JSON-RPC on stdin
 // and stdout. A session's working directory becomes the agent's workspace,
 // tool calls and plans stream to the editor, approvals become the editor's
 // permission prompts, and file tools read and write through the editor (its

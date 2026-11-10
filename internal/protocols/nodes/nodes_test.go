@@ -313,7 +313,7 @@ func TestRevokeCutsOffALiveNode(t *testing.T) {
 	errc := make(chan error, 1)
 	go func() { errc <- c.Run(ctx) }()
 	waitFor(t, "connection", r.online("pi"))
-	// Another process (habakkuk nodes revoke) removes it from the store only.
+	// Another process (hk nodes revoke) removes it from the store only.
 	if _, err := r.hub.Store.Revoke(ctx, "pi"); err != nil {
 		t.Fatal(err)
 	}

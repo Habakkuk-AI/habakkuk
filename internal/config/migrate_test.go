@@ -55,7 +55,7 @@ func TestLoadMigratesOldConfigInMemory(t *testing.T) {
 	if cfg.Version != CurrentVersion || cfg.Report.FileVersion != 0 || !cfg.Report.NeedsMigration() {
 		t.Fatalf("version %d report %+v", cfg.Version, cfg.Report)
 	}
-	if s := cfg.Report.Summary(); !strings.Contains(s, "version 0") || !strings.Contains(s, "habakkuk config migrate") {
+	if s := cfg.Report.Summary(); !strings.Contains(s, "version 0") || !strings.Contains(s, "hk config migrate") {
 		t.Fatalf("summary %q", s)
 	}
 	if cfg.Retention.Days != 30 || cfg.Agents["habakkuk"].Permission != "workspace" {

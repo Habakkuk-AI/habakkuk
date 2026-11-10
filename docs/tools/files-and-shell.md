@@ -72,8 +72,8 @@ A checkpoint is a snapshot of the workspace that you can roll back to. Habakkuk 
 From the terminal, you can list the snapshots and roll back to one:
 
 ```bash
-habakkuk checkpoints [-agent A]             # workspace snapshots taken before turns changed files
-habakkuk rollback [-agent A] [-y] ID [PATH] # restore the workspace, or one path, to a snapshot
+hk checkpoints [-agent A]                   # workspace snapshots taken before turns changed files
+hk rollback [-agent A] [-y] ID [PATH] # restore the workspace, or one path, to a snapshot
 ```
 
 In a chat, send `/undo` to put the workspace back to how it was before the conversation's latest turn that changed it. Send it again to walk further back. If a turn is running, send `/stop` first.

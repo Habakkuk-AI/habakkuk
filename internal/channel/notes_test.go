@@ -149,7 +149,7 @@ func TestHomePostFromAnotherAgentNoted(t *testing.T) {
 	}
 }
 
-// Notes go only to the chat that got the message, and `habakkuk send` is
+// Notes go only to the chat that got the message, and `hk send` is
 // named as the sender.
 func TestNotesStayInTheirChat(t *testing.T) {
 	r := newRig(t, &config.Channel{AllowFrom: []string{"7"}})
@@ -173,7 +173,7 @@ func TestNotesStayInTheirChat(t *testing.T) {
 	r.g.Handle(ctx, dm("m1", "what was that?"))
 	waitFor(t, "reply", hasText(r.a, "what was that?"))
 	users := userTexts(t, r, chatSession(t, r))
-	if len(users) != 1 || !strings.Contains(users[0], "`habakkuk send` sent: \"for chat 100\"") ||
+	if len(users) != 1 || !strings.Contains(users[0], "`hk send` sent: \"for chat 100\"") ||
 		!strings.Contains(users[0], `your scheduled task "digest" sent: "digest output"`) ||
 		strings.Contains(users[0], "for chat 200") {
 		t.Fatalf("user message: %q", users)

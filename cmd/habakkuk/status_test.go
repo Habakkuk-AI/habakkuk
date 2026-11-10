@@ -17,7 +17,7 @@ func TestScheduleLine(t *testing.T) {
 		{Name: "morning brief", Enabled: true, NextRun: now.Add(time.Hour)},
 		{Name: "off", NextRun: now.Add(time.Minute)},
 	}
-	if got := scheduleLine(scs, false); !strings.HasPrefix(got, `2 of 3 on; next "morning brief"`) || !strings.Contains(got, "only while habakkuk serve does") {
+	if got := scheduleLine(scs, false); !strings.HasPrefix(got, `2 of 3 on; next "morning brief"`) || !strings.Contains(got, "only while hk serve does") {
 		t.Fatalf("scheduleLine = %q", got)
 	}
 	if got := scheduleLine(scs, true); strings.Contains(got, "serve") {

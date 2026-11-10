@@ -335,7 +335,7 @@ func Headline(rec *Record, loc *time.Location) string {
 	return b.String()
 }
 
-// Describe renders a record for meeting_status and habakkuk meetings show.
+// Describe renders a record for meeting_status and hk meetings show.
 func Describe(rec *Record, loc *time.Location) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s  %s  %s\n", rec.ID, rec.Platform.Title(), rec.Status)

@@ -26,7 +26,7 @@ import (
 //   - config.yaml is re-read: hooks are swapped in place, and a change to
 //     anything else (agents, models, providers, channels, MCP servers, http,
 //     workers, retention, timezone, transcription) is logged as needing a
-//     restart of `habakkuk serve`, since running turns and adapters hold it;
+//     restart of `hk serve`, since running turns and adapters hold it;
 //   - an invalid config.yaml is reported and ignored; the running one stays.
 //
 // Files are polled (no platform file-watching API, no cgo); a change shows
@@ -154,7 +154,7 @@ func (a *App) reloadConfig() {
 	a.reloadBudget(next)
 	a.reloadDisplay(next)
 	if pending := restartNeeded(a.Cfg, next); len(pending) > 0 {
-		a.Log.Warn("config.yaml changed; restart habakkuk serve to apply", "sections", strings.Join(pending, ", "))
+		a.Log.Warn("config.yaml changed; restart hk serve to apply", "sections", strings.Join(pending, ", "))
 	}
 }
 

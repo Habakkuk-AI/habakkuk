@@ -11,12 +11,12 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/config/yamledit"
 )
 
-// config.yaml is edited as a node tree with the same helpers habakkuk setup
+// config.yaml is edited as a node tree with the same helpers hk setup
 // uses, so comments and everything the import does not touch stay as they
 // are.
 
-const newConfigHeader = `Habakkuk settings, written by habakkuk migrate. Edit this file or run
-habakkuk setup to change them; every option is explained in the docs, under
+const newConfigHeader = `Habakkuk settings, written by hk migrate. Edit this file or run
+hk setup to change them; every option is explained in the docs, under
 Configuration. Keys and tokens are kept in .env next to this file, never here.`
 
 // defaultToolsets are an agent's toolsets when config.yaml lists none; an
@@ -32,11 +32,11 @@ func newConfigDoc() *yaml.Node {
 func mapNode() *yaml.Node { return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"} }
 
 func setProvider(root *yaml.Node, p *Provider) {
-	providers := yamledit.EnsureMap(root, "providers", "Where the models come from (habakkuk models lists what each serves).")
+	providers := yamledit.EnsureMap(root, "providers", "Where the models come from (hk models lists what each serves).")
 	n := mapNode()
 	switch {
 	case p.Auth != "":
-		yamledit.Set(n, "auth", yamledit.Str(p.Auth), "a subscription sign-in (habakkuk auth login "+p.Auth+")")
+		yamledit.Set(n, "auth", yamledit.Str(p.Auth), "a subscription sign-in (hk auth login "+p.Auth+")")
 	case p.Preset != "":
 		yamledit.Set(n, "preset", yamledit.Str(p.Preset), "")
 	default:
@@ -117,18 +117,18 @@ func setMCP(root *yaml.Node, m *MCPServer) {
 			yamledit.Set(n, "headers", yamledit.FlowMap(sortedKeys(m.Headers), m.Headers), "header: variable in .env")
 		}
 		if m.OAuth {
-			yamledit.Set(n, "auth", yamledit.Str("oauth"), "sign in with habakkuk mcp login "+m.Name)
+			yamledit.Set(n, "auth", yamledit.Str("oauth"), "sign in with hk mcp login "+m.Name)
 		}
 	}
 	yamledit.Set(servers, m.Name, n, "")
 }
 
 func setChannel(root *yaml.Node, c *Channel) {
-	chans := yamledit.EnsureMap(root, "channels", "Where you talk to your agents; habakkuk serve connects them.")
+	chans := yamledit.EnsureMap(root, "channels", "Where you talk to your agents; hk serve connects them.")
 	n := mapNode()
 	note := ""
 	if c.Link {
-		note = "a linked device; link it with habakkuk whatsapp link -account " + c.Name
+		note = "a linked device; link it with hk whatsapp link -account " + c.Name
 	}
 	yamledit.Set(n, "type", yamledit.Str(c.Type), note)
 	yamledit.Set(n, "agent", yamledit.Str(c.Agent), "")
@@ -150,7 +150,7 @@ func setChannel(root *yaml.Node, c *Channel) {
 	}
 	allowNote := ""
 	if len(c.AllowFrom) == 0 {
-		allowNote = "approve senders with habakkuk pair CODE"
+		allowNote = "approve senders with hk pair CODE"
 	}
 	yamledit.Set(n, "allow_from", yamledit.FlowList(c.AllowFrom...), allowNote)
 	if len(c.Routes) > 0 {

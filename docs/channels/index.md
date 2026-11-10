@@ -4,7 +4,7 @@ description: "Every chat app Habakkuk can talk on, how each one connects, how mu
 order: 2
 ---
 
-Every chat app Habakkuk can talk on is listed below, with advice on which one to start with. A channel is one account on one chat platform, such as a Telegram bot, a Slack app or a WhatsApp agent. You define channels under `channels:` in `config.yaml`. Each one sits under an account name you choose, and has a `type`. `habakkuk serve` runs them. To see their health, run `habakkuk channels` or send `/status` in a chat.
+Every chat app Habakkuk can talk on is listed below, with advice on which one to start with. A channel is one account on one chat platform, such as a Telegram bot, a Slack app or a WhatsApp agent. You define channels under `channels:` in `config.yaml`. Each one sits under an account name you choose, and has a `type`. `hk serve` runs them. To see their health, run `hk channels` or send `/status` in a chat.
 
 ```yaml
 channels:
@@ -14,20 +14,20 @@ channels:
 ```
 
 > [!TIP]
-> **Start with a WhatsApp agent or Telegram.** Both connect by polling, so you don't need a public URL, and `habakkuk setup` checks the key or token for you. A WhatsApp agent takes about a minute to set up. A Telegram bot takes two.
+> **Start with a WhatsApp agent or Telegram.** Both connect by polling, so you don't need a public URL, and `hk setup` checks the key or token for you. A WhatsApp agent takes about a minute to set up. A Telegram bot takes two.
 
 ## All channels
 
-In the table, "Public URL" means the platform calls Habakkuk over the internet. For those channels, `habakkuk serve` needs an HTTPS address the platform can reach. See [Webhook channels](settings.md#webhook-channels).
+In the table, "Public URL" means the platform calls Habakkuk over the internet. For those channels, `hk serve` needs an HTTPS address the platform can reach. See [Webhook channels](settings.md#webhook-channels).
 
 | Channel | `type` | Connects by | Public URL | Setup |
 |---|---|---|---|---|
-| [WhatsApp agent](whatsapp.md#whatsapp-agents) | `whatsappagent` | long polling | no | easy, in `habakkuk setup` |
-| [WhatsApp linked device](whatsapp.md#linked-device) | `whatsapp` | a linked device, like WhatsApp Web | no | easy, in `habakkuk setup` |
+| [WhatsApp agent](whatsapp.md#whatsapp-agents) | `whatsappagent` | long polling | no | easy, in `hk setup` |
+| [WhatsApp linked device](whatsapp.md#linked-device) | `whatsapp` | a linked device, like WhatsApp Web | no | easy, in `hk setup` |
 | [WhatsApp Business Cloud API](whatsapp.md#business-cloud-api) | `whatsappcloud` | webhook + Graph API | yes | involved: a Meta app and business account |
-| [Telegram](telegram.md) | `telegram` | long polling | no | easy, in `habakkuk setup` |
-| [Slack](slack.md) | `slack` | Socket Mode | no | moderate: a Slack app, in `habakkuk setup` |
-| [Discord](discord.md) | `discord` | Gateway websocket | no | moderate: a bot application, in `habakkuk setup` |
+| [Telegram](telegram.md) | `telegram` | long polling | no | easy, in `hk setup` |
+| [Slack](slack.md) | `slack` | Socket Mode | no | moderate: a Slack app, in `hk setup` |
+| [Discord](discord.md) | `discord` | Gateway websocket | no | moderate: a bot application, in `hk setup` |
 | [Signal](signal.md) | `signal` | a signal-cli daemon | no | moderate: run signal-cli |
 | [Matrix](matrix.md) | `matrix` | `/sync` long polling | no | moderate: a bot account and token |
 | [Email](email.md) | `email` | IMAP (IDLE or polling) + SMTP | no | easy: a mailbox and an app password |
@@ -35,7 +35,7 @@ In the table, "Public URL" means the platform calls Habakkuk over the internet. 
 | [Microsoft Teams](microsoft-teams.md) | `msteams` | Bot Framework webhook | yes | involved: an Azure bot registration |
 | [Google Chat](google-chat.md) | `googlechat` | Chat app HTTP endpoint | yes | involved: a Google Cloud project |
 | [iMessage](imessage.md) | `bluebubbles` | a BlueBubbles server on a Mac | yes | moderate: a Mac that stays on |
-| [Web chat](web-chat.md) | `web` | Habakkuk's own HTTP server | no | easy, in `habakkuk setup` |
+| [Web chat](web-chat.md) | `web` | Habakkuk's own HTTP server | no | easy, in `hk setup` |
 | [LINE](more-platforms.md#line) | `line` | webhook | yes | moderate |
 | [Mattermost](more-platforms.md#mattermost) | `mattermost` | WebSocket + REST | no | easy |
 | [IRC](more-platforms.md#irc) | `irc` | TLS, SASL PLAIN | no | easy |
@@ -60,11 +60,11 @@ So far, three channels have run against the real service:
 
 The web chat is Habakkuk's own HTTP server, so its tests already run against the real thing.
 
-Every other channel in the table is built from the platform's documented API, and tested here against a fake platform server. None of them has run against the real service yet, so expect rough edges. If you hit one, please [report what you find](https://github.com/habakkuk-ai/habakkuk/issues/new/choose) and include the output of `habakkuk logs -level warn -since 1h`.
+Every other channel in the table is built from the platform's documented API, and tested here against a fake platform server. None of them has run against the real service yet, so expect rough edges. If you hit one, please [report what you find](https://github.com/habakkuk-ai/habakkuk/issues/new/choose) and include the output of `hk logs -level warn -since 1h`.
 
 ## How channels work
 
-- **Who may talk.** When someone who isn't in `allow_from` sends a direct message, they get a pairing code. You approve it with `habakkuk pair CODE`. See [Access, groups and delivery](settings.md#who-may-talk-to-the-bot).
+- **Who may talk.** When someone who isn't in `allow_from` sends a direct message, they get a pairing code. You approve it with `hk pair CODE`. See [Access, groups and delivery](settings.md#who-may-talk-to-the-bot).
 - **Groups.** In a group, the bot answers only when you address it. That means a mention, a reply, or the platform's equivalent. With `groups: all` it answers everything, and with `off` it ignores groups.
 - **One conversation, one session.** Each chat is a conversation with its own session. So is each thread, on platforms that have threads. A fresh session starts after 24 hours of silence, or when you send `/new`.
 - **Exactly once.** If a platform delivers a message again, it doesn't run a second time. Each reply is delivered once. After a crash, a long reply resumes at the first chunk that wasn't sent.

@@ -52,10 +52,10 @@ brew install cliclick   # optional
 ```bash tab="xvfb"
 # A private virtual desktop per agent, started on its first action.
 sudo apt install xvfb xdotool imagemagick openbox
-habakkuk computer view   # prints the x11vnc (and noVNC) command to watch or take over
+hk computer view         # prints the x11vnc (and noVNC) command to watch or take over
 ```
 
-With `xvfb`, each agent gets its own display, numbered from `:99` up. The display can only be read with a cookie that Habakkuk writes. The agent also gets a window manager (`openbox` and others) when one is installed. `habakkuk doctor` checks for the commands the backend needs.
+With `xvfb`, each agent gets its own display, numbered from `:99` up. The display can only be read with a cookie that Habakkuk writes. The agent also gets a window manager (`openbox` and others) when one is installed. `hk doctor` checks for the commands the backend needs.
 
 ## Safety
 

@@ -2,7 +2,7 @@ package app
 
 import "github.com/habakkuk-ai/habakkuk/internal/protocols/mcpserver"
 
-// MCPServer is Habakkuk as an MCP server, for `habakkuk mcp serve` and /mcp.
+// MCPServer is Habakkuk as an MCP server, for `hk mcp serve` and /mcp.
 func (a *App) MCPServer(version string) *mcpserver.Server {
 	if version == "" {
 		version = "dev"

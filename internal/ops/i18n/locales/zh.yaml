@@ -4,7 +4,7 @@
 
 # Gateway: messages, pairing, built-in commands
 turn.queue_failed: "抱歉，我没能接收这条消息。请再发一次。"
-pair.offer: "你好！我还不认识你。如需获得访问权限，请让我的主人运行：\n\n`habakkuk pair %s`\n\n此代码一小时内有效。"
+pair.offer: "你好！我还不认识你。如需获得访问权限，请让我的主人运行：\n\n`hk pair %s`\n\n此代码一小时内有效。"
 help.header: "命令："
 help.new: "开始新的对话"
 help.stop: "停止我正在做的事"
@@ -98,7 +98,7 @@ goal.paused: "目标已暂停：上面那一步需要你。回复我之后，再
 goal.stopped: "目标在 %d 轮后停止，尚未完成：%s\n再发送 /goal 继续。"
 export.nothing: "目前还没有可以导出的内容。"
 export.no_files: "此聊天无法接收文件。"
-export.too_large: "这段对话太大，无法作为单个文件发送；请改用 `habakkuk show %s`。"
+export.too_large: "这段对话太大，无法作为单个文件发送；请改用 `hk show %s`。"
 export.prepare_failed: "抱歉，我没能准备好文件。"
 export.queue_failed: "抱歉，我没能将文件加入发送队列。"
 export.caption: "%d 条消息"
@@ -158,7 +158,7 @@ node.pair.scan: "或在手机上打开此链接（下方二维码即为该链接
 node.run.paired: "已配对，名称为 %s。"
 node.run.connected: "已连接到 %s，名称为 %s，提供：%s"
 node.run.lost: "连接中断（%s）；将在 %s 后重连。"
-nodes.none: "还没有配对的节点。用 `habakkuk node pair` 配对一个。"
+nodes.none: "还没有配对的节点。用 `hk node pair` 配对一个。"
 nodes.revoked: "已撤销 %s：它将无法再连接。"
 
 # Plain progress lines, plain approval requests, /progress and /approvals.

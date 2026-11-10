@@ -4,12 +4,12 @@ description: "What an agent may do by default, with approvals, guests, vetted sk
 order: 3
 ---
 
-Habakkuk is safe by default. This page explains what an agent is allowed to do before you change anything, and how to check it on your own machine. Run `habakkuk security` to see what Habakkuk allows there. It prints the effective tool policy of each agent, then an audit with fixes. `habakkuk status` shows the policy too.
+Habakkuk is safe by default. This page explains what an agent is allowed to do before you change anything, and how to check it on your own machine. Run `hk security` to see what Habakkuk allows there. It prints the effective tool policy of each agent, then an audit with fixes. `hk status` shows the policy too.
 
 ```bash
-habakkuk security             # tool policy per agent, then the audit
-habakkuk security -fix        # also apply the safe fixes (file permissions)
-habakkuk security -network    # every outbound endpoint, and whether your config turns it on
+hk security                   # tool policy per agent, then the audit
+hk security -fix              # also apply the safe fixes (file permissions)
+hk security -network          # every outbound endpoint, and whether your config turns it on
 ```
 
 ## Risky capabilities
@@ -36,7 +36,7 @@ agents:
 
 ## Strangers never get them
 
-A sender who is let in by `allow_from: ["*"]`, and not by id or `habakkuk pair`, is a **guest**. A guest's turn is refused every risky capability, with or without approval. Guests can't answer your pending approvals, and they can't use `/remember`, `/forget` or `/agent`. A turn with no sender behind it (a schedule) counts as a guest's turn when it runs on an account that's open to everyone.
+A sender who is let in by `allow_from: ["*"]`, and not by id or `hk pair`, is a **guest**. A guest's turn is refused every risky capability, with or without approval. Guests can't answer your pending approvals, and they can't use `/remember`, `/forget` or `/agent`. A turn with no sender behind it (a schedule) counts as a guest's turn when it runs on an account that's open to everyone.
 
 There's one exception. A `whatsappagent` channel only ever hears from the person who created the agent, because WhatsApp refuses everyone else. So its sender is always treated as the owner, even with `allow_from: "*"`. Its schedules run as the owner's too, and the audit never counts it as an open channel.
 
@@ -69,27 +69,27 @@ It doesn't protect you against these:
 - **Wrong or misleading notes.** The agent may write down something a page told it. Keep that in mind when you read a note, as you would with an email.
 - **Overwritten notes.** A trusted folder can be edited as well as added to. If the notes matter, keep the folder in version control or a backup.
 
-Use this setting for folders that hold only notes. `habakkuk security` lists each agent's trusted folders. It flags them on an agent that chats or webhooks can reach.
+Use this setting for folders that hold only notes. `hk security` lists each agent's trusted folders. It flags them on an agent that chats or webhooks can reach.
 
 ## Skills and plugins from outside
 
 Habakkuk pins and checks skills and plugins that come from outside. When you install one, it prints the source, the commit, the tree hash, every file and which of the files are scripts. Then it scans them. A high-risk finding stops the install unless you pass `-force`. The high-risk findings are `curl | sh`, decoded payloads that are run, credentials or the environment being sent out, obfuscation, and program binaries. The lock file records the commit and the hash. An update shows you a diff and applies only when you say yes.
 
-A skill that ships scripts stays disabled until you run `habakkuk skills approve`. Plugins stay off until you run `habakkuk plugins enable`. `habakkuk skills audit` scans everything again and catches files that changed after install. See [Plugins](../tools/plugins.md).
+A skill that ships scripts stays disabled until you run `hk skills approve`. Plugins stay off until you run `hk plugins enable`. `hk skills audit` scans everything again and catches files that changed after install. See [Plugins](../tools/plugins.md).
 
 ## Private files
 
-Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles and backups. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `habakkuk doctor` and `habakkuk security` warn you about anything wider, and `habakkuk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
+Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles and backups. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `hk doctor` and `hk security` warn you about anything wider, and `hk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
 
 ## No surprise network calls
 
-Habakkuk doesn't send usage telemetry, and it checks for updates only when you run `habakkuk update`. Here's what it contacts:
+Habakkuk doesn't send usage telemetry, and it checks for updates only when you run `hk update`. Here's what it contacts:
 
 - your model providers and the channels you configured;
 - services you named in `config.yaml`: a `search:` provider, `tts`, `images`, `video`, `realtime`, `memory.embeddings`, `telemetry.otlp_endpoint`, MCP servers, A2A peers, Home Assistant;
 - the pages an agent reads with `fetch_url` or the browser.
 
-There's no default web search provider. The `web_search` tool exists only once `search:` names one. Run `habakkuk security -network` to list every endpoint and see whether your config turns it on.
+There's no default web search provider. The `web_search` tool exists only once `search:` names one. Run `hk security -network` to list every endpoint and see whether your config turns it on.
 
 ## The local HTTP server
 
@@ -99,7 +99,7 @@ This means a web page you visit can't drive the agent, read your chats or pair a
 
 ## The audit
 
-`habakkuk security` runs the audit, and so does `habakkuk security audit`. It checks:
+`hk security` runs the audit, and so does `hk security audit`. It checks:
 
 - file modes under `$HABAKKUK_HOME`;
 - agents in `full` mode or reachable by outsiders, open channels, and trusted folders (`trusted_write_paths`);

@@ -201,7 +201,7 @@ func lines(b []byte) []string {
 	return strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
 }
 
-// AuditEntry is what `habakkuk skills audit` reports for one installed
+// AuditEntry is what `hk skills audit` reports for one installed
 // package folder.
 type AuditEntry struct {
 	Name     string

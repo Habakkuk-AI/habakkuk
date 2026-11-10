@@ -26,9 +26,9 @@ import (
 	"github.com/habakkuk-ai/habakkuk/apps/desktop/internal/supervisor"
 )
 
-// With FAKE_HABAKKUK_SERVE set, the test binary is a fake `habakkuk serve`: it
+// With FAKE_HABAKKUK_SERVE set, the test binary is a fake `hk serve`: it
 // starts a fake Habakkuk API on a free port and prints the address the way
-// habakkuk serve does.
+// hk serve does.
 func TestMain(m *testing.M) {
 	if os.Getenv("FAKE_HABAKKUK_SERVE") != "" {
 		term := make(chan os.Signal, 1)
@@ -250,7 +250,7 @@ func TestLocalProblems(t *testing.T) {
 	empty := t.TempDir()
 	conn, _ := r.conns.Save(connections.Connection{Name: "Empty", Kind: connections.Local, Home: empty}, nil)
 	c.Activate(conn.ID)
-	if st := c.Snapshot(); !strings.Contains(st.Problem, "habakkuk setup") || r.srv.Target() != "" {
+	if st := c.Snapshot(); !strings.Contains(st.Problem, "hk setup") || r.srv.Target() != "" {
 		t.Fatalf("no config: problem %q target %q", st.Problem, r.srv.Target())
 	}
 	os.WriteFile(filepath.Join(empty, "config.yaml"), []byte("agents: {}\n"), 0o600)

@@ -3,7 +3,7 @@
 
 # Gateway: messages, pairing, built-in commands
 turn.queue_failed: "माफ़ कीजिए, मैं वह संदेश नहीं ले सका। कृपया उसे फिर से भेजें।"
-pair.offer: "नमस्ते! मैं आपको अभी नहीं पहचानता। पहुँच पाने के लिए मेरे मालिक से यह चलाने को कहें:\n\n`habakkuk pair %s`\n\nयह कोड एक घंटे तक काम करेगा।"
+pair.offer: "नमस्ते! मैं आपको अभी नहीं पहचानता। पहुँच पाने के लिए मेरे मालिक से यह चलाने को कहें:\n\n`hk pair %s`\n\nयह कोड एक घंटे तक काम करेगा।"
 help.header: "कमांड:"
 help.new: "नई बातचीत शुरू करें"
 help.stop: "जिस काम पर मैं लगा हूँ उसे रोकें"
@@ -97,7 +97,7 @@ goal.paused: "लक्ष्य रुका हुआ है: ऊपर वा
 goal.stopped: "%d चरणों के बाद लक्ष्य पूरा हुए बिना रुक गया: %s\nजारी रखने के लिए फिर से /goal भेजें।"
 export.nothing: "अभी निर्यात करने के लिए कुछ नहीं है।"
 export.no_files: "यह चैट फ़ाइलें नहीं ले सकती।"
-export.too_large: "यह बातचीत एक फ़ाइल में भेजने के लिए बहुत बड़ी है; इसकी जगह `habakkuk show %s` इस्तेमाल करें।"
+export.too_large: "यह बातचीत एक फ़ाइल में भेजने के लिए बहुत बड़ी है; इसकी जगह `hk show %s` इस्तेमाल करें।"
 export.prepare_failed: "माफ़ कीजिए, मैं फ़ाइल तैयार नहीं कर सका।"
 export.queue_failed: "माफ़ कीजिए, मैं फ़ाइल को कतार में नहीं डाल सका।"
 export.caption: "%d संदेश"
@@ -157,7 +157,7 @@ node.pair.scan: "या किसी फ़ोन पर यह लिंक ख
 node.run.paired: "%s नाम से पेयर हो गया।"
 node.run.connected: "%s से %s के रूप में जुड़ा, उपलब्ध: %s"
 node.run.lost: "कनेक्शन टूट गया (%s); %s में फिर से जुड़ने की कोशिश।"
-nodes.none: "अभी कोई नोड पेयर नहीं है। `habakkuk node pair` से एक पेयर करें।"
+nodes.none: "अभी कोई नोड पेयर नहीं है। `hk node pair` से एक पेयर करें।"
 nodes.revoked: "%s रद्द किया गया: वह अब कनेक्ट नहीं कर सकता।"
 
 # Plain progress lines, plain approval requests, /progress and /approvals.

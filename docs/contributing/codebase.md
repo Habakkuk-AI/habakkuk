@@ -47,7 +47,7 @@ This package holds the tool `Registry`, toolsets, permission modes and the polic
 | `tools/homeassistant` | Home Assistant tools and event triggers |
 | `tools/media` | Attachment type detection, speech-to-text |
 | `tools/mediatools` | Text-to-speech, images, video, `view_image`, `read_document`, `web_search` |
-| `tools/voice` | `habakkuk talk`: microphone, voice activity detection, wake phrases, playback |
+| `tools/voice` | `hk talk`: microphone, voice activity detection, wake phrases, playback |
 | `tools/review` | The LLM approval reviewer |
 | `tools/sandbox` | Docker and SSH command backends |
 
@@ -98,7 +98,7 @@ The `Gateway` (`gateway.go`) decides who may talk and maps conversations to agen
 | `ops/i18n` | Message catalogs (YAML per locale in `locales/`) |
 | `ops/logs` | Log rotation, redaction and reading |
 | `ops/secrets` | Secret manager sources |
-| `ops/security` | `habakkuk security audit` |
+| `ops/security` | `hk security audit` |
 | `ops/telemetry` | Metrics and OTLP traces |
 | `config` | Strict YAML config: types, defaults, validation, provider presets, the starter config |
 | `tui` | The full-screen terminal UI (Bubble Tea) over a narrow `Backend` interface |
@@ -120,7 +120,7 @@ platform ──> adapter ──> supervisor ──> gateway ──> turn job ─
 
 ### Other entry points
 
-- **CLI and TUI** (`habakkuk chat`, `run`, `tui`) create a session and run the same turn jobs in-process (`Runner.Ask`, `Begin`, `Await`). They follow live events from `core/events`.
+- **CLI and TUI** (`hk chat`, `run`, `tui`) create a session and run the same turn jobs in-process (`Runner.Ask`, `Begin`, `Await`). They follow live events from `core/events`.
 - **HTTP** (`channel/web`): the web chat is an ordinary adapter. Webhooks, the OpenAI-compatible API, A2A and MCP over HTTP start turns through the same runner.
 - **Schedules and the board** (`work/`) enqueue jobs with IDs that derive from the slot or the card attempt, so each one runs at most once.
 - **Delegation** enqueues `subturn` jobs, which run in a pool of their own.

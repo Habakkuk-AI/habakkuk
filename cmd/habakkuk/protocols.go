@@ -17,7 +17,7 @@ import (
 )
 
 // mcpServe runs Habakkuk as an MCP server on stdin and stdout. Its turns run
-// here, or in `habakkuk serve` if that claims them first.
+// here, or in `hk serve` if that claims them first.
 func mcpServe(ctx context.Context, home string, args []string) error {
 	fs := flag.NewFlagSet("mcp serve", flag.ExitOnError)
 	fs.Parse(args)
@@ -52,7 +52,7 @@ func acpCmd(ctx context.Context, home string, args []string) error {
 	if err != nil {
 		return err
 	}
-	pools, stopWorkers := startWorkers(ctx, a, false) // sub-turns, so delegation works without `habakkuk serve`
+	pools, stopWorkers := startWorkers(ctx, a, false) // sub-turns, so delegation works without `hk serve`
 	defer stopWorkers()
 	pool := &jobs.Pool{Queue: a.Queue, Handlers: map[string]jobs.Handler{acp.KindTurn: ed.Handle},
 		Concurrency: a.Cfg.Workers.Concurrency, Lease: a.Cfg.Workers.Lease, Log: a.Log}
@@ -68,7 +68,7 @@ func acpCmd(ctx context.Context, home string, args []string) error {
 }
 
 // sendCmd queues a message or a file to a chat without running a turn.
-// `habakkuk serve` delivers it, durably, like a reply.
+// `hk serve` delivers it, durably, like a reply.
 func sendCmd(ctx context.Context, home string, args []string) error {
 	fs := flag.NewFlagSet("send", flag.ExitOnError)
 	to := fs.String("to", "", "CHANNEL:CHAT[:THREAD], e.g. telegram:123456")
@@ -83,7 +83,7 @@ func sendCmd(ctx context.Context, home string, args []string) error {
 		text = string(data)
 	}
 	if *to == "" || (text == "" && *file == "") {
-		return errors.New("usage: habakkuk send -to CHANNEL:CHAT [-file PATH] TEXT (TEXT - reads stdin)")
+		return errors.New("usage: hk send -to CHANNEL:CHAT [-file PATH] TEXT (TEXT - reads stdin)")
 	}
 	addr, err := channel.ParseTarget(*to)
 	if err != nil {
@@ -120,6 +120,6 @@ func sendCmd(ctx context.Context, home string, args []string) error {
 	} else if err := a.Gateway.SendText(ctx, id, addr, text); err != nil {
 		return err
 	}
-	fmt.Printf("queued %s for %s; `habakkuk serve` delivers it\n", id, *to)
+	fmt.Printf("queued %s for %s; `hk serve` delivers it\n", id, *to)
 	return nil
 }

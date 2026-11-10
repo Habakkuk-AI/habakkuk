@@ -158,14 +158,14 @@ func (r *hermesReader) model() {
 			return
 		}
 		r.f.leftover(fmt.Sprintf("a model for agent %s (none is set in %s)", a.Name, filepath.Join(r.h.dir, "config.yaml")),
-			"habakkuk setup model -agent "+a.Name)
+			"hk setup model -agent "+a.Name)
 		return
 	}
 	if ref := r.resolve(provider, model, base, key); ref != "" {
 		a.Model = ref
 	} else {
 		r.f.leftover(fmt.Sprintf("model %s for agent %s (provider %q has no equivalent)", model, a.Name, provider),
-			"habakkuk setup model -agent "+a.Name)
+			"hk setup model -agent "+a.Name)
 	}
 	var fbs []any
 	if l, ok := r.cfg["fallback_providers"].([]any); ok {
@@ -220,7 +220,7 @@ func (r *hermesReader) resolve(provider, model, base, key string) string {
 			return modelRef(name, model)
 		}
 	case "nous", "nous-api":
-		r.f.leftover("the Nous Portal provider", "pick another provider with habakkuk setup model -agent "+r.agent.Name)
+		r.f.leftover("the Nous Portal provider", "pick another provider with hk setup model -agent "+r.agent.Name)
 		return ""
 	}
 	if name, ok := r.f.knownProvider(p, base, r.env, key); ok {
@@ -495,7 +495,7 @@ func (f *Found) readMCP(raw string, m map[string]any, env map[string]string, use
 	}
 	if auth, _ := m["auth"].(string); strings.EqualFold(auth, "oauth") && s.URL != "" {
 		s.OAuth = true
-		f.leftover("the sign-in to MCP server "+name, "habakkuk mcp login "+name)
+		f.leftover("the sign-in to MCP server "+name, "hk mcp login "+name)
 	}
 	vars := func(kind string, in map[string]any) map[string]string {
 		out := map[string]string{}
@@ -596,7 +596,7 @@ func (r *hermesReader) channels() {
 		r.f.secret(av, app)
 		add(&Channel{Type: "slack", AppTokenEnv: av, BotTokensEnv: []string{bv}, AllowFrom: allow("SLACK_ALLOWED_USERS")})
 	} else if bot != "" && !same("SLACK_BOT_TOKEN") {
-		r.f.leftover("Slack for agent "+a.Name+" (no app-level token for Socket Mode)", "habakkuk setup channel slack -agent "+a.Name)
+		r.f.leftover("Slack for agent "+a.Name+" (no app-level token for Socket Mode)", "hk setup channel slack -agent "+a.Name)
 	}
 	if hs, tok := r.env["MATRIX_HOMESERVER"], r.env["MATRIX_ACCESS_TOKEN"]; hs != "" && tok != "" && !same("MATRIX_ACCESS_TOKEN") {
 		v := "MATRIX_ACCESS_TOKEN" + suffix
@@ -613,7 +613,7 @@ func (r *hermesReader) channels() {
 	for _, p := range []string{"EMAIL", "MATTERMOST", "SMS", "HOMEASSISTANT", "DINGTALK", "FEISHU", "WECOM", "BLUEBUBBLES"} {
 		for k := range r.env {
 			if strings.HasPrefix(k, p+"_") && !r.used[k] {
-				r.f.leftover(fmt.Sprintf("the %s channel of agent %s", strings.ToLower(p), a.Name), "habakkuk setup channel, or see the channels guide")
+				r.f.leftover(fmt.Sprintf("the %s channel of agent %s", strings.ToLower(p), a.Name), "hk setup channel, or see the channels guide")
 				break
 			}
 		}
@@ -755,7 +755,7 @@ func (r *hermesReader) deliverTo(j map[string]any) *Address {
 		}
 	}
 	name, _ := j["name"].(string)
-	r.f.skip("schedule %q (agent %s): its delivery to %s was dropped (no matching channel); add one with habakkuk schedules", name, r.agent.Name, d)
+	r.f.skip("schedule %q (agent %s): its delivery to %s was dropped (no matching channel); add one with hk schedules", name, r.agent.Name, d)
 	return nil
 }
 
@@ -784,17 +784,17 @@ func hermesLeftovers(f *Found, dir string) {
 		f.leftover("conversation history", "it stays in "+dir+"; Habakkuk starts fresh sessions")
 	}
 	if exists(filepath.Join(dir, "platforms", "whatsapp", "session")) || slices.ContainsFunc(f.Channels, func(c *Channel) bool { return c.Link }) {
-		f.leftover("the WhatsApp linked-device session", "habakkuk whatsapp link (or habakkuk setup channel whatsapp) to link the number again")
+		f.leftover("the WhatsApp linked-device session", "hk whatsapp link (or hk setup channel whatsapp) to link the number again")
 	}
 	if exists(filepath.Join(dir, "kanban.db")) || exists(filepath.Join(dir, "kanban")) {
-		f.leftover("board cards", "recreate the open ones with habakkuk board add")
+		f.leftover("board cards", "recreate the open ones with hk board add")
 	}
 	if exists(filepath.Join(dir, "auth.json")) {
-		f.leftover("provider sign-ins (auth.json)", "habakkuk auth login chatgpt|copilot, or an API key with habakkuk setup model")
+		f.leftover("provider sign-ins (auth.json)", "hk auth login chatgpt|copilot, or an API key with hk setup model")
 	}
 	for _, d := range []string{"plugins", "hooks"} {
 		if entries, _ := os.ReadDir(filepath.Join(dir, d)); len(entries) > 0 {
-			f.leftover(d, "see habakkuk plugins and the hooks section of config.yaml")
+			f.leftover(d, "see hk plugins and the hooks section of config.yaml")
 		}
 	}
 }

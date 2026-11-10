@@ -52,7 +52,7 @@ func parseTarget(conv string) (types.JID, error) {
 }
 
 // NormalizeTarget returns a conversation in the form inbound messages use,
-// so `habakkuk send`, schedules and home chats can name a person by phone
+// so `hk send`, schedules and home chats can name a person by phone
 // number (channel.TargetNormalizer).
 func (a *Adapter) NormalizeTarget(conv string) (string, error) {
 	jid, err := parseTarget(conv)

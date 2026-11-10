@@ -26,7 +26,7 @@ func authCmd(ctx context.Context, home string, args []string) error {
 	switch sub {
 	case "login":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: habakkuk auth login %s", strings.Join(auth.Kinds, "|"))
+			return fmt.Errorf("usage: hk auth login %s", strings.Join(auth.Kinds, "|"))
 		}
 		kind := strings.ToLower(args[0])
 		if kind == "claude-token" || kind == "claude" {
@@ -53,7 +53,7 @@ func authCmd(ctx context.Context, home string, args []string) error {
 		}
 		names, _ := st.Names()
 		if len(names) == 0 {
-			fmt.Printf("no logins; run habakkuk auth login %s\n", strings.Join(auth.Kinds, "|"))
+			fmt.Printf("no logins; run hk auth login %s\n", strings.Join(auth.Kinds, "|"))
 			return nil
 		}
 		for _, n := range names {
@@ -69,7 +69,7 @@ func authCmd(ctx context.Context, home string, args []string) error {
 		}
 	case "logout", "rm":
 		if len(args) != 1 {
-			return errors.New("usage: habakkuk auth logout NAME")
+			return errors.New("usage: hk auth logout NAME")
 		}
 		found, err := st.Delete(ctx, args[0])
 		if err != nil {

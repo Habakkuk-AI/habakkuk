@@ -24,8 +24,8 @@ func Migrations() []store.Migration { return migrations }
 // migrations for nodes.db: paired nodes (with a hash of each one's secret,
 
 // never the secret) and pairing codes (hashed too, single use). It is its
-// own file so control.db never changes for nodes, and `habakkuk node pair`
-// and `habakkuk nodes revoke` can write it while `habakkuk serve` runs.
+// own file so control.db never changes for nodes, and `hk node pair`
+// and `hk nodes revoke` can write it while `hk serve` runs.
 var migrations = []store.Migration{{Version: 1, SQL: `
 CREATE TABLE nodes (
 	name        TEXT PRIMARY KEY,
@@ -57,7 +57,7 @@ type Store struct {
 }
 
 // ErrBadCode means a pairing code is unknown, used or expired.
-var ErrBadCode = errors.New("the pairing code is wrong, used or expired; run `habakkuk node pair` for a new one")
+var ErrBadCode = errors.New("the pairing code is wrong, used or expired; run `hk node pair` for a new one")
 
 var nodeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
 

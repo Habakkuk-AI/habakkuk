@@ -60,7 +60,7 @@ func (joinTool) Risk() tools.Risk { return tools.RiskNetwork }
 func (joinTool) Spec() llm.ToolSpec {
 	return llm.ToolSpec{
 		Name:        "meeting_join",
-		Description: `Join a Google Meet, Zoom or Microsoft Teams call as a named guest and take notes: Habakkuk turns on the platform's live captions, keeps a transcript, and when the call ends (or the time limit passes, or meeting_leave) sends notes with decisions and action items to this chat. It joins with microphone and camera off and posts "<name> has joined to take notes." in the meeting chat. Someone in the call may have to let it in. Returns at once with a meeting id; the attendance runs in the background (under habakkuk serve). To join at a set time, use schedule_create with a prompt that calls meeting_join with the link.`,
+		Description: `Join a Google Meet, Zoom or Microsoft Teams call as a named guest and take notes: Habakkuk turns on the platform's live captions, keeps a transcript, and when the call ends (or the time limit passes, or meeting_leave) sends notes with decisions and action items to this chat. It joins with microphone and camera off and posts "<name> has joined to take notes." in the meeting chat. Someone in the call may have to let it in. Returns at once with a meeting id; the attendance runs in the background (under hk serve). To join at a set time, use schedule_create with a prompt that calls meeting_join with the link.`,
 		Schema: json.RawMessage(`{"type":"object","properties":{
 			"url":{"type":"string","description":"the meeting link (meet.google.com/..., zoom.us/j/..., teams.microsoft.com/l/meetup-join/... or teams.live.com/meet/...)"},
 			"name":{"type":"string","description":"display name in the call (default from config, \"Habakkuk (notetaker)\")"},

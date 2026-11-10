@@ -1,4 +1,4 @@
-// Package voice is the local voice loop behind `habakkuk talk`: microphone
+// Package voice is the local voice loop behind `hk talk`: microphone
 // capture and playback through external programs (ffmpeg, afplay, paplay,
 // aplay, ffplay; no cgo), an energy-based voice activity detector, wake
 // phrase matching on transcripts, and the loop that turns utterances into

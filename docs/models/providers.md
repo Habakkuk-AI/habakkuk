@@ -55,7 +55,7 @@ agents:
 
 ## Local model servers
 
-Ollama, LM Studio, vLLM, llama.cpp's `llama-server` and LiteLLM each have a preset. The preset points at the server's usual local port, and the key is optional. When you run `habakkuk setup`, it finds servers running on this computer.
+Ollama, LM Studio, vLLM, llama.cpp's `llama-server` and LiteLLM each have a preset. The preset points at the server's usual local port, and the key is optional. When you run `hk setup`, it finds servers running on this computer.
 
 ```yaml tab="Ollama"
 providers:
@@ -115,6 +115,6 @@ Send `/model` to see the models the conversation uses. Send `/model provider/mod
 Use these two commands to check your providers:
 
 ```bash
-habakkuk models      # each provider, its credential status, and the models it serves
-habakkuk doctor      # "provider X: 2/2 keys present" or what is missing
+hk models            # each provider, its credential status, and the models it serves
+hk doctor            # "provider X: 2/2 keys present" or what is missing
 ```

@@ -28,7 +28,7 @@ channels:
     allow_from: ["@you:example.org"]  # also who may invite the bot into rooms
 ```
 
-4. Invite the bot from an account that's in `allow_from`, or one you've approved with `habakkuk pair`. The bot joins on its own. It ignores invitations from anyone else.
+4. Invite the bot from an account that's in `allow_from`, or one you've approved with `hk pair`. The bot joins on its own. It ignores invitations from anyone else.
 
 > [!IMPORTANT]
 > End-to-end encryption isn't supported yet, so create the room without encryption. In an encrypted room, the bot says once that it can't read the room. After that it stays quiet.

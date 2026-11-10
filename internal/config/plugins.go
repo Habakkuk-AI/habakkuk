@@ -166,7 +166,7 @@ func relInside(p string) (string, error) {
 func PluginsDir(home string) string { return filepath.Join(home, "plugins") }
 
 // enabledPlugins reads the plugin lock file ($HABAKKUK_HOME/plugins/.lock.json,
-// written by `habakkuk plugins`) for the plugins that are enabled and trusted.
+// written by `hk plugins`) for the plugins that are enabled and trusted.
 func enabledPlugins(home string) ([]string, error) {
 	data, err := os.ReadFile(filepath.Join(PluginsDir(home), ".lock.json"))
 	if errors.Is(err, fs.ErrNotExist) {

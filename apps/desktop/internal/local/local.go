@@ -1,6 +1,6 @@
 // Package local finds out about a Habakkuk on this computer from its
 // HABAKKUK_HOME: where its HTTP surface listens, the token it wants, whether a
-// habakkuk serve is already running, and which habakkuk executable to run.
+// hk serve is already running, and which habakkuk executable to run.
 package local
 
 import (
@@ -19,7 +19,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DefaultListen is habakkuk serve's address when the http section names none.
+// DefaultListen is hk serve's address when the http section names none.
 const DefaultListen = "127.0.0.1:8484"
 
 // Home returns h, or $HABAKKUK_HOME, or ~/.habakkuk, as habakkuk itself does.
@@ -52,9 +52,9 @@ type HTTPConfig struct {
 	TokenEnv string `yaml:"token_env"`
 }
 
-// ErrNoHTTP means config.yaml has no http section, so habakkuk serve opens no
+// ErrNoHTTP means config.yaml has no http section, so hk serve opens no
 // port and there is no dashboard to show.
-var ErrNoHTTP = errors.New("config.yaml has no http section, so habakkuk serve has no dashboard; add one (see docs/interfaces/desktop-app.md)")
+var ErrNoHTTP = errors.New("config.yaml has no http section, so hk serve has no dashboard; add one (see docs/interfaces/desktop-app.md)")
 
 // ReadHTTP reads the http section of home/config.yaml.
 func ReadHTTP(home string) (HTTPConfig, error) {
@@ -77,7 +77,7 @@ func ReadHTTP(home string) (HTTPConfig, error) {
 	return *cfg.HTTP, nil
 }
 
-// Heartbeat is serve.json, which habakkuk serve rewrites every 15 seconds.
+// Heartbeat is serve.json, which hk serve rewrites every 15 seconds.
 type Heartbeat struct {
 	PID     int       `json:"pid"`
 	Version string    `json:"version"`
@@ -87,7 +87,7 @@ type Heartbeat struct {
 }
 
 // Alive reports whether the beat is recent enough that serve is running
-// (habakkuk status uses the same 45 seconds).
+// (hk status uses the same 45 seconds).
 func (h Heartbeat) Alive(now time.Time) bool {
 	return h.PID > 0 && now.Sub(h.Beat) < 45*time.Second
 }
@@ -111,7 +111,7 @@ type Endpoint struct {
 // Resolve works out the endpoint of the Habakkuk in home. addr, when known
 // (the address a running serve printed), wins over serve.json, which wins
 // over config.yaml. The token is the value of http.token_env from the
-// environment, else from home/.env, as habakkuk serve reads it.
+// environment, else from home/.env, as hk serve reads it.
 func Resolve(home, addr string, now time.Time) (Endpoint, error) {
 	cfg, err := ReadHTTP(home)
 	if err != nil {

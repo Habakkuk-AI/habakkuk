@@ -19,7 +19,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
 )
 
-// heartbeatFile is where `habakkuk serve` says it is alive.
+// heartbeatFile is where `hk serve` says it is alive.
 const heartbeatFile = "serve.json"
 
 // heartbeatEvery is how often serve rewrites it; status calls a beat older
@@ -50,7 +50,7 @@ func readHeartbeat(home string) (heartbeat, error) {
 func serveState(home string, now time.Time) string {
 	hb, err := readHeartbeat(home)
 	if errors.Is(err, os.ErrNotExist) {
-		return "not running (start it with habakkuk serve)"
+		return "not running (start it with hk serve)"
 	}
 	if err != nil {
 		return "unknown (" + err.Error() + ")"
@@ -92,7 +92,7 @@ func statusCmd(ctx context.Context, home string, w io.Writer) error {
 	state := serveState(home, now)
 	fmt.Fprintf(w, "serve:    %s\n", state)
 	if !hasConfig(home) {
-		fmt.Fprintln(w, "config:   none yet; run habakkuk setup to make one (about a minute)")
+		fmt.Fprintln(w, "config:   none yet; run hk setup to make one (about a minute)")
 		return nil
 	}
 	a, closeApp, err := open(ctx, home)
@@ -145,7 +145,7 @@ func statusCmd(ctx context.Context, home string, w io.Writer) error {
 		fmt.Fprintf(w, "schedules: %s\n", scheduleLine(scs, strings.HasPrefix(state, "running")))
 	}
 
-	fmt.Fprintln(w, "policy (habakkuk security for the audit):")
+	fmt.Fprintln(w, "policy (hk security for the audit):")
 	printPolicies(w, a.Cfg)
 
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
@@ -189,7 +189,7 @@ func scheduleLine(scs []schedule.Schedule, serving bool) string {
 	if next != nil {
 		line += fmt.Sprintf("; next %q %s", next.Name, next.NextRun.Local().Format("Mon 15:04"))
 		if !serving {
-			line += " (runs only while habakkuk serve does)"
+			line += " (runs only while hk serve does)"
 		}
 	}
 	return line

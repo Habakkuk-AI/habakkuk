@@ -13,7 +13,7 @@ import (
 )
 
 func TestKeyFix(t *testing.T) {
-	if got := keyFix("/h", []string{"ANTHROPIC_API_KEY"}); !strings.Contains(got, "ANTHROPIC_API_KEY=...") || !strings.Contains(got, "habakkuk setup model") {
+	if got := keyFix("/h", []string{"ANTHROPIC_API_KEY"}); !strings.Contains(got, "ANTHROPIC_API_KEY=...") || !strings.Contains(got, "hk setup model") {
 		t.Fatalf("keyFix = %q", got)
 	}
 }
@@ -30,16 +30,16 @@ func TestDoctorAllGoodKnowsServeIsRunning(t *testing.T) {
 		want string
 		not  string
 	}{
-		{"no serve, channels", nil, withChannels, "Next: habakkuk serve", "is running"},
-		{"no serve, terminal only", nil, &config.Config{}, "Next: habakkuk chat", "serve"},
+		{"no serve, channels", nil, withChannels, "Next: hk serve", "is running"},
+		{"no serve, terminal only", nil, &config.Config{}, "Next: hk chat", "serve"},
 		{"running", &heartbeat{PID: os.Getpid(), Started: now.Add(-time.Hour), Beat: now}, withChannels,
-			"habakkuk serve is running.", "Next:"},
+			"hk serve is running.", "Next:"},
 		{"still starting", &heartbeat{PID: os.Getpid(), Started: now.Add(-5 * time.Second), Beat: now, Starting: "channels slack"}, withChannels,
-			"habakkuk serve is running: it is still starting up", "Next:"},
+			"hk serve is running: it is still starting up", "Next:"},
 		{"alive but quiet", &heartbeat{PID: os.Getpid(), Started: now.Add(-time.Hour), Beat: now.Add(-10 * time.Minute)}, withChannels,
-			"habakkuk serve is running, but it has not reported for a while", "Next:"},
+			"hk serve is running, but it has not reported for a while", "Next:"},
 		{"exited", &heartbeat{PID: 1 << 22, Started: now.Add(-time.Hour), Beat: now.Add(-time.Minute)}, withChannels,
-			"Next: habakkuk serve", "is running"},
+			"Next: hk serve", "is running"},
 	} {
 		home := t.TempDir()
 		if c.hb != nil {

@@ -36,11 +36,11 @@ channels:
     api_url: http://127.0.0.1:8080    # the default
 ```
 
-Run `habakkuk doctor` to check that the daemon answers.
+Run `hk doctor` to check that the daemon answers.
 
 ## Access
 
-Add people to `allow_from` by phone number, written like `"+15557654321"`. Or approve them with `habakkuk pair`.
+Add people to `allow_from` by phone number, written like `"+15557654321"`. Or approve them with `hk pair`.
 
 ## Groups
 

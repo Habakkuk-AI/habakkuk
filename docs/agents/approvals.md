@@ -34,7 +34,7 @@ agents:
 
 ### Approvals and restarts
 
-Sometimes `habakkuk serve` stops while a request is waiting, for an update, a deploy or a reboot. The request isn't lost, and nothing answers it by accident:
+Sometimes `hk serve` stops while a request is waiting, for an update, a deploy or a reboot. The request isn't lost, and nothing answers it by accident:
 
 - The turn resumes when `serve` starts. When it gets back to the same call, it asks again with a new request.
 - A button on the old request answers the new one only if both are for the same call. That means the same agent, conversation, tool and input. Press any other old button and you get "That request has expired", with a pointer to the request that's waiting now.
@@ -84,11 +84,11 @@ The setting is narrow on purpose:
 - **No scripts or programs.** A file counts as a script or program if it has an executable bit, a script extension (`.sh`, `.py`, `.js` and so on) or a `#!` first line, or if it's a program binary. Habakkuk refuses such a file in a turn that has read outside content. In a clean turn, the file goes through the usual approval. Skills use the same test for "ships scripts".
 - **No hidden files.** `.git`, `.envrc` and anything else whose name starts with a dot aren't covered. Neither is anything that sits under a folder like that.
 - **Symlinks are followed first.** Habakkuk judges a path by where it really lands, so a link inside the folder can't send a write somewhere else.
-- **Habakkuk's own folders are never trusted.** These are agent homes, skills, plugins, hooks, personas, channel credentials and backups, plus the folders your hooks and scheduled scripts run from. If an entry reaches one of them, Habakkuk ignores it and `habakkuk security` says so.
+- **Habakkuk's own folders are never trusted.** These are agent homes, skills, plugins, hooks, personas, channel credentials and backups, plus the folders your hooks and scheduled scripts run from. If an entry reaches one of them, Habakkuk ignores it and `hk security` says so.
 - **Your home folder, or anything above it, is refused.** Habakkuk rejects it when the config loads.
 - **Guests get nothing.** A sender who was let in by `allow_from: ["*"]` can't write outside the workspace at all.
 
-Run `habakkuk security` to list the trusted folders for each agent. [Security](../deploy/security.md#trusted-folders-for-notes) describes the trade-off.
+Run `hk security` to list the trusted folders for each agent. [Security](../deploy/security.md#trusted-folders-for-notes) describes the trade-off.
 
 ## Hooks
 

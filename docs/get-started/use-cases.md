@@ -15,8 +15,8 @@ This gives you an agent with its own chat in your WhatsApp. You don't give up a 
 3. Run the setup wizard and pick **WhatsApp agent**:
 
 ```bash
-habakkuk setup
-habakkuk setup service      # Linux and macOS: write a systemd or launchd file, and print how to install it
+hk setup
+hk setup service            # Linux and macOS: write a systemd or launchd file, and print how to install it
 ```
 
 The wizard writes a channel that looks like this:
@@ -44,13 +44,13 @@ search:                     # not needed when the agent's model is on an anthrop
 One way to add the schedule is to ask in a chat: "every weekday at 7:30, send me the top three stories about renewable energy and today's weather in Toronto". The agent then creates it with `schedule_create`. The other way is to add it from the terminal:
 
 ```bash
-habakkuk schedules add -agent habakkuk -name briefing -when "30 7 * * 1-5" \
+hk schedules add -agent habakkuk -name briefing -when "30 7 * * 1-5" \
   -prompt "Search the news and send me the top three stories about renewable energy, then today's weather in Toronto." \
   -to wagent:creator
-habakkuk schedules run <id>     # try it now
+hk schedules run <id>           # try it now
 ```
 
-For this to work, `habakkuk serve` has to be running. See [Schedules](../agents/schedules.md) and [Media and web search](../tools/media.md#web-search).
+For this to work, `hk serve` has to be running. See [Schedules](../agents/schedules.md) and [Media and web search](../tools/media.md#web-search).
 
 ## A team of business agents on WhatsApp, run from Slack
 
@@ -105,7 +105,7 @@ browser:
 ```
 
 ```bash
-habakkuk run -agent research "Compare the three most used open-source CRMs. A table, then a recommendation."
+hk run -agent research "Compare the three most used open-source CRMs. A table, then a recommendation."
 ```
 
 On a server, install Chromium first. On Debian, that's `apt install chromium`. For long jobs, put a card on the [board](../agents/board.md) and assign it to `research`. The result comes back to the conversation that asked. See [Browser](../tools/browser.md).
@@ -161,9 +161,9 @@ agents:
 ```
 
 ```bash
-habakkuk acp -agent coder        # configure your editor to run this as its agent
-habakkuk checkpoints -agent coder
-habakkuk rollback -agent coder <id>
+hk acp -agent coder              # configure your editor to run this as its agent
+hk checkpoints -agent coder
+hk rollback -agent coder <id>
 ```
 
 In a chat, send `/undo` to put back the files the last turn changed. See [Files and shell](../tools/files-and-shell.md) and [Integrations: code editors](../tools/integrations.md#code-editors-acp).
@@ -180,8 +180,8 @@ code=$(curl -s -o /dev/null -w '%{http_code}' https://example.com)
 EOF
 chmod +x ~/habakkuk-workspace/check-site.sh
 
-habakkuk schedules add -agent habakkuk -name site-check -when "@every 5m" \
+hk schedules add -agent habakkuk -name site-check -when "@every 5m" \
   -run ./check-site.sh -on-output deliver -timeout 30s -to telegram:123456789
 ```
 
-The script runs in the agent's workspace. Here that's `~/habakkuk-workspace`, as `habakkuk setup` writes it. To run it in another folder, pass `-workdir DIR`. If you use `-on-output agent -prompt "..."`, the output starts a turn instead, so the agent can look into it. Script schedules can only be added by you, from the CLI. See [Script schedules](../agents/schedules.md#script-schedules).
+The script runs in the agent's workspace. Here that's `~/habakkuk-workspace`, as `hk setup` writes it. To run it in another folder, pass `-workdir DIR`. If you use `-on-output agent -prompt "..."`, the output starts a turn instead, so the agent can look into it. Script schedules can only be added by you, from the CLI. See [Script schedules](../agents/schedules.md#script-schedules).

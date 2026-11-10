@@ -48,7 +48,7 @@ type xvfb struct {
 	exited chan struct{}
 }
 
-// State is what habakkuk computer view reads about a running virtual
+// State is what hk computer view reads about a running virtual
 // desktop.
 type State struct {
 	Agent   string `json:"agent"`

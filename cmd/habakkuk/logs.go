@@ -15,7 +15,7 @@ import (
 )
 
 // logsCmd prints habakkuk.log (and its rotated files) readably:
-// habakkuk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100].
+// hk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100].
 func logsCmd(ctx context.Context, home string, args []string, w io.Writer) error {
 	fs := flag.NewFlagSet("logs", flag.ContinueOnError)
 	follow := fs.Bool("f", false, "keep printing new records as they are written")

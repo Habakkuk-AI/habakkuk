@@ -55,7 +55,7 @@ func (c *Config) validateHomes() []error {
 }
 
 // HomeChannel returns the channel account of a home target, read the way
-// `habakkuk send` reads CHANNEL:CONVERSATION[:THREAD].
+// `hk send` reads CHANNEL:CONVERSATION[:THREAD].
 func HomeChannel(home string) (string, bool) {
 	account, rest, ok := strings.Cut(home, ":")
 	conv, _, _ := strings.Cut(rest, ":")

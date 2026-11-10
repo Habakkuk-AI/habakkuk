@@ -71,8 +71,8 @@ type SchemaTooNewError struct {
 
 func (e *SchemaTooNewError) Error() string {
 	return fmt.Sprintf("%s has schema version %d, but this habakkuk only knows up to version %d: "+
-		"a newer Habakkuk has already upgraded it. Roll forward to that release (habakkuk update), "+
-		"or restore the backup taken before the upgrade (habakkuk update --rollback, or habakkuk restore -force FILE)",
+		"a newer Habakkuk has already upgraded it. Roll forward to that release (hk update), "+
+		"or restore the backup taken before the upgrade (hk update --rollback, or hk restore -force FILE)",
 		filepath.Base(e.Path), e.Have, e.Know)
 }
 

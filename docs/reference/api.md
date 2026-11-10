@@ -6,7 +6,7 @@ order: 3
 
 Every endpoint of Habakkuk's JSON API is listed here. Use it when you want to drive Habakkuk from your own code, the way the dashboard does.
 
-When your config has an `http` section, `habakkuk serve` listens on the address in `listen` (default `127.0.0.1:8484`). It serves the chat page at `/`, the webhooks at `/hooks/<name>` and the OpenAI-compatible API under `/v1/` (see [Architecture](architecture.md#other-clients)). It also serves a control dashboard at `/app/` and the JSON API below. The dashboard is built on that API.
+When your config has an `http` section, `hk serve` listens on the address in `listen` (default `127.0.0.1:8484`). It serves the chat page at `/`, the webhooks at `/hooks/<name>` and the OpenAI-compatible API under `/v1/` (see [Architecture](architecture.md#other-clients)). It also serves a control dashboard at `/app/` and the JSON API below. The dashboard is built on that API.
 
 ## Conventions
 
@@ -52,7 +52,7 @@ Returns what the page needs to start.
 }
 ```
 
-`channels` lists every configured account. An account's `state` is `never started` when `habakkuk serve` hasn't run it. `established` turns true once the install is in use. That means an agent has answered a message, or there's a schedule, or there's more than one messaging channel. The dashboard then hides its Get started panel. `errors` holds jobs from the last 7 days that failed for good, or that recorded an error on a retried attempt. You get the newest 20.
+`channels` lists every configured account. An account's `state` is `never started` when `hk serve` hasn't run it. `established` turns true once the install is in use. That means an agent has answered a message, or there's a schedule, or there's more than one messaging channel. The dashboard then hides its Get started panel. `errors` holds jobs from the last 7 days that failed for good, or that recorded an error on a retried attempt. You get the newest 20.
 
 ## Chat
 
@@ -150,7 +150,7 @@ A card looks like this: `{"id", "title", "body", "assignee", "created_by", "stat
 | `POST /api/schedules/{id}/run` | `{}` | Queues one extra run now: `{"job": "sch_...", "schedule": {...}}`. |
 | `DELETE /api/schedules/{id}` | | `204`. |
 
-A schedule looks like this: `{"id", "agent", "name", "spec", "prompt", "command", "on_output", "deliver_to", "enabled", "next_run", "last_run", "last_status", "last_output", "fail_streak", "created_at"}`. The API only adds prompt schedules. Script schedules run shell commands unattended, so you add those with `habakkuk schedules add -run`. A body with `command` is rejected as an unknown field. You can still list, pause, run and delete script schedules here.
+A schedule looks like this: `{"id", "agent", "name", "spec", "prompt", "command", "on_output", "deliver_to", "enabled", "next_run", "last_run", "last_status", "last_output", "fail_streak", "created_at"}`. The API only adds prompt schedules. Script schedules run shell commands unattended, so you add those with `hk schedules add -run`. A body with `command` is rejected as an unknown field. You can still list, pause, run and delete script schedules here.
 
 ## Memory
 
@@ -178,7 +178,7 @@ A change looks like this: `{"id", "agent", "kind", "name", "path", "op", "old_ha
 
 ### Retros
 
-These endpoints let you read an agent's [retrospectives](../agents/retros.md). They're read only. To approve or reject proposals, use `habakkuk retro apply`, or `/retro apply` in a chat.
+These endpoints let you read an agent's [retrospectives](../agents/retros.md). They're read only. To approve or reject proposals, use `hk retro apply`, or `/retro apply` in a chat.
 
 | Request | Body | |
 |---|---|---|
@@ -243,7 +243,7 @@ These endpoints are there when the config has a `nodes` section. The devices the
 | Request | |
 |---|---|
 | `GET /api/nodes` | `{"nodes": [{"name", "platform", "caps", "paired_at", "last_seen", "online"}]}`, by name; a connected node's `caps` are what it offers now. |
-| `POST /api/nodes/pair` `{}` | `{"code", "expires"}`: a one-time pairing code, as `habakkuk node pair` makes. |
+| `POST /api/nodes/pair` `{}` | `{"code", "expires"}`: a one-time pairing code, as `hk node pair` makes. |
 | `DELETE /api/nodes/{name}` | Revokes the node (its secret stops working) and drops its connection. `404` when there is no such node. |
 
 ## Config
@@ -262,7 +262,7 @@ These endpoints are there when the config has a `nodes` section. The devices the
 
 Under each channel, `progress` and `approvals_detail` show the values in effect now. They may be newer than the ones `serve` started with.
 
-`doctor` runs the `habakkuk doctor` checks that the running process can see. It covers provider keys and logins, the integrity of `control.db` and `transcripts.db`, and channel, HTTP and MCP credentials. Credentials are named by their variable, so their values never appear. It also covers MCP servers that failed to connect.
+`doctor` runs the `hk doctor` checks that the running process can see. It covers provider keys and logins, the integrity of `control.db` and `transcripts.db`, and channel, HTTP and MCP credentials. Credentials are named by their variable, so their values never appear. It also covers MCP servers that failed to connect.
 
 ### `GET /api/channels`
 

@@ -668,7 +668,7 @@ func TestBrokenSources(t *testing.T) {
 }
 
 // TestEmptyHomeWithoutModel: with no model to set up, the files are
-// imported and config.yaml is left for habakkuk setup.
+// imported and config.yaml is left for hk setup.
 func TestEmptyHomeWithoutModel(t *testing.T) {
 	src := t.TempDir()
 	if err := os.WriteFile(filepath.Join(src, "SOUL.md"), []byte("You are Quill.\n"), 0o600); err != nil {

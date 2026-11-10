@@ -103,7 +103,7 @@ func doctorCmd(ctx context.Context, home string, args []string) error {
 // errUpgradeCheck is returned when upgradeCheck finds a blocker.
 var errUpgradeCheck = errors.New("upgrade check failed")
 
-// upgradeCheck is what `habakkuk update` asks a new binary before
+// upgradeCheck is what `hk update` asks a new binary before
 // installing it: can it load this home's config, and is every database at
 // a schema it knows (older is fine: it migrates forward on start)? It only
 // reads, so a release that would fail leaves no trace.
@@ -158,6 +158,6 @@ func reportConfig(w io.Writer, cfg *config.Config) {
 		fmt.Fprintln(w, "habakkuk:", s)
 	}
 	for _, k := range cfg.Report.Unknown {
-		fmt.Fprintf(w, "habakkuk: config.yaml: unknown key %s is ignored (a typo, or a setting for a newer release; habakkuk doctor lists them)\n", k)
+		fmt.Fprintf(w, "habakkuk: config.yaml: unknown key %s is ignored (a typo, or a setting for a newer release; hk doctor lists them)\n", k)
 	}
 }

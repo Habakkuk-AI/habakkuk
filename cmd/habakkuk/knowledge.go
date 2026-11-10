@@ -17,8 +17,8 @@ import (
 // forgets or vouches for one, and prints the user profile or the review
 // log; its history subcommands (memoryhistory.go) list, diff, restore and
 // pin. It opens only the memory index, not the whole app, so it is safe to
-// run beside `habakkuk serve`. Search here is full text only; semantic search
-// needs the embedding provider, which `habakkuk serve` and chats use.
+// run beside `hk serve`. Search here is full text only; semantic search
+// needs the embedding provider, which `hk serve` and chats use.
 func memoryCmd(ctx context.Context, home string, args []string) error {
 	fs := flag.NewFlagSet("memory", flag.ExitOnError)
 	agentName := fs.String("agent", "", "agent whose memory to show")
@@ -45,7 +45,7 @@ func memoryCmd(ctx context.Context, home string, args []string) error {
 	ctx = cliActor(ctx)
 
 	rest := fs.Args()
-	usage := errors.New("usage: habakkuk memory [-agent A] [-n N] [search QUERY | show SLUG | forget SLUG | trust SLUG [yes|no] | profile | log]\n" + memoryHistoryUsage)
+	usage := errors.New("usage: hk memory [-agent A] [-n N] [search QUERY | show SLUG | forget SLUG | trust SLUG [yes|no] | profile | log]\n" + memoryHistoryUsage)
 	if len(rest) == 0 {
 		list, total, err := mem.Recent(ctx, name, *limit)
 		if err != nil {
@@ -90,7 +90,7 @@ func memoryCmd(ctx context.Context, home string, args []string) error {
 		}
 		fmt.Printf("%s\n\nfile: %s\n", memory.FormatNote(m), filepath.Join(mem.Dir(name), m.Slug+".md"))
 		if m.Session != "" {
-			fmt.Printf("written in session %s (habakkuk show %s)\n", m.Session, m.Session)
+			fmt.Printf("written in session %s (hk show %s)\n", m.Session, m.Session)
 		}
 	case "forget":
 		if len(rest) != 2 {

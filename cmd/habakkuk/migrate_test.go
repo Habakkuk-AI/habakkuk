@@ -81,7 +81,7 @@ func TestMigrateYes(t *testing.T) {
 		wantEnv       bool
 		wantOut       []string
 	}{
-		{"hermes", "copy", true, []string{"Copied ANTHROPIC_API_KEY", "habakkuk schedules resume sch_", "habakkuk doctor", "habakkuk serve", "habakkuk whatsapp link"}},
+		{"hermes", "copy", true, []string{"Copied ANTHROPIC_API_KEY", "hk schedules resume sch_", "hk doctor", "hk serve", "hk whatsapp link"}},
 		{"hermes", "skip", false, []string{"Set these in", "TELEGRAM_BOT_TOKEN", "Schedules are imported paused"}},
 		{"openclaw", "", false, []string{"Set these in", "STUDIO_KEY", "the imessage channel"}},
 	}

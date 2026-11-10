@@ -19,12 +19,12 @@ import (
 // tailscaleRunner runs the tailscale CLI; tests replace it.
 type tailscaleRunner func(ctx context.Context, args ...string) ([]byte, error)
 
-// exposeCmd runs `habakkuk expose tailscale|status|off`: it shares the HTTP
+// exposeCmd runs `hk expose tailscale|status|off`: it shares the HTTP
 // listener with your tailnet through `tailscale serve`, which keeps it off
 // the public internet (that would be `tailscale funnel`, which Habakkuk never
 // runs).
 func exposeCmd(ctx context.Context, home string, args []string, w io.Writer, run tailscaleRunner) error {
-	const usage = "usage: habakkuk expose tailscale [-port 443] [-print] | habakkuk expose status | habakkuk expose off [-port 443]"
+	const usage = "usage: hk expose tailscale [-port 443] [-print] | hk expose status | hk expose off [-port 443]"
 	if len(args) == 0 {
 		return errors.New(usage)
 	}

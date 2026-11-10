@@ -15,7 +15,7 @@ import (
 // what was asked and keeps the rest, comments included. A new file starts
 // from a short header and gets only what was chosen.
 
-const setupHeader = `Habakkuk settings, written by habakkuk setup. Run it again to change them,
+const setupHeader = `Habakkuk settings, written by hk setup. Run it again to change them,
 or edit this file: every option is explained at
 https://habakkuk.ai/docs/reference/configuration
 Keys and tokens are kept in .env next to this file, never here.`
@@ -87,7 +87,7 @@ func (s *setup) applyModel(root *yaml.Node) {
 	switch {
 	case c.auth != "":
 		if existing == nil {
-			setKey(p, "auth", str(c.auth), "a subscription sign-in (habakkuk auth login "+c.auth+")")
+			setKey(p, "auth", str(c.auth), "a subscription sign-in (hk auth login "+c.auth+")")
 		}
 	default:
 		if existing == nil && c.preset != "" {
@@ -141,7 +141,7 @@ func (s *setup) applyChannel(root *yaml.Node) {
 		s.applyHTTP(root)
 		return
 	}
-	chans := ensureMap(root, "channels", "Where you talk to your agent; habakkuk serve connects them.\nAdd another with habakkuk setup channel. Docs: habakkuk.ai/docs/channels")
+	chans := ensureMap(root, "channels", "Where you talk to your agent; hk serve connects them.\nAdd another with hk setup channel. Docs: habakkuk.ai/docs/channels")
 	ch := getKey(chans, c.name)
 	if ch == nil || ch.Kind != yaml.MappingNode {
 		ch = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
@@ -151,7 +151,7 @@ func (s *setup) applyChannel(root *yaml.Node) {
 		case "whatsappagent":
 			note = "an agent made in WhatsApp (Settings > Agents)"
 		case "whatsapp":
-			note = "a linked device; link with habakkuk whatsapp link"
+			note = "a linked device; link with hk whatsapp link"
 		}
 		setKey(ch, "type", str(c.typ), note)
 	}
@@ -173,13 +173,13 @@ func (s *setup) applyChannel(root *yaml.Node) {
 }
 
 // applyHTTP adds the HTTP listener on loopback: the dashboard at /app/
-// and the web chat at /, while habakkuk serve runs.
+// and the web chat at /, while hk serve runs.
 func (s *setup) applyHTTP(root *yaml.Node) {
 	if getKey(root, "http") != nil {
 		return
 	}
 	l := s.webListen()
-	h := ensureMap(root, "http", "The dashboard at http://"+l+"/app/ and the web chat at http://"+l+"/,\nwhile habakkuk serve runs. Docs: habakkuk.ai/docs/interfaces/dashboard")
+	h := ensureMap(root, "http", "The dashboard at http://"+l+"/app/ and the web chat at http://"+l+"/,\nwhile hk serve runs. Docs: habakkuk.ai/docs/interfaces/dashboard")
 	setKey(h, "listen", str(l), "loopback only; another address needs token_env")
 }
 
@@ -194,7 +194,7 @@ func (s *setup) applyStarterDefaults(root *yaml.Node) {
 	}
 }
 
-// The node helpers are shared with habakkuk migrate.
+// The node helpers are shared with hk migrate.
 var (
 	spaceSections = yamledit.SpaceSections
 	str           = yamledit.Str

@@ -16,7 +16,7 @@ import (
 
 // meetingsCmd lists, shows and ends meeting attendances. It reads the files
 // under $HABAKKUK_HOME/meetings directly; `leave` leaves a request there that
-// the attendance (run by habakkuk serve) picks up within seconds.
+// the attendance (run by hk serve) picks up within seconds.
 func meetingsCmd(_ context.Context, home string, args []string, out io.Writer) error {
 	sub := "list"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -47,7 +47,7 @@ func meetingsCmd(_ context.Context, home string, args []string, out io.Writer) e
 		transcript := fs.Bool("transcript", false, "print the whole transcript too")
 		fs.Parse(args)
 		if fs.NArg() != 1 {
-			return errors.New("usage: habakkuk meetings show [-transcript] ID")
+			return errors.New("usage: hk meetings show [-transcript] ID")
 		}
 		r, err := st.Get(fs.Arg(0))
 		if err != nil {
@@ -65,11 +65,11 @@ func meetingsCmd(_ context.Context, home string, args []string, out io.Writer) e
 		case *transcript && len(lines) > 0:
 			fmt.Fprintln(out, "\nTranscript:\n"+meeting.FormatTranscript(lines, loc))
 		case len(lines) > 0:
-			fmt.Fprintf(out, "\n%d caption lines; habakkuk meetings show -transcript %s prints them.\n", len(lines), r.ID)
+			fmt.Fprintf(out, "\n%d caption lines; hk meetings show -transcript %s prints them.\n", len(lines), r.ID)
 		}
 	case "leave":
 		if len(args) != 1 {
-			return errors.New("usage: habakkuk meetings leave ID")
+			return errors.New("usage: hk meetings leave ID")
 		}
 		r, err := st.Get(args[0])
 		if err != nil {
@@ -82,7 +82,7 @@ func meetingsCmd(_ context.Context, home string, args []string, out io.Writer) e
 		if err := st.RequestLeave(r.ID); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "Asked %s to leave; habakkuk serve ends it within seconds and sends the notes.\n", r.ID)
+		fmt.Fprintf(out, "Asked %s to leave; hk serve ends it within seconds and sends the notes.\n", r.ID)
 	default:
 		return fmt.Errorf("unknown meetings command %q (list, show ID, leave ID)", sub)
 	}

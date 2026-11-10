@@ -166,7 +166,7 @@ func (s *setup) modelStep() error {
 			return errors.New("no model provider found on this computer. Any one of these fixes it:\n" +
 				"  export ANTHROPIC_API_KEY=... (or OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, ...), then run setup -y again\n" +
 				"  start Ollama or LM Studio with a model, then run setup -y again\n" +
-				"  run habakkuk setup without -y to paste a key or sign in with a ChatGPT plan")
+				"  run hk setup without -y to paste a key or sign in with a ChatGPT plan")
 		}
 		c := found[0]
 		if s.opts.model != "" {
@@ -504,7 +504,7 @@ func (s *setup) ensureLogin(kind string) error {
 		return nil
 	}
 	if !s.interactive {
-		return fmt.Errorf("not signed in to %s: run habakkuk auth login %s first", kind, kind)
+		return fmt.Errorf("not signed in to %s: run hk auth login %s first", kind, kind)
 	}
 	ctx, cancel := context.WithTimeout(s.ctx, 20*time.Minute)
 	defer cancel()
@@ -643,13 +643,13 @@ func modelProvider(ctx context.Context, home string, c *modelChoice) (llm.Provid
 	case auth.ChatGPT:
 		e, err := auth.NewStore(home).Get(ctx, auth.ChatGPT)
 		if err != nil {
-			return nil, "", fmt.Errorf("the ChatGPT sign-in does not work: %w (run habakkuk auth login chatgpt)", err)
+			return nil, "", fmt.Errorf("the ChatGPT sign-in does not work: %w (run hk auth login chatgpt)", err)
 		}
 		return &openai.Responses{ChatGPT: true, UserAgent: "habakkuk", AccountID: func() string { return e.AccountID }}, e.AccessToken, nil
 	case auth.Copilot:
 		e, err := auth.NewStore(home).Get(ctx, auth.Copilot)
 		if err != nil {
-			return nil, "", fmt.Errorf("the GitHub Copilot sign-in does not work: %w (run habakkuk auth login copilot)", err)
+			return nil, "", fmt.Errorf("the GitHub Copilot sign-in does not work: %w (run hk auth login copilot)", err)
 		}
 		base := e.BaseURL
 		if base == "" {
@@ -690,13 +690,13 @@ func explainModelErr(err error, c *modelChoice, timeout time.Duration) error {
 	switch llm.Classify(err).Kind {
 	case llm.ErrAuth:
 		if c.auth != "" {
-			return fmt.Errorf("%s refused the sign-in: run habakkuk auth login %s again (%s)", label, c.auth, detail)
+			return fmt.Errorf("%s refused the sign-in: run hk auth login %s again (%s)", label, c.auth, detail)
 		}
 		return fmt.Errorf("%s refused the key: check that you copied all of it and that it is a %s key (%s)", label, label, detail)
 	case llm.ErrBilling:
 		return fmt.Errorf("the key works, but the %s account has no credit or billing set up (%s)", label, detail)
 	case llm.ErrNotFound:
-		return fmt.Errorf("%s does not serve the model %q: pick another with -model, or see habakkuk models (%s)", label, c.model, detail)
+		return fmt.Errorf("%s does not serve the model %q: pick another with -model, or see hk models (%s)", label, c.model, detail)
 	case llm.ErrNetwork:
 		if c.local {
 			return fmt.Errorf("no answer from %s at %s within %s: is it running? (%s)", label, c.apiBase(), timeout, detail)

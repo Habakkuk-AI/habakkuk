@@ -18,7 +18,7 @@ Habakkuk is before 1.0. Fixes go into the `main` branch and the next release; ol
 | Version | Supported |
 |---|---|
 | `main` and the latest release | yes |
-| Older releases | no; update with `habakkuk update` |
+| Older releases | no; update with `hk update` |
 
 ## Scope
 
@@ -26,7 +26,7 @@ In scope: the code in this repository.
 
 - The `habakkuk` binary and everything under `cmd/` and `internal/`: the permission modes and approval flow, the approval reviewer, the hardline command blocklist, the SSRF guard on `fetch_url` and the browser's URL guard, sandboxes, the HTTP server and its token checks, webhook and channel signature checks, pairing and allowlists, device node pairing, MCP OAuth, secret redaction in logs, memory and profile provenance (trusted and untrusted content), skill and plugin installation and scanning, backups and restore.
 - The desktop app in `apps/desktop`: its loopback server and proxy, session cookie, and token storage.
-- The installers (`scripts/install.sh`, `scripts/install.ps1`), `habakkuk update`, and the release workflow (checksums, the `SHA256SUMS` signature, published artifacts, the container image).
+- The installers (`scripts/install.sh`, `scripts/install.ps1`), `hk update`, and the release workflow (checksums, the `SHA256SUMS` signature, published artifacts, the container image).
 
 Out of scope:
 
@@ -36,4 +36,4 @@ Out of scope:
 - Problems that need an attacker who already controls your account, your machine or `$HABAKKUK_HOME`.
 - Known gaps listed in the docs, such as the browser URL guard not intercepting WebSocket handshakes or service workers (see [docs/reference/architecture.md](docs/reference/architecture.md)), unless you find a way to make them worse.
 
-`habakkuk security audit` checks a running setup for risky settings; it is a good first step before reporting a configuration problem.
+`hk security audit` checks a running setup for risky settings; it is a good first step before reporting a configuration problem.

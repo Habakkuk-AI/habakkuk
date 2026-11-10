@@ -1,5 +1,5 @@
 "use strict";
-// Habakkuk Desktop's own page: the active connection, the local habakkuk serve
+// Habakkuk Desktop's own page: the active connection, the local hk serve
 // and its logs, the list of connections and the app's settings. It talks to
 // the app over /desktop/api/; nothing here sees a token after it is saved.
 

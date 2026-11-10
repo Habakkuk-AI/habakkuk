@@ -6,25 +6,49 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
 )
 
-// What plain `habakkuk` (or `hk`) prints. A new user gets one screen that
+// What plain `hk` (or `habakkuk`) prints. A new user gets one screen that
 // says what Habakkuk is and the one command to run next; someone who has
 // set it up gets the handful of commands they will use every day. The full
-// list stays behind `habakkuk help`.
+// list stays behind `hk help`.
 
-// cliName is the name this binary was run as, for the commands it
-// suggests: "hk" when started through the short name, else "habakkuk".
+// cliName is the name to use in the commands this binary suggests. It is
+// "hk", the short name, whenever hk runs this program: when it was started
+// as hk, or when an hk that points here sits beside the binary. Only an
+// install without the short name (go install, a bare archive) gets
+// "habakkuk".
 func cliName() string {
 	base := strings.TrimSuffix(strings.ToLower(filepath.Base(os.Args[0])), ".exe")
 	if base == "hk" {
 		return "hk"
 	}
+	if exe, err := os.Executable(); err == nil && hasShortName(exe) {
+		return "hk"
+	}
 	return "habakkuk"
+}
+
+// hasShortName reports whether the folder holding exe also holds the short
+// name for it: a link to the same file, or on Windows the hk.cmd shim the
+// installer writes.
+func hasShortName(exe string) bool {
+	dir := filepath.Dir(exe)
+	if runtime.GOOS == "windows" {
+		_, err := os.Stat(filepath.Join(dir, "hk.cmd"))
+		return err == nil
+	}
+	self, err := os.Stat(exe)
+	if err != nil {
+		return false
+	}
+	short, err := os.Stat(filepath.Join(dir, "hk"))
+	return err == nil && os.SameFile(self, short)
 }
 
 // hasConfig reports whether home holds a config.yaml.

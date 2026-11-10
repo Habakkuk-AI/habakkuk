@@ -54,7 +54,7 @@ type reply string
 func (r reply) Error() string { return string(r) }
 
 // SkillPrompt is the message that runs a skill explicitly (/skill and
-// `habakkuk run -skill`).
+// `hk run -skill`).
 func (a *App) SkillPrompt(agentName, name, request string) (string, error) {
 	return a.Skills.Invoke(agentName, name, request)
 }
@@ -146,7 +146,7 @@ func (a *App) listSkills(ctx context.Context, session, _ string) string {
 		return "Couldn't list skills: " + err.Error()
 	}
 	if len(list) == 0 {
-		return "I have no skills yet. Teach me one with /learn <topic, URL or path>, or install one with habakkuk skills install."
+		return "I have no skills yet. Teach me one with /learn <topic, URL or path>, or install one with hk skills install."
 	}
 	var b strings.Builder
 	b.WriteString("Skills:")

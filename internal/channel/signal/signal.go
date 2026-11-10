@@ -62,7 +62,7 @@ func (a *Adapter) StaleAfter() time.Duration { return 2 * time.Minute } // the d
 // Format leaves Markdown as it is; Send turns it into Signal text styles.
 func (a *Adapter) Format(md string) string { return md }
 
-// Check asks the daemon at apiURL whether it is up, for habakkuk doctor.
+// Check asks the daemon at apiURL whether it is up, for hk doctor.
 func Check(ctx context.Context, apiURL string) error {
 	a := New(apiURL, "", "")
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

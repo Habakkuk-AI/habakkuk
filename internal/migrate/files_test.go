@@ -436,7 +436,7 @@ func TestFilesSkipCopiesNothing(t *testing.T) {
 		}
 		var out bytes.Buffer
 		p.Write(&out, "")
-		want := "habakkuk migrate --files copy brings them over"
+		want := "hk migrate --files copy brings them over"
 		if mode == FilesSkip {
 			want = "They will not be copied (--files skip)"
 		}

@@ -3,7 +3,7 @@
 
 # Gateway: messages, pairing, built-in commands
 turn.queue_failed: "すみません、そのメッセージを受け付けられませんでした。もう一度送ってください。"
-pair.offer: "こんにちは！まだあなたのことを知りません。アクセスするには、私のオーナーに次のコマンドを実行してもらってください：\n\n`habakkuk pair %s`\n\nこのコードの有効期限は 1 時間です。"
+pair.offer: "こんにちは！まだあなたのことを知りません。アクセスするには、私のオーナーに次のコマンドを実行してもらってください：\n\n`hk pair %s`\n\nこのコードの有効期限は 1 時間です。"
 help.header: "コマンド："
 help.new: "新しい会話を始める"
 help.stop: "作業中のことを止める"
@@ -97,7 +97,7 @@ goal.paused: "目標を一時停止しました：上のステップにはあな
 goal.stopped: "%d ターン後、達成できないまま目標を止めました：%s\n続けるにはもう一度 /goal を送ってください。"
 export.nothing: "まだエクスポートするものがありません。"
 export.no_files: "このチャットではファイルを受け取れません。"
-export.too_large: "この会話は大きすぎて 1 つのファイルでは送れません。代わりに `habakkuk show %s` を使ってください。"
+export.too_large: "この会話は大きすぎて 1 つのファイルでは送れません。代わりに `hk show %s` を使ってください。"
 export.prepare_failed: "すみません、ファイルを準備できませんでした。"
 export.queue_failed: "すみません、ファイルを送信キューに入れられませんでした。"
 export.caption: "%d 件のメッセージ"
@@ -157,7 +157,7 @@ node.pair.scan: "またはスマートフォンでこのリンクを開くと（
 node.run.paired: "%s としてペアリングしました。"
 node.run.connected: "%s に %s として接続しました。提供する機能：%s"
 node.run.lost: "接続が切れました（%s）。%s 後に再接続します。"
-nodes.none: "ペアリング済みのノードはまだありません。`habakkuk node pair` でペアリングしてください。"
+nodes.none: "ペアリング済みのノードはまだありません。`hk node pair` でペアリングしてください。"
 nodes.revoked: "%s を取り消しました。もう接続できません。"
 
 # Plain progress lines, plain approval requests, /progress and /approvals.

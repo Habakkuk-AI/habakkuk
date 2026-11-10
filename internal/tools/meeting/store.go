@@ -230,7 +230,7 @@ func (s *Store) Lines(id string) ([]Line, error) {
 }
 
 // RequestLeave asks the attendance to leave the call. It works from another
-// process (habakkuk meetings leave): the attendance checks for the file every
+// process (hk meetings leave): the attendance checks for the file every
 // few seconds.
 func (s *Store) RequestLeave(id string) error {
 	d, err := s.dir(id)

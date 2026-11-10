@@ -18,7 +18,7 @@ type Poster struct {
 	Agent string // the agent it comes from, or ""
 	// What sent it. With an agent it is a noun phrase that agent owns
 	// (`scheduled task "inbox"`); without one it stands alone
-	// ("`habakkuk send`").
+	// ("`hk send`").
 	What string
 	// Session is the session whose turn sends it, or "". A chat's own
 	// session needs no note: its turns are in its transcript.
@@ -39,7 +39,7 @@ func PosterFrom(ctx context.Context) Poster {
 }
 
 // ChatNotes are messages that reached a chat from outside its own turns: a
-// scheduled run's result, another agent's post, `habakkuk send`. The agent
+// scheduled run's result, another agent's post, `hk send`. The agent
 // answering the chat did not write them, so without them it cannot tell
 // what the user is replying to. The channel gateway implements it.
 type ChatNotes interface {

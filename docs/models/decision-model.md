@@ -32,7 +32,7 @@ Put your key in `$HABAKKUK_HOME/.env` as `TYPESAFE_API_KEY`. To use another vari
 
 ## Cost
 
-Input costs $0.042 per million tokens, and output is free. A routing decision uses about 100 to 200 tokens, so a million decisions cost a few dollars. Habakkuk records these calls in `usage.db` under the provider `typesafe`. You'll see them in `habakkuk usage`, and they count toward your [spending limits](usage-and-limits.md).
+Input costs $0.042 per million tokens, and output is free. A routing decision uses about 100 to 200 tokens, so a million decisions cost a few dollars. Habakkuk records these calls in `usage.db` under the provider `typesafe`. You'll see them in `hk usage`, and they count toward your [spending limits](usage-and-limits.md).
 
 ## Settings
 

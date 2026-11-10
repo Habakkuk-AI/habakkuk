@@ -72,7 +72,7 @@ func TestRetroCLI(t *testing.T) {
 			t.Errorf("dry run lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "habakkuk retro apply dry-run") {
+	if strings.Contains(out, "hk retro apply dry-run") {
 		t.Error("dry run offers to apply")
 	}
 	if len(model.inputs) != 1 {

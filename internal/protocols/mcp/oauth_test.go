@@ -218,7 +218,7 @@ func TestOAuthLoginAndCallsEndToEnd(t *testing.T) {
 	m.Tokens = store
 	m.StartTimeout = 5 * time.Second
 	m.Start(ctx)
-	if st := m.Status()[0]; st.State != "error" || !strings.Contains(st.Error, "habakkuk mcp login remote") {
+	if st := m.Status()[0]; st.State != "error" || !strings.Contains(st.Error, "hk mcp login remote") {
 		t.Fatalf("before login: %+v", st)
 	}
 	m.Close()
@@ -288,13 +288,13 @@ func TestOAuthDeviceLoginAndExpiredRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = store.MCPToken(ctx, "remote")
-	if err == nil || !strings.Contains(err.Error(), "habakkuk mcp login remote") {
+	if err == nil || !strings.Contains(err.Error(), "hk mcp login remote") {
 		t.Fatalf("expired refresh: %v", err)
 	}
 	if _, err := store.Delete(ctx, auth.MCPLoginName("remote")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.MCPToken(ctx, "remote"); err == nil || !strings.Contains(err.Error(), "habakkuk mcp login remote") {
+	if _, err := store.MCPToken(ctx, "remote"); err == nil || !strings.Contains(err.Error(), "hk mcp login remote") {
 		t.Fatalf("logged out: %v", err)
 	}
 }

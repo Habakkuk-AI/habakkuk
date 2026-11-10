@@ -6,7 +6,7 @@ order: 4
 
 Read this when you want to change settings by hand. It covers how Habakkuk's config file is laid out, where your keys go, and which changes need a restart.
 
-Habakkuk reads its settings from `$HABAKKUK_HOME/config.yaml`. The default home is `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows. There are two ways to get a config. `habakkuk setup` writes a short one that holds only what you chose. `habakkuk init` writes a starter file with comments for every section. To check the config, the keys it names and the channels, run `habakkuk doctor`.
+Habakkuk reads its settings from `$HABAKKUK_HOME/config.yaml`. The default home is `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows. There are two ways to get a config. `hk setup` writes a short one that holds only what you chose. `hk init` writes a starter file with comments for every section. To check the config, the keys it names and the channels, run `hk doctor`.
 
 ## A first config
 
@@ -34,7 +34,7 @@ channels:
   telegram:
     type: telegram
     token_env: TELEGRAM_BOT_TOKEN
-    allow_from: ["123456789"]   # or leave empty and approve people with habakkuk pair
+    allow_from: ["123456789"]   # or leave empty and approve people with hk pair
   slack:
     type: slack
     app_token_env: SLACK_APP_TOKEN              # Socket Mode, one connection for every workspace
@@ -69,9 +69,9 @@ If you'd rather keep those variables in 1Password, Bitwarden, `pass` or behind a
 
 ## Typos and bad values
 
-If your config has a key Habakkuk doesn't know, it tells you. `habakkuk doctor` prints `config: UNKNOWN KEY ...`, and commands such as `habakkuk serve` and `habakkuk chat` warn about it when they start. Habakkuk then ignores the key, so a setting written for a newer release doesn't stop an older binary.
+If your config has a key Habakkuk doesn't know, it tells you. `hk doctor` prints `config: UNKNOWN KEY ...`, and commands such as `hk serve` and `hk chat` warn about it when they start. Habakkuk then ignores the key, so a setting written for a newer release doesn't stop an older binary.
 
-Bad values are different: they stop the config from loading. Examples are an unknown provider in a model name, a permission mode that doesn't exist, or a channel without its token setting. Habakkuk reports every problem at once. If a hand edit breaks the file while `habakkuk serve` is running, it logs the error and keeps running on the last good config.
+Bad values are different: they stop the config from loading. Examples are an unknown provider in a model name, a permission mode that doesn't exist, or a channel without its token setting. Habakkuk reports every problem at once. If a hand edit breaks the file while `hk serve` is running, it logs the error and keeps running on the last good config.
 
 ## What lives in `$HABAKKUK_HOME`
 
@@ -98,7 +98,7 @@ For a description of each file, see [Architecture: storage](../reference/archite
 
 Habakkuk reads `SOUL.md`, `AGENTS.md`, `USER.md` and the memory and skill listings when a session starts. It reads persona files on every turn. So your edits to them reach every new session (start one with `/new`) without a restart. A session that's already open keeps its frozen prompt, the one it started with.
 
-While it runs, `habakkuk serve` checks `$HABAKKUK_HOME` every 3 seconds. What it does depends on what changed:
+While it runs, `hk serve` checks `$HABAKKUK_HOME` every 3 seconds. What it does depends on what changed:
 
 - Memory notes you edited by hand are reindexed at once.
 - Changes to `hooks:` and to spending limits (`budget:`) apply in place.

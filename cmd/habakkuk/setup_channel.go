@@ -29,7 +29,7 @@ var channelMenu = map[string]string{
 	"web":           "Web chat in your browser, on this computer",
 	"slack":         "Slack app",
 	"discord":       "Discord bot",
-	"terminal":      "Just the terminal (habakkuk chat)",
+	"terminal":      "Just the terminal (hk chat)",
 }
 
 // defaultAccount is the account name a new channel of a type gets.
@@ -62,7 +62,7 @@ func (s *setup) channelStep() error {
 			if len(existing) > 0 {
 				s.say("  Keeping %s.", strings.Join(existing, ", "))
 			} else {
-				s.say("  Just the terminal: talk with habakkuk chat (add a channel later with habakkuk setup channel).")
+				s.say("  Just the terminal: talk with hk chat (add a channel later with hk setup channel).")
 			}
 			return nil
 		}
@@ -90,7 +90,7 @@ func (s *setup) channelStep() error {
 		}
 	}
 	if typ == "terminal" {
-		s.say("  Talk with habakkuk chat. Add a channel any time with habakkuk setup channel.")
+		s.say("  Talk with hk chat. Add a channel any time with hk setup channel.")
 		return nil
 	}
 	c := s.channelFor(typ)
@@ -107,7 +107,7 @@ func (s *setup) channelStep() error {
 	case "discord":
 		err = s.setupDiscord(c)
 	case "web":
-		s.say("  The chat page will be at http://%s/ while habakkuk serve runs (only this computer can reach it).", s.webListen())
+		s.say("  The chat page will be at http://%s/ while hk serve runs (only this computer can reach it).", s.webListen())
 	}
 	if err != nil {
 		return err
@@ -190,7 +190,7 @@ func (s *setup) channelFor(typ string) *channelChoice {
 // token asks for a channel secret (hidden), falling back to the one in
 // the environment or .env. unchanged reports that it is the value an
 // existing account already uses, which is not checked again: a running
-// habakkuk serve may be polling with it.
+// hk serve may be polling with it.
 func (s *setup) token(c *channelChoice, env, prompt string) (value string, unchanged bool, err error) {
 	cur, src := s.lookup(env)
 	if !s.interactive {
@@ -261,7 +261,7 @@ func (s *setup) setupWhatsAppAgent(c *channelChoice) error {
 			return err
 		}
 		if unchanged {
-			s.say("  Same key as before; not checked again (habakkuk serve may be using it).")
+			s.say("  Same key as before; not checked again (hk serve may be using it).")
 			return nil
 		}
 		ad := whatsappagent.New(whatsappagent.Config{Token: key, APIURL: s.ep.whatsappAgent})
@@ -270,7 +270,7 @@ func (s *setup) setupWhatsAppAgent(c *channelChoice) error {
 			senders, err = ad.Check(ctx)
 			switch {
 			case errors.Is(err, whatsappagent.ErrKeyInUse):
-				return "ok (the key works; something is already polling with it, probably habakkuk serve)", nil
+				return "ok (the key works; something is already polling with it, probably hk serve)", nil
 			case err != nil:
 				return "", err
 			case len(senders) > 0:
@@ -316,7 +316,7 @@ func (s *setup) setupTelegram(c *channelChoice) error {
 			return err
 		}
 		if unchanged {
-			s.say("  Same token as before; not checked again (habakkuk serve may be using it).")
+			s.say("  Same token as before; not checked again (hk serve may be using it).")
 			return nil
 		}
 		tg := telegram.New(token, s.ep.telegram)
@@ -338,7 +338,7 @@ func (s *setup) setupTelegram(c *channelChoice) error {
 	}
 	if s.opts.allow != "" || len(senders) == 0 {
 		if len(c.allow) == 0 {
-			c.allowNote = "empty: whoever writes gets a pairing code; approve with habakkuk pair CODE"
+			c.allowNote = "empty: whoever writes gets a pairing code; approve with hk pair CODE"
 		}
 		return nil
 	}
@@ -375,14 +375,14 @@ func (s *setup) setupWhatsApp(c *channelChoice) error {
 	}
 	c.link = s.interactive || c.phone != ""
 	if s.opts.allow == "" && s.interactive && len(c.allow) == 0 {
-		v, err := s.line("  Numbers allowed to talk to it, comma-separated (Enter: approve people with habakkuk pair)", "")
+		v, err := s.line("  Numbers allowed to talk to it, comma-separated (Enter: approve people with hk pair)", "")
 		if err != nil {
 			return err
 		}
 		c.allow = splitList(v)
 	}
 	if len(c.allow) == 0 {
-		c.allowNote = "empty: whoever writes gets a pairing code; approve with habakkuk pair CODE"
+		c.allowNote = "empty: whoever writes gets a pairing code; approve with hk pair CODE"
 	}
 	return nil
 }
@@ -400,7 +400,7 @@ func (s *setup) setupSlack(c *channelChoice) error {
 			return err
 		}
 		if sameApp && sameBot {
-			s.say("  Same tokens as before; not checked again (habakkuk serve may be using them).")
+			s.say("  Same tokens as before; not checked again (hk serve may be using them).")
 			return nil
 		}
 		ad := slack.New(app, []string{bot}, s.ep.slack)
@@ -418,7 +418,7 @@ func (s *setup) setupSlack(c *channelChoice) error {
 		return err
 	})
 	if err == nil && len(c.allow) == 0 {
-		c.allowNote = "empty: whoever writes gets a pairing code; approve with habakkuk pair CODE"
+		c.allowNote = "empty: whoever writes gets a pairing code; approve with hk pair CODE"
 	}
 	return err
 }
@@ -432,7 +432,7 @@ func (s *setup) setupDiscord(c *channelChoice) error {
 			return err
 		}
 		if unchanged {
-			s.say("  Same token as before; not checked again (habakkuk serve may be using it).")
+			s.say("  Same token as before; not checked again (hk serve may be using it).")
 			return nil
 		}
 		ad := discord.New(token, s.ep.discord)
@@ -450,7 +450,7 @@ func (s *setup) setupDiscord(c *channelChoice) error {
 		return err
 	})
 	if err == nil && len(c.allow) == 0 {
-		c.allowNote = "empty: whoever writes gets a pairing code; approve with habakkuk pair CODE"
+		c.allowNote = "empty: whoever writes gets a pairing code; approve with hk pair CODE"
 	}
 	return err
 }
@@ -517,7 +517,7 @@ func mergeIDs(have, add []string) []string {
 	return out
 }
 
-// setDisplay is `habakkuk setup channel NAME -progress ... -approvals-detail
+// setDisplay is `hk setup channel NAME -progress ... -approvals-detail
 // ...`: it changes what one existing channel shows in its chats and nothing
 // else. NAME is the account's name under channels:, or its type when only
 // one account has that type.
@@ -543,7 +543,7 @@ func (s *setup) setDisplay() error {
 	shows := map[string]string{config.ProgressPlain: "a short status line", config.ProgressDetailed: "every step", config.ProgressOff: "nothing",
 		config.ApprovalsSummary: "a plain summary", config.ApprovalsFull: "the exact command as well"}
 	s.say("%s: while the agent works the chat shows %s; approval requests show %s.", account, shows[ch.ProgressMode()], shows[ch.ApprovalsDetailMode()])
-	s.say("A running habakkuk serve picks this up in a few seconds. No restart is needed.")
+	s.say("A running hk serve picks this up in a few seconds. No restart is needed.")
 	return nil
 }
 
@@ -571,7 +571,7 @@ func displayAccount(cfg *config.Config, arg string) (string, error) {
 		slices.Sort(ofType)
 		return "", fmt.Errorf("more than one %s channel is set up (%s); name the one to change", arg, strings.Join(ofType, ", "))
 	case len(names) == 0:
-		return "", errors.New("no chat channel is set up yet; add one with habakkuk setup channel")
+		return "", errors.New("no chat channel is set up yet; add one with hk setup channel")
 	}
 	return "", fmt.Errorf("no channel %q in config.yaml; the channels are: %s", arg, strings.Join(names, ", "))
 }

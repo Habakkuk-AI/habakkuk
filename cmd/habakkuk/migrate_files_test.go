@@ -45,7 +45,7 @@ func migrateOut(t *testing.T, home, user, stdin string, args ...string) string {
 	t.Helper()
 	var out bytes.Buffer
 	if err := runMigrate(context.Background(), home, args, strings.NewReader(stdin), &out, noEnv, user); err != nil {
-		t.Fatalf("habakkuk migrate %v: %v\n%s", args, err, out.String())
+		t.Fatalf("hk migrate %v: %v\n%s", args, err, out.String())
 	}
 	assertNoSecrets(t, out.String())
 	return out.String()
@@ -84,7 +84,7 @@ func TestMigrateFilesCopy(t *testing.T) {
 		"Rewrote 3 references to name the copies: 1 in persona files, 1 in schedules, 1 inside 1 copied file.",
 		"Still points into "+src+" (that folder is needed while these remain):",
 		"- .env: named once (scripts/inbox_sync.py)",
-		"habakkuk migrate --dry-run       see what still points into "+src+" before you remove it")
+		"hk migrate --dry-run       see what still points into "+src+" before you remove it")
 	if strings.Contains(out, "hermes-agent") {
 		t.Errorf("hermes-agent is not named by anything imported:\n%s", out)
 	}
@@ -127,10 +127,10 @@ func TestMigrateFilesSkippedThenCopied(t *testing.T) {
 			"- workspaces: ", "(it would go to "+filepath.Join(home, "files", "workspaces")+")",
 			"Still points into "+src,
 			"- scripts: named once (schedule \"Inbox sync\"): your own files, not copied",
-			"habakkuk migrate --files copy copies your own files into "+filepath.Join(home, "files")+" and rewrites the references.",
-			"habakkuk migrate --files copy    bring your files over from "+src)
+			"hk migrate --files copy copies your own files into "+filepath.Join(home, "files")+" and rewrites the references.",
+			"hk migrate --files copy    bring your files over from "+src)
 		if len(args) == 1 {
-			wantAll(t, out, "They are not copied unless you say so: habakkuk migrate --files copy brings them over.")
+			wantAll(t, out, "They are not copied unless you say so: hk migrate --files copy brings them over.")
 		} else {
 			wantAll(t, out, "They will not be copied (--files skip)")
 		}

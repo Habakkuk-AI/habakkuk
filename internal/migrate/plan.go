@@ -163,7 +163,7 @@ func NewPlan(f *Found, home string, o Options) (*Plan, error) {
 	edited := p.planConfig(cfg, root)
 	switch {
 	case len(cfg.Agents) == 0 && !slices.ContainsFunc(p.Items, func(it *Item) bool { return it.Kind == "agent" && it.Changes() }):
-		p.NoConfig = "no agent has a model the import could set up, so config.yaml is not written; run habakkuk setup, then habakkuk migrate again for the channels and MCP servers"
+		p.NoConfig = "no agent has a model the import could set up, so config.yaml is not written; run hk setup, then hk migrate again for the channels and MCP servers"
 		for _, it := range p.Items {
 			if it.Changes() && (it.Kind == "provider" || it.Kind == "mcp" || it.Kind == "channel") {
 				it.Status, it.Detail = Rejected, "needs an agent with a model first"
@@ -236,7 +236,7 @@ func (p *Plan) planConfig(cfg *config.Config, root *yaml.Node) bool {
 		}
 		switch {
 		case have == nil && a.Model == "":
-			it.Status, it.Detail = Rejected, "no model found; its files are imported, then run habakkuk setup model -agent "+a.Name
+			it.Status, it.Detail = Rejected, "no model found; its files are imported, then run hk setup model -agent "+a.Name
 			continue
 		case have == nil:
 			it.Status = New
@@ -359,7 +359,7 @@ func (p *Plan) planConfig(cfg *config.Config, root *yaml.Node) bool {
 func providerDetail(p *Provider) string {
 	switch {
 	case p.Auth != "":
-		return "sign in with habakkuk auth login " + p.Auth
+		return "sign in with hk auth login " + p.Auth
 	case p.Preset != "" && p.BaseURL != "":
 		return p.Preset + " at " + p.BaseURL
 	case p.Preset != "":
@@ -463,7 +463,7 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 		})
 		if len(findings) > 0 {
 			it.Status = Rejected
-			it.Detail = fmt.Sprintf("the security scan flagged %s; read it, then habakkuk skills install %s", strings.Join(hub.Summaries(findings[:min(len(findings), 3)]), "; "), shellQuote(s.Dir))
+			it.Detail = fmt.Sprintf("the security scan flagged %s; read it, then hk skills install %s", strings.Join(hub.Summaries(findings[:min(len(findings), 3)]), "; "), shellQuote(s.Dir))
 			continue
 		}
 		want, err := treeHash(s.Dir, p.rw)

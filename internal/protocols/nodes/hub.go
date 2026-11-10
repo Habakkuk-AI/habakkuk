@@ -24,7 +24,7 @@ type Hub struct {
 	Store *Store
 	Log   *slog.Logger
 	// Heartbeat is how often each connection is pinged and its node checked
-	// against the store, so a node revoked by another process (habakkuk nodes
+	// against the store, so a node revoked by another process (hk nodes
 	// revoke) is cut off within one beat (default 20s).
 	Heartbeat time.Duration
 	// PairTTL is how long a code made from the dashboard works (default 10m).
@@ -300,7 +300,7 @@ func (h *Hub) pair(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"name": req.Name, "secret": secret})
 }
 
-// serveWS holds a `habakkuk node run` connection: hello, then invocations
+// serveWS holds a `hk node run` connection: hello, then invocations
 // down and results up until either side goes away.
 func (h *Hub) serveWS(w http.ResponseWriter, r *http.Request) {
 	c, err := websocket.Accept(w, r, nil) // browsers from other origins are refused

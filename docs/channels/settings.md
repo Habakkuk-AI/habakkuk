@@ -13,16 +13,16 @@ Some rules and settings apply to every channel type. They control who can talk t
 
 When anyone else sends a direct message, they get a pairing code:
 
-> Hi! I don't recognise you yet. To get access, ask my owner to run: `habakkuk pair 4KX9QT`. The code works for one hour.
+> Hi! I don't recognise you yet. To get access, ask my owner to run: `hk pair 4KX9QT`. The code works for one hour.
 
 ```bash
-habakkuk pair 4KX9QT
+hk pair 4KX9QT
 ```
 
 Once you run that, the sender can talk from then on. To see who you are to the bot and how you got access, send `/whoami` in a chat.
 
 > [!WARNING]
-> `allow_from: ["*"]` lets everyone in. Those senders are **guests**. A guest never gets the risky tools: commands, writes outside the workspace, the browser on private addresses, and computer use. A guest also can't answer your approvals, and can't use `/remember`, `/forget` or `/agent`. `habakkuk security` flags open channels. See [Security](../deploy/security.md).
+> `allow_from: ["*"]` lets everyone in. Those senders are **guests**. A guest never gets the risky tools: commands, writes outside the workspace, the browser on private addresses, and computer use. A guest also can't answer your approvals, and can't use `/remember`, `/forget` or `/agent`. `hk security` flags open channels. See [Security](../deploy/security.md).
 
 Only allowed senders can answer approvals and clarifying questions. A `whatsappagent` channel only ever hears from the person who created the agent, so Habakkuk always treats its sender as the owner.
 
@@ -105,18 +105,18 @@ On platforms with buttons, you get Approve and Deny as well. For who may answer 
 
 ## Changing these without a restart
 
-You can change `progress` and `approvals_detail` while `habakkuk serve` is running. The change takes effect from the next message, and you don't need to restart. Each of the ways below edits `config.yaml` in place. Your comments stay, and the previous file is kept as `config.yaml.bak`.
+You can change `progress` and `approvals_detail` while `hk serve` is running. The change takes effect from the next message, and you don't need to restart. Each of the ways below edits `config.yaml` in place. Your comments stay, and the previous file is kept as `config.yaml.bak`.
 
 - **Dashboard.** On the Config page, each chat channel has two controls: "While working, show" and "Approval requests show".
 - **In the chat.** Send `/progress plain|detailed|off` or `/approvals summary|full` to change the channel you're writing in. With no argument, each one shows the current setting. Only the owner can use them.
-- **Terminal.** Run `habakkuk setup channel NAME -progress plain -approvals-detail summary`. `NAME` is the channel's name under `channels:`. When you have only one channel of that type, you can use the type.
+- **Terminal.** Run `hk setup channel NAME -progress plain -approvals-detail summary`. `NAME` is the channel's name under `channels:`. When you have only one channel of that type, you can use the type.
 - **By hand.** Edit `config.yaml`. `serve` picks up the change within a few seconds.
 
 Every other channel setting still needs a restart. The log tells you so.
 
 ## Webhook channels
 
-The webhook channels are `sms`, `msteams`, `googlechat`, `bluebubbles`, `line`, `whatsappcloud`, `messenger`, `instagram`, `feishu`, `dingtalk`, `wecom` and `nextcloudtalk`. Each one receives at `<public_url>/channels/<name>`, where `<name>` is the account name. Run `habakkuk doctor` to print each URL. Habakkuk checks every request against the platform's signature or signed token, so these paths don't need an API token. The platform does have to reach the server:
+The webhook channels are `sms`, `msteams`, `googlechat`, `bluebubbles`, `line`, `whatsappcloud`, `messenger`, `instagram`, `feishu`, `dingtalk`, `wecom` and `nextcloudtalk`. Each one receives at `<public_url>/channels/<name>`, where `<name>` is the account name. Run `hk doctor` to print each URL. Habakkuk checks every request against the platform's signature or signed token, so these paths don't need an API token. The platform does have to reach the server:
 
 ```yaml
 http:
@@ -162,10 +162,10 @@ Some messages reach a chat from outside its own conversation, such as a schedule
 ## Sending without a turn
 
 ```bash
-habakkuk send -to CHANNEL:CHAT[:THREAD] [-file PATH] TEXT
+hk send -to CHANNEL:CHAT[:THREAD] [-file PATH] TEXT
 ```
 
-`habakkuk send` queues a message or file for a chat as a delivery job. It doesn't run a turn. `habakkuk serve` then sends it. Schedules, board cards and an agent's home chat use the same `CHANNEL:CHAT[:THREAD]` form. The agent that answers the chat sees what was sent when the next message arrives there.
+`hk send` queues a message or file for a chat as a delivery job. It doesn't run a turn. `hk serve` then sends it. Schedules, board cards and an agent's home chat use the same `CHANNEL:CHAT[:THREAD]` form. The agent that answers the chat sees what was sent when the next message arrives there.
 
 ## What each platform supports
 

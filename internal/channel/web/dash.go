@@ -46,7 +46,7 @@ type Dash struct {
 	// Secret resolves a variable the config names, so the config view can
 	// scrub its value wherever it appears.
 	Secret func(name string) string
-	// Doctor checks config, credentials and storage, like habakkuk doctor.
+	// Doctor checks config, credentials and storage, like hk doctor.
 	Doctor func(ctx context.Context) []Check
 }
 

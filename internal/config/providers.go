@@ -18,7 +18,7 @@ const (
 	TypeBedrock   = "bedrock"   // AWS Bedrock Converse API
 )
 
-// Logins a provider can use instead of API keys (`habakkuk auth login NAME`).
+// Logins a provider can use instead of API keys (`hk auth login NAME`).
 const (
 	AuthChatGPT = "chatgpt" // ChatGPT subscription, Responses API
 	AuthCopilot = "copilot" // GitHub Copilot subscription, OpenAI-compatible API

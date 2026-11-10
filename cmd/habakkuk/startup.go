@@ -17,11 +17,11 @@ import (
 
 // startupCap is how long serve reports itself as starting at most: a
 // channel that never reports back must not leave it "starting" forever.
-// The channel list in habakkuk status shows such a channel's own state.
+// The channel list in hk status shows such a channel's own state.
 const startupCap = 2 * time.Minute
 
-// serveProgress keeps serve.json for habakkuk status from the first moment
-// of habakkuk serve, saying what a starting process still waits for: the
+// serveProgress keeps serve.json for hk status from the first moment
+// of hk serve, saying what a starting process still waits for: the
 // config and databases, the workers, then each channel's first connection.
 type serveProgress struct {
 	path string

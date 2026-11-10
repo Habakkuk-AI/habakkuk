@@ -1149,7 +1149,7 @@ pages.schedules = view => {
     } catch (err) { fail(err); }
   });
   view.append(h("details", { class: "panel" }, h("summary", {}, "Add a prompt schedule"), h("div", { class: "small muted" },
-    "Times are in the server's timezone" + (app?.timezone ? ` (${app.timezone})` : "") + ". Script schedules are added with habakkuk schedules add -run."), add), out);
+    "Times are in the server's timezone" + (app?.timezone ? ` (${app.timezone})` : "") + ". Script schedules are added with hk schedules add -run."), add), out);
   every(15000, load);
 };
 

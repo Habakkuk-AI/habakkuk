@@ -25,7 +25,7 @@ agents:
 - **Per channel.** A channel's `agent` setting names the default agent for its conversations.
 - **Per conversation or workspace.** `routes` maps a conversation id, or a Slack team id, to an agent. For example: `routes: {T0123456: ops}`.
 - **In the chat.** Send `/agents` to list the agents. `/agent NAME` switches this conversation to that agent and starts a fresh session. The switch is kept in `state.db`. `/agent default` goes back to routing.
-- **Elsewhere.** From the terminal, use `habakkuk chat -agent A` or `habakkuk run -agent A`. In the web chat API, send `"agent": "ops"`. In the OpenAI-compatible API, use `habakkuk/<agent>` as the model name.
+- **Elsewhere.** From the terminal, use `hk chat -agent A` or `hk run -agent A`. In the web chat API, send `"agent": "ops"`. In the OpenAI-compatible API, use `habakkuk/<agent>` as the model name.
 
 If nothing names an agent, the default is the agent called `habakkuk`, or the only agent you have.
 
@@ -90,7 +90,7 @@ channels:
 
 Ask the orchestrator on Slack "what's up with the campaign?" and it delegates the question to marketing. Marketing's answer goes back to the orchestrator, which sums it up for you on Slack. A short version also lands in your Marketing chat on WhatsApp. Each agent's chat keeps the history of its own work.
 
-`home` sets the agent's home chat. You write it like a `habakkuk send` target, as `CHANNEL:CONVERSATION` or `CHANNEL:CONVERSATION:THREAD`, and the channel must be one you've configured. On a `whatsappagent` channel, `creator` stands for you. Send each agent one message first so it knows your id.
+`home` sets the agent's home chat. You write it like a `hk send` target, as `CHANNEL:CONVERSATION` or `CHANNEL:CONVERSATION:THREAD`, and the channel must be one you've configured. On a `whatsappagent` channel, `creator` stands for you. Send each agent one message first so it knows your id.
 
 `report_home` decides what gets posted there automatically:
 

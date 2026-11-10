@@ -27,10 +27,10 @@ The agent's [permission mode and approvals](../agents/approvals.md) decide what 
 | Drive desktop apps with the mouse and keyboard | `computer` | [Computer use](computer-use.md) |
 | Search the web | hosted search, or `search:` | [Media and web search](media.md#web-search) |
 | Read images, PDFs and Office files; make images and video | `core` with `images:` or `video:` | [Media and web search](media.md) |
-| Talk out loud, or answer voice notes with voice | `realtime:`, `habakkuk talk`, `tts:` | [Voice](voice.md) |
+| Talk out loud, or answer voice notes with voice | `realtime:`, `hk talk`, `tts:` | [Voice](voice.md) |
 | Sit in a video call and take notes | `meeting` | [Meetings](meetings.md) |
 | Use GitHub, Linear, Notion, a database and hundreds more | `mcp:<server>` | [MCP](mcp.md) |
-| Install someone's packaged skills, tools and commands | `habakkuk plugins install` | [Plugins](plugins.md) |
+| Install someone's packaged skills, tools and commands | `hk plugins install` | [Plugins](plugins.md) |
 | Control Home Assistant, talk to other agents, lend it a phone's camera | `homeassistant`, `a2a`, device nodes | [Integrations](integrations.md) |
 | Remember things and follow skills | `memory`, `skills` (default) | [Memory](../agents/memory.md), [Skills](../agents/skills.md) |
 | Schedule work and hand it to other agents | `schedule`, `delegate`, `board` (default) | [Schedules](../agents/schedules.md), [Multi-agent](../agents/multi-agent.md) |

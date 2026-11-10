@@ -419,7 +419,7 @@ func (s *Server) scheduleList(w http.ResponseWriter, r *http.Request) {
 }
 
 // scheduleCreate adds a prompt schedule. Script schedules run shell
-// commands unattended, so they stay a CLI-only thing (habakkuk schedules add
+// commands unattended, so they stay a CLI-only thing (hk schedules add
 // -run), as with the agents' schedule_create tool.
 func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request) {
 	st, _ := s.schedules(w)

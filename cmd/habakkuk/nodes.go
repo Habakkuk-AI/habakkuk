@@ -31,10 +31,10 @@ func cliLang(cfg *config.Config) i18n.Printer {
 	return i18n.Printer(i18n.FromEnv())
 }
 
-// nodeCmd is `habakkuk node pair|run`.
+// nodeCmd is `hk node pair|run`.
 func nodeCmd(ctx context.Context, home string, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: habakkuk node pair [-ttl 10m] | habakkuk node run -server URL [-code CODE] -name NAME [-allow-run] [-allow-camera] [-dir DIR]")
+		return errors.New("usage: hk node pair [-ttl 10m] | hk node run -server URL [-code CODE] -name NAME [-allow-run] [-allow-camera] [-dir DIR]")
 	}
 	switch args[0] {
 	case "pair":
@@ -79,7 +79,7 @@ func nodePair(ctx context.Context, home string, args []string, w io.Writer) erro
 	fmt.Fprintln(w, p.T("node.pair.code", code, ttl.Round(time.Second)))
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, p.T("node.pair.run"))
-	fmt.Fprintf(w, "\n  habakkuk node run -server %s -code %s -name NAME\n\n", base, code)
+	fmt.Fprintf(w, "\n  hk node run -server %s -code %s -name NAME\n\n", base, code)
 	fmt.Fprintln(w, p.T("node.pair.scan"))
 	link := base + "/app/pair.html#" + code
 	fmt.Fprintln(w, link)
@@ -100,7 +100,7 @@ type nodeState struct {
 func nodeRun(ctx context.Context, args []string, w io.Writer) error {
 	fs := flag.NewFlagSet("node run", flag.ExitOnError)
 	server := fs.String("server", "", "the Habakkuk server's URL, e.g. https://habakkuk.example.com")
-	code := fs.String("code", "", "a pairing code from `habakkuk node pair` (first run only)")
+	code := fs.String("code", "", "a pairing code from `hk node pair` (first run only)")
 	name := fs.String("name", "", "this node's name, e.g. laptop")
 	allowRun := fs.Bool("allow-run", false, "offer system.run: let Habakkuk run shell commands here (each still needs approval)")
 	allowCamera := fs.Bool("allow-camera", false, "offer camera.snap (needs ffmpeg)")
@@ -128,7 +128,7 @@ func nodeRun(ctx context.Context, args []string, w io.Writer) error {
 		fmt.Fprintln(w, p.T("node.run.paired", *name))
 	}
 	if st == nil {
-		return fmt.Errorf("this machine is not paired yet: run `habakkuk node pair` on the server, then `habakkuk node run -server URL -code CODE -name NAME` here")
+		return fmt.Errorf("this machine is not paired yet: run `hk node pair` on the server, then `hk node run -server URL -code CODE -name NAME` here")
 	}
 	if (*server != "" && strings.TrimRight(*server, "/") != st.Server) || (*name != "" && *name != st.Name) {
 		return fmt.Errorf("%s is paired as %s with %s; pass -code to pair again", *statePath, st.Name, st.Server)
@@ -180,7 +180,7 @@ func saveNodeState(path string, st *nodeState) error {
 	return store.WriteFileAtomic(path, append(data, '\n'), 0o600)
 }
 
-// nodesCmd is `habakkuk nodes [list|revoke NAME]`, run on the server.
+// nodesCmd is `hk nodes [list|revoke NAME]`, run on the server.
 func nodesCmd(ctx context.Context, home string, args []string, w io.Writer) error {
 	cfg, st, err := openNodeStore(ctx, home)
 	if err != nil {
@@ -220,5 +220,5 @@ func nodesCmd(ctx context.Context, home string, args []string, w io.Writer) erro
 		fmt.Fprintln(w, p.T("nodes.revoked", args[1]))
 		return nil
 	}
-	return errors.New("usage: habakkuk nodes [list | revoke NAME]")
+	return errors.New("usage: hk nodes [list | revoke NAME]")
 }

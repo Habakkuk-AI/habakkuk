@@ -34,13 +34,13 @@ func (l *Library) Hub(f *hub.Fetcher) *hub.Manager {
 }
 
 // Backups holds skills replaced by an update, removed, merged or archived
-// by the curator; `habakkuk skills restore` puts them back.
+// by the curator; `hk skills restore` puts them back.
 func (l *Library) Backups() hub.Backups {
 	return hub.Backups{Dir: filepath.Join(l.SharedDir(), ".backups")}
 }
 
 // Untrusted reports where an installed shared skill came from when the
-// owner has not approved it yet (`habakkuk skills approve`). Skills written
+// owner has not approved it yet (`hk skills approve`). Skills written
 // by hand or by an agent, and plugin skills (enabling a plugin approves
 // it), are trusted.
 func (l *Library) Untrusted(s Skill) (source string, untrusted bool) {
@@ -59,7 +59,7 @@ func (l *Library) Untrusted(s Skill) (source string, untrusted bool) {
 }
 
 // Disabled reports whether an installed shared skill is held back until
-// the owner approves it (habakkuk skills approve): it came from outside,
+// the owner approves it (hk skills approve): it came from outside,
 // is not approved, and ships files an agent could run as programs. Such a
 // skill is not listed or loaded; one without scripts loads with a caution.
 func (l *Library) Disabled(s Skill) bool {
@@ -114,7 +114,7 @@ func untrustedNote(source string) string {
 }
 
 // Invoke builds the message that runs a skill explicitly, as /skill NAME
-// and `habakkuk run -skill NAME` do: the skill's instructions in full,
+// and `hk run -skill NAME` do: the skill's instructions in full,
 // followed by the request.
 func (l *Library) Invoke(agent, name, request string) (string, error) {
 	s, body, files, err := l.View(agent, name)

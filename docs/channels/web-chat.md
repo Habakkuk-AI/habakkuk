@@ -4,11 +4,11 @@ description: "The chat page Habakkuk serves itself, and the same chat over a JSO
 order: 13
 ---
 
-Web chat is the chat page Habakkuk serves itself. Use it when you want to talk to an agent from a browser, or from a client you write. When your config has an `http` section, `habakkuk serve` serves a small chat page at `/`, and the same chat over a JSON API. You don't need an account anywhere else. The [dashboard](../interfaces/dashboard.md) and [desktop app](../interfaces/desktop-app.md) use it too.
+Web chat is the chat page Habakkuk serves itself. Use it when you want to talk to an agent from a browser, or from a client you write. When your config has an `http` section, `hk serve` serves a small chat page at `/`, and the same chat over a JSON API. You don't need an account anywhere else. The [dashboard](../interfaces/dashboard.md) and [desktop app](../interfaces/desktop-app.md) use it too.
 
 ## Set it up
 
-Run `habakkuk setup` and pick **web chat on this computer**. Or add an `http` section by hand:
+Run `hk setup` and pick **web chat on this computer**. Or add an `http` section by hand:
 
 ```yaml
 http:

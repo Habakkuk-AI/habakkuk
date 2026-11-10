@@ -1,18 +1,18 @@
 ---
 title: Run it on a server
 nav_title: Server
-description: "Keep habakkuk serve running under systemd, launchd or Docker, with the setup service command, unit files, container volumes, ports and keys."
+description: "Keep hk serve running under systemd, launchd or Docker, with the setup service command, unit files, container volumes, ports and keys."
 order: 1
 ---
 
-To keep `habakkuk serve` running on a machine that stays on, run it under a service manager (systemd or launchd) or in a Docker container.
+To keep `hk serve` running on a machine that stays on, run it under a service manager (systemd or launchd) or in a Docker container.
 
 ## Under a service manager
 
-Habakkuk doesn't install a service for you. Run `habakkuk setup service` instead. It writes the service file and prints the commands that install it:
+Habakkuk doesn't install a service for you. Run `hk setup service` instead. It writes the service file and prints the commands that install it:
 
 ```bash
-habakkuk setup service
+hk setup service
 ```
 
 ```bash tab="Linux (systemd)"
@@ -28,10 +28,10 @@ mkdir -p ~/Library/LaunchAgents && cp ~/.habakkuk/ai.habakkuk.agent.plist ~/Libr
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.habakkuk.agent.plist
 ```
 
-These files run `habakkuk serve` with your `HABAKKUK_HOME` and `PATH`, and they restart it if it fails. On macOS, its output goes to `serve.out.log` and `serve.err.log` in `$HABAKKUK_HOME`.
+These files run `hk serve` with your `HABAKKUK_HOME` and `PATH`, and they restart it if it fails. On macOS, its output goes to `serve.out.log` and `serve.err.log` in `$HABAKKUK_HOME`.
 
 > [!IMPORTANT]
-> First stop any `habakkuk serve` that's running in a terminal. Most channels let only one program poll them.
+> First stop any `hk serve` that's running in a terminal. Most channels let only one program poll them.
 
 ### Writing the unit by hand
 
@@ -54,7 +54,7 @@ To use a different home, set `Environment=HABAKKUK_HOME=...` in the unit.
 
 ### Windows
 
-`habakkuk setup service` only covers Linux and macOS. On Windows, run `habakkuk serve` with whichever service manager or task scheduler you prefer, or run it in WSL.
+`hk setup service` only covers Linux and macOS. On Windows, run `hk serve` with whichever service manager or task scheduler you prefer, or run it in WSL.
 
 ### The desktop app
 
@@ -62,7 +62,7 @@ The [desktop app](../interfaces/desktop-app.md) can start `serve` for you too, b
 
 ## In a container
 
-The container image runs `habakkuk serve` and sets `HABAKKUK_HOME=/data`:
+The container image runs `hk serve` and sets `HABAKKUK_HOME=/data`:
 
 ```bash
 docker run --rm -it -v habakkuk-data:/data ghcr.io/habakkuk-ai/habakkuk:latest init      # once
@@ -90,8 +90,8 @@ volumes:
 ## After it is running
 
 ```bash
-habakkuk status       # serve uptime, channels, queue, today's cost, recent errors
-habakkuk logs -f      # follow the log
+hk status             # serve uptime, channels, queue, today's cost, recent errors
+hk logs -f            # follow the log
 ```
 
 For health checks and metrics, see [Observability](observability.md). To keep it safe, see [Backups and updates](backups-and-updates.md).

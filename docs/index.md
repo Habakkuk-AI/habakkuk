@@ -23,5 +23,5 @@ New here? Start with the [quickstart](get-started/quickstart.md). It takes a few
 - [Use cases](get-started/use-cases.md): concrete setups, from a daily briefing to a team of agents.
 - [Model providers](models/providers.md): Anthropic, OpenAI, Gemini, DeepSeek, local models and 20 more presets.
 - [Permissions and approvals](agents/approvals.md): what an agent may do on its own, and who says yes.
-- [Run it on a server](deploy/server.md): keep `habakkuk serve` running with systemd, launchd or Docker.
+- [Run it on a server](deploy/server.md): keep `hk serve` running with systemd, launchd or Docker.
 - [Troubleshooting](help/troubleshooting.md): common errors and how to fix them.

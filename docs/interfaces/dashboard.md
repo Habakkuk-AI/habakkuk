@@ -4,7 +4,7 @@ description: "Turn on the control dashboard at /app/ with an http section, see w
 order: 2
 ---
 
-With an `http` section in your config, `habakkuk serve` also serves a chat page, a control dashboard, a JSON API and webhooks. You probably have one already. `habakkuk setup` adds an `http` section on loopback (an address only this computer can reach) to every new home. So the dashboard is there from your first `habakkuk serve`, and `serve` prints its address. The section looks like this:
+With an `http` section in your config, `hk serve` also serves a chat page, a control dashboard, a JSON API and webhooks. You probably have one already. `hk setup` adds an `http` section on loopback (an address only this computer can reach) to every new home. So the dashboard is there from your first `hk serve`, and `serve` prints its address. The section looks like this:
 
 ```yaml
 http:
@@ -14,7 +14,7 @@ http:
 ```
 
 > [!IMPORTANT]
-> Without `token_env`, the server accepts only a loopback address. It also answers only requests whose `Host` is a loopback name, so a web page can't reach it through DNS rebinding. To reach the server from anywhere else, set a token and put it behind HTTPS. You can do that with a reverse proxy, or with `habakkuk expose tailscale`. See [Remote access](../deploy/remote-access.md).
+> Without `token_env`, the server accepts only a loopback address. It also answers only requests whose `Host` is a loopback name, so a web page can't reach it through DNS rebinding. To reach the server from anywhere else, set a token and put it behind HTTPS. You can do that with a reverse proxy, or with `hk expose tailscale`. See [Remote access](../deploy/remote-access.md).
 
 ## The dashboard
 

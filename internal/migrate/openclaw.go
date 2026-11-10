@@ -144,11 +144,11 @@ func (r *ocReader) agents() error {
 		}
 		primary, fallbacks := modelSpec(model)
 		if primary == "" {
-			r.f.leftover("a model for agent "+a.Name, "habakkuk setup model -agent "+a.Name)
+			r.f.leftover("a model for agent "+a.Name, "hk setup model -agent "+a.Name)
 		} else if ref := r.resolve(primary, defaults); ref != "" {
 			a.Model = ref
 		} else {
-			r.f.leftover(fmt.Sprintf("model %s for agent %s (no equivalent provider)", primary, a.Name), "habakkuk setup model -agent "+a.Name)
+			r.f.leftover(fmt.Sprintf("model %s for agent %s (no equivalent provider)", primary, a.Name), "hk setup model -agent "+a.Name)
 		}
 		for _, fb := range fallbacks {
 			if ref := r.resolve(fb, defaults); ref != "" && ref != a.Model && !slices.Contains(a.Fallbacks, ref) {
@@ -348,7 +348,7 @@ func (r *ocReader) workspaceFiles(a *Agent, ws string, cfg map[string]any) error
 	dedupeTitles(a.Notes)
 	if t, _ := read("HEARTBEAT.md"); t != "" {
 		r.f.leftover("the heartbeat checklist of agent "+a.Name+" (HEARTBEAT.md)",
-			`habakkuk schedules add -agent `+a.Name+` -name heartbeat -when "@every 30m" -prompt "..."`)
+			`hk schedules add -agent `+a.Name+` -name heartbeat -when "@every 30m" -prompt "..."`)
 	}
 	return nil
 }
@@ -431,7 +431,7 @@ func (r *ocReader) mcp() {
 			continue
 		}
 		if t, _ := m["transport"].(string); t == "sse" {
-			r.f.skip("MCP server %s uses the older SSE transport; Habakkuk connects with Streamable HTTP, so check it with habakkuk mcp", raw)
+			r.f.skip("MCP server %s uses the older SSE transport; Habakkuk connects with Streamable HTTP, so check it with hk mcp", raw)
 		}
 		s := r.f.readMCP(raw, m, r.env, r.used)
 		if s == nil {
@@ -466,7 +466,7 @@ func (r *ocReader) channels() {
 			continue
 		}
 		if !slices.Contains(chatTypes, typ) {
-			r.f.leftover("the "+typ+" channel", "habakkuk setup channel, or see the channels guide")
+			r.f.leftover("the "+typ+" channel", "hk setup channel, or see the channels guide")
 			continue
 		}
 		accounts, _ := base["accounts"].(map[string]any)
@@ -530,19 +530,19 @@ func (r *ocReader) channel(typ, id string, c map[string]any) {
 			}
 		}
 		if ch.TokenEnv = token(d.token, v, d.token); ch.TokenEnv == "" {
-			r.f.leftover("the Telegram bot token for "+name, "habakkuk setup channel telegram")
+			r.f.leftover("the Telegram bot token for "+name, "hk setup channel telegram")
 			return
 		}
 	case "discord":
 		if ch.TokenEnv = token(d.token, c["token"], d.token); ch.TokenEnv == "" {
-			r.f.leftover("the Discord bot token for "+name, "habakkuk setup channel discord")
+			r.f.leftover("the Discord bot token for "+name, "hk setup channel discord")
 			return
 		}
 	case "slack":
 		bot := token(d.token, c["botToken"], d.token)
 		app := token(d.app, c["appToken"], d.app)
 		if bot == "" || app == "" {
-			r.f.leftover("Slack account "+name+" (Socket Mode needs a bot and an app-level token)", "habakkuk setup channel slack")
+			r.f.leftover("Slack account "+name+" (Socket Mode needs a bot and an app-level token)", "hk setup channel slack")
 			return
 		}
 		ch.AppTokenEnv, ch.BotTokensEnv = app, []string{bot}
@@ -563,12 +563,12 @@ func (r *ocReader) channel(typ, id string, c map[string]any) {
 			}
 		}
 		if !strings.HasPrefix(ch.Account, "+") {
-			r.f.leftover("Signal account "+name+" (no number configured)", "habakkuk setup channel signal")
+			r.f.leftover("Signal account "+name+" (no number configured)", "hk setup channel signal")
 			return
 		}
 	case "whatsapp":
 		ch.Link = true
-		r.f.leftover("the WhatsApp linked-device session", "habakkuk whatsapp link -account "+name+" (or habakkuk setup channel whatsapp) to link the number again")
+		r.f.leftover("the WhatsApp linked-device session", "hk whatsapp link -account "+name+" (or hk setup channel whatsapp) to link the number again")
 	}
 	r.f.Channels = append(r.f.Channels, ch)
 }
@@ -808,7 +808,7 @@ func (r *ocReader) deliverTo(job, agentName string, d map[string]any) *Address {
 		}
 	}
 	if typ != "" || to != "" {
-		r.f.skip("schedule %q (agent %s): its delivery to %s %s was dropped (no matching channel); add one with habakkuk schedules", job, agentName, typ, to)
+		r.f.skip("schedule %q (agent %s): its delivery to %s %s was dropped (no matching channel); add one with hk schedules", job, agentName, typ, to)
 	}
 	return nil
 }
@@ -819,11 +819,11 @@ func (r *ocReader) leftovers() {
 	}
 	if ms, _ := filepath.Glob(filepath.Join(r.dir, "agents", "*", "agent", "openclaw-agent.sqlite")); len(ms) > 0 || exists(filepath.Join(r.dir, "credentials", "oauth.json")) {
 		r.f.leftover("API keys and sign-ins saved by onboarding (in its own credential store)",
-			"put the keys in "+"$HABAKKUK_HOME/.env, or run habakkuk setup model")
+			"put the keys in "+"$HABAKKUK_HOME/.env, or run hk setup model")
 	}
 	for _, d := range []string{"extensions", "hooks"} {
 		if entries, _ := os.ReadDir(filepath.Join(r.dir, d)); len(entries) > 0 {
-			r.f.leftover(d, "see habakkuk plugins and the hooks section of config.yaml")
+			r.f.leftover(d, "see hk plugins and the hooks section of config.yaml")
 		}
 	}
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/llm/auth"
 )
 
-const mcpLoginUsage = `usage: habakkuk mcp login [-device] [-no-browser] NAME
+const mcpLoginUsage = `usage: hk mcp login [-device] [-no-browser] NAME
   Signs in to the MCP server NAME (auth: oauth in config.yaml) and keeps
   the tokens in $HABAKKUK_HOME/auth.json.
   -device      use the device flow (enter a code on any device), when the server offers it
@@ -61,9 +61,9 @@ func mcpLoginCmd(ctx context.Context, home string, args []string) error {
 	}
 	e, err := a.Auth.LoginMCP(ctx, l)
 	if errors.Is(err, auth.ErrNoBrowserFlow) && headless {
-		return fmt.Errorf("%w.\nThis machine has no browser. Either run `habakkuk mcp login %s` on a machine that has one "+
+		return fmt.Errorf("%w.\nThis machine has no browser. Either run `hk mcp login %s` on a machine that has one "+
 			"(with the same server in its config) and copy its %s/auth.json here (mode 0600), or forward a fixed callback_port "+
-			"over SSH (ssh -L PORT:127.0.0.1:PORT) and run `habakkuk mcp login -no-browser %s`", err, name, home, name)
+			"over SSH (ssh -L PORT:127.0.0.1:PORT) and run `hk mcp login -no-browser %s`", err, name, home, name)
 	}
 	if err != nil {
 		return err
@@ -75,14 +75,14 @@ func mcpLoginCmd(ctx context.Context, home string, args []string) error {
 	if e.RefreshToken == "" {
 		fmt.Print("; the server gave no refresh token, so sign in again when it expires")
 	}
-	fmt.Printf(".\nCheck it with habakkuk mcp; a running habakkuk serve picks the login up on its next connection.\n")
+	fmt.Printf(".\nCheck it with hk mcp; a running hk serve picks the login up on its next connection.\n")
 	return nil
 }
 
 // mcpLogoutCmd forgets a server's OAuth login.
 func mcpLogoutCmd(ctx context.Context, home string, args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: habakkuk mcp logout NAME")
+		return errors.New("usage: hk mcp logout NAME")
 	}
 	found, err := auth.NewStore(home).Delete(ctx, auth.MCPLoginName(args[0]))
 	if err != nil {

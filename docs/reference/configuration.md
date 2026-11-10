@@ -6,7 +6,7 @@ order: 2
 
 Every section of the config file is listed here, with the settings for providers, agents and channels. Use it to look up a key. Where a section has a guide, the table links to it.
 
-The config file is `$HABAKKUK_HOME/config.yaml`. It's strict YAML, so an unknown key is an error. A setting that ends in `_env` doesn't hold the value itself. It names an environment variable that holds it. A `.env` entry or a [secret manager](../deploy/security.md#secret-managers) reference works too. That way, secrets never go in the file. `habakkuk init` writes a commented starter config, and `habakkuk doctor` checks one.
+The config file is `$HABAKKUK_HOME/config.yaml`. It's strict YAML, so an unknown key is an error. A setting that ends in `_env` doesn't hold the value itself. It names an environment variable that holds it. A `.env` entry or a [secret manager](../deploy/security.md#secret-managers) reference works too. That way, secrets never go in the file. `hk init` writes a commented starter config, and `hk doctor` checks one.
 
 ## Top-level sections
 
@@ -19,10 +19,10 @@ The config file is `$HABAKKUK_HOME/config.yaml`. It's strict YAML, so an unknown
 | `mcp_servers` | MCP servers whose tools agents can use | [MCP servers](../tools/mcp.md) |
 | `mcp_server` | Habakkuk as an MCP server over HTTP (`http`, `allow_send`) | [MCP servers](../tools/mcp.md#habakkuk-as-an-mcp-server) |
 | `http` | The HTTP server: `listen`, `token_env`, `public_url`, `webhooks` | [Dashboard and web chat](../interfaces/dashboard.md) |
-| `transcription` | Speech-to-text for voice notes and `habakkuk talk`: `provider`, `model`, `prompt` | [Models and providers](../models/speech.md#speech-to-text) |
+| `transcription` | Speech-to-text for voice notes and `hk talk`: `provider`, `model`, `prompt` | [Models and providers](../models/speech.md#speech-to-text) |
 | `tts` | Speech for `speak` and voice replies: `provider`, `key_env`, `base_url`, `model`, `voice`, `format`, `instructions`, `max_chars` | [Voice](../tools/voice.md) |
 | `realtime` | Live voice mode in the dashboard: `provider`, `model`, `voice`, `key_env`, `base_url`, `transcription`, `instructions`, `ttl` | [Voice](../tools/voice.md#live-mode-in-the-dashboard) |
-| `talk` | `habakkuk talk`: `wake`, `follow_up`, `silence`, `threshold`, `input`, `device`, `player`, `barge_in` | [Voice](../tools/voice.md) |
+| `talk` | `hk talk`: `wake`, `follow_up`, `silence`, `threshold`, `input`, `device`, `player`, `barge_in` | [Voice](../tools/voice.md) |
 | `images` | `image_generate`: `provider`, `key_env`, `base_url`, `model`, `edit_model`, `size` | [Tools and approvals](../tools/media.md) |
 | `video` | `video_generate`: `provider`, `key_env`, `base_url`, `model`, `image_model`, `size`, `seconds`, `timeout` | [Tools and approvals](../tools/media.md) |
 | `search` | `web_search`: `provider`, `key_env`, `url` | [Tools and approvals](../tools/media.md) |

@@ -5,7 +5,7 @@
 
 # Gateway: messages, pairing, built-in commands
 turn.queue_failed: "Má bínú, mi ò lè gba ọ̀rọ̀ yẹn. Jọ̀wọ́ fi ránṣẹ́ lẹ́ẹ̀kan sí i."
-pair.offer: "Ẹ n lẹ́ o! N kò tíì mọ̀ yín. Láti rí àyè, ẹ sọ fún ẹni tó ni mí pé kó ṣe èyí:\n\n`habakkuk pair %s`\n\nKóòdù náà wúlò fún wákàtí kan."
+pair.offer: "Ẹ n lẹ́ o! N kò tíì mọ̀ yín. Láti rí àyè, ẹ sọ fún ẹni tó ni mí pé kó ṣe èyí:\n\n`hk pair %s`\n\nKóòdù náà wúlò fún wákàtí kan."
 help.header: "Àwọn àṣẹ:"
 help.new: "bẹ̀rẹ̀ ìjíròrò tuntun"
 help.stop: "dá ohun tí mò ń ṣe dúró"
@@ -99,7 +99,7 @@ goal.paused: "Àfojúsùn ti dúró díẹ̀: mo nílò rẹ fún ìgbésẹ̀ t
 goal.stopped: "Àfojúsùn dúró lẹ́yìn ìgbésẹ̀ %d láìparí: %s\nFi /goal ránṣẹ́ lẹ́ẹ̀kan sí i láti máa bá a lọ."
 export.nothing: "Kò tíì sí ohun tí a lè gbé jáde."
 export.no_files: "Ìjíròrò yìí kò lè gba fáìlì."
-export.too_large: "Ìjíròrò yìí ti tóbi jù láti fi ránṣẹ́ gẹ́gẹ́ bí fáìlì kan; lo `habakkuk show %s` dípò rẹ̀."
+export.too_large: "Ìjíròrò yìí ti tóbi jù láti fi ránṣẹ́ gẹ́gẹ́ bí fáìlì kan; lo `hk show %s` dípò rẹ̀."
 export.prepare_failed: "Má bínú, mi ò lè pèsè fáìlì náà."
 export.queue_failed: "Má bínú, mi ò lè fi fáìlì náà sí ìlà."
 export.caption: "ọ̀rọ̀ %d"
@@ -159,7 +159,7 @@ node.pair.scan: "Tàbí ṣí ìjápọ̀ yìí lórí fóònù (kóòdù QR ní
 node.run.paired: "A ti so ó pọ̀ gẹ́gẹ́ bí %s."
 node.run.connected: "A ti so pọ̀ mọ́ %s gẹ́gẹ́ bí %s, ohun tí ó ń pèsè: %s"
 node.run.lost: "Ìsopọ̀ ti já (%s); a ó tún sopọ̀ ní %s."
-nodes.none: "Kò tíì sí node kankan tí a so pọ̀. So ọ̀kan pọ̀ pẹ̀lú `habakkuk node pair`."
+nodes.none: "Kò tíì sí node kankan tí a so pọ̀. So ọ̀kan pọ̀ pẹ̀lú `hk node pair`."
 nodes.revoked: "A ti fagilé %s: kò lè sopọ̀ mọ́ mọ́."
 
 # Plain progress lines, plain approval requests, /progress and /approvals.

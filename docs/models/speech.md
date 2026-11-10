@@ -1,14 +1,14 @@
 ---
 title: Speech
-description: "Set up speech-to-text for voice notes and habakkuk talk, and text-to-speech for the speak tool and spoken replies."
+description: "Set up speech-to-text for voice notes and hk talk, and text-to-speech for the speak tool and spoken replies."
 order: 6
 ---
 
-Speech has two sides: speech-to-text and text-to-speech. Each has its own section in `config.yaml`, and this page shows you how to set up both. For how you use them (voice notes, `habakkuk talk`, Live mode), see the [Voice](../tools/voice.md) page.
+Speech has two sides: speech-to-text and text-to-speech. Each has its own section in `config.yaml`, and this page shows you how to set up both. For how you use them (voice notes, `hk talk`, Live mode), see the [Voice](../tools/voice.md) page.
 
 ## Speech-to-text
 
-Habakkuk transcribes voice notes from chats, dashboard recordings and `habakkuk talk`. It does this through a provider of type `openai` that has an `/audio/transcriptions` endpoint:
+Habakkuk transcribes voice notes from chats, dashboard recordings and `hk talk`. It does this through a provider of type `openai` that has an `/audio/transcriptions` endpoint:
 
 ```yaml
 transcription:

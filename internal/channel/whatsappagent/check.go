@@ -13,8 +13,8 @@ import (
 )
 
 // ErrKeyInUse means the key works but another program is polling with it,
-// most likely a running `habakkuk serve`.
-var ErrKeyInUse = errors.New("whatsappagent: the API key works, but another program is polling with it (is habakkuk serve already running with this key?)")
+// most likely a running `hk serve`.
+var ErrKeyInUse = errors.New("whatsappagent: the API key works, but another program is polling with it (is hk serve already running with this key?)")
 
 // ErrBadKey means the platform refused the API key.
 var ErrBadKey = errors.New("whatsappagent: WhatsApp refused the API key; copy it again from the agent's chat (Chat info > API key); it changes when it is regenerated or WhatsApp is reinstalled")

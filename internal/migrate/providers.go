@@ -81,7 +81,7 @@ func (f *Found) knownProvider(name, baseURL string, env map[string]string, keyVa
 	}
 	if k.auth != "" {
 		f.provider(&Provider{Name: k.auth, Auth: k.auth})
-		f.leftover("the "+k.auth+" subscription sign-in", "habakkuk auth login "+k.auth)
+		f.leftover("the "+k.auth+" subscription sign-in", "hk auth login "+k.auth)
 		return k.auth, true
 	}
 	pr := config.Presets[k.preset]

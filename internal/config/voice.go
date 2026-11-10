@@ -25,7 +25,7 @@ type Realtime struct {
 	TTL time.Duration `yaml:"ttl"`
 }
 
-// Talk configures `habakkuk talk`, the local voice loop.
+// Talk configures `hk talk`, the local voice loop.
 type Talk struct {
 	// Wake phrases start a turn when an utterance begins with one; empty
 	// means every utterance is a turn unless -wake is given.

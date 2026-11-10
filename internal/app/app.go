@@ -83,7 +83,7 @@ type App struct {
 	State       *state.Store    // per-session settings, goals, task lists, drafts (state.db)
 	Hooks       *hooks.Runner   // commands run on events
 	Usage       *usage.Store    // per-call token usage and per-session model choices
-	Pricer      *usage.Pricer   // prices usage for habakkuk usage and /usage
+	Pricer      *usage.Pricer   // prices usage for hk usage and /usage
 	Budget      *budget.Tracker // spending limits, checked before every model call
 	Auth        *auth.Store     // subscription logins (auth.json)
 	Telemetry   *Telemetry      // metrics and trace export
@@ -165,7 +165,7 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 		a.Close()
 		return nil, err
 	}
-	// MCP servers connect on Start (chat, run, habakkuk mcp) or in the
+	// MCP servers connect on Start (chat, run, hk mcp) or in the
 	// background (serve), not here, so commands that never run tools do not
 	// spawn them.
 	a.MCP = mcp.New(cfg.MCP, a.Tools, a.Secret, log)

@@ -40,12 +40,12 @@ func TestSetupSummaryNonInteractive(t *testing.T) {
 	for _, want := range []string{
 		"Nova is ready. Setup took ",
 		"  Model      openai/gpt-test\n",
-		"  Talk       this terminal, with habakkuk chat, or Chat in the dashboard\n",
+		"  Talk       this terminal, with hk chat, or Chat in the dashboard\n",
 		"  Memory     on: Nova keeps what matters",
 		"  Dashboard  http://" + cfg.HTTP.Listen + "/app/",
-		"Try these first:\n  1. Run habakkuk chat and say hi.\n",
+		"Try these first:\n  1. Run hk chat and say hi.\n",
 		`2. Get a morning brief: "Every weekday at 8, send me a short brief of my day."`,
-		"run while habakkuk serve does",
+		"run while hk serve does",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("summary lacks %q:\n%s", want, out)

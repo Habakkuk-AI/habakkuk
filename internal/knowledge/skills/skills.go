@@ -218,7 +218,7 @@ func (l *Library) get(agent, name string) (Skill, string, error) {
 		if err == nil {
 			s.Shared, s.Plugin = c.shared, c.plugin
 			if s.Shared && !s.Plugin && l.Disabled(s) {
-				return Skill{}, "", fmt.Errorf("skill %q is disabled: it was installed from outside, ships scripts and is not approved yet (the owner can run habakkuk skills approve %s)", name, name)
+				return Skill{}, "", fmt.Errorf("skill %q is disabled: it was installed from outside, ships scripts and is not approved yet (the owner can run hk skills approve %s)", name, name)
 			}
 			return s, body, nil
 		}

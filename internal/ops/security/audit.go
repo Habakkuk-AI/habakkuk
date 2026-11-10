@@ -67,7 +67,7 @@ type Options struct {
 	// Disk reports free and total bytes of the file system holding path;
 	// nil uses statfs.
 	Disk func(path string) (free, total uint64, err error)
-	// BackupDirs are searched for habakkuk backup archives besides
+	// BackupDirs are searched for hk backup archives besides
 	// $HABAKKUK_HOME and $HABAKKUK_HOME/backups.
 	BackupDirs []string
 }
@@ -83,7 +83,7 @@ func Audit(o Options) []Finding {
 	var out []Finding
 	if o.ConfigErr != nil {
 		out = append(out, Finding{Severity: High, Check: "config", Message: "config.yaml does not load: " + o.ConfigErr.Error(),
-			Fix: "fix config.yaml (habakkuk doctor shows the errors); the checks below that need it were skipped"})
+			Fix: "fix config.yaml (hk doctor shows the errors); the checks below that need it were skipped"})
 	}
 	out = append(out, checkPermissions(o.Home)...)
 	if c := o.Config; c != nil {
@@ -184,17 +184,17 @@ func checkPermissions(home string) []Finding {
 	if len(secret) > 0 {
 		out = append(out, Finding{Severity: High, Check: "permissions",
 			Message: fmt.Sprintf("%d credential, chat, memory or database file(s) are readable by other users: %s", len(secret), examples(secret)),
-			Fix:     "chmod 600 on each (habakkuk security -fix)", apply: chmodAll(secret, 0o600, 0o077)})
+			Fix:     "chmod 600 on each (hk security -fix)", apply: chmodAll(secret, 0o600, 0o077)})
 	}
 	if len(dirs) > 0 {
 		out = append(out, Finding{Severity: Medium, Check: "permissions",
 			Message: fmt.Sprintf("%d folder(s) under %s are open to other users: %s", len(dirs), home, examples(dirs)),
-			Fix:     "chmod 700 on each (habakkuk security -fix)", apply: chmodAll(dirs, 0o700, 0o077)})
+			Fix:     "chmod 700 on each (hk security -fix)", apply: chmodAll(dirs, 0o700, 0o077)})
 	}
 	if len(other) > 0 {
 		out = append(out, Finding{Severity: Low, Check: "permissions",
 			Message: fmt.Sprintf("%d other file(s) are readable by other users: %s", len(other), examples(other)),
-			Fix:     "chmod go-rwx on each (habakkuk security -fix)", apply: chmodAll(other, 0, 0o077)})
+			Fix:     "chmod go-rwx on each (hk security -fix)", apply: chmodAll(other, 0, 0o077)})
 	}
 	if len(foreign) > 0 {
 		out = append(out, Finding{Severity: Medium, Check: "permissions",
@@ -315,7 +315,7 @@ func checkChannels(c *config.Config) []Finding {
 		ch := c.Channels[name]
 		out = append(out, Finding{Severity: High, Check: "channels",
 			Message: fmt.Sprintf("channel %s (%s) has allow_from \"*\": anyone who finds the bot can talk to agent %s and spend your model budget", name, ch.Type, ch.Agent),
-			Fix:     fmt.Sprintf("list sender ids in channels.%s.allow_from, or leave it empty and approve people with habakkuk pair", name)})
+			Fix:     fmt.Sprintf("list sender ids in channels.%s.allow_from, or leave it empty and approve people with hk pair", name)})
 	}
 	return out
 }
@@ -335,11 +335,11 @@ func checkHTTP(c *config.Config, secret func(string) string) []Finding {
 		case strings.HasPrefix(h.PublicURL, "http://"):
 			out = append(out, Finding{Severity: High, Check: "http",
 				Message: fmt.Sprintf("http listens on %s and public_url %s is plain http: the API token crosses the network unencrypted", h.Listen, h.PublicURL),
-				Fix:     "put a TLS proxy or tunnel in front (an https public_url), or listen on 127.0.0.1 and use habakkuk expose tailscale"})
+				Fix:     "put a TLS proxy or tunnel in front (an https public_url), or listen on 127.0.0.1 and use hk expose tailscale"})
 		case h.PublicURL == "":
 			out = append(out, Finding{Severity: Medium, Check: "http",
 				Message: fmt.Sprintf("http listens on %s, reachable from the network without TLS", h.Listen),
-				Fix:     "listen on 127.0.0.1 behind a TLS proxy, or use habakkuk expose tailscale"})
+				Fix:     "listen on 127.0.0.1 behind a TLS proxy, or use hk expose tailscale"})
 		}
 		if c.Metrics.Public {
 			out = append(out, Finding{Severity: Low, Check: "http",
@@ -496,7 +496,7 @@ func checkSkills(home string) []Finding {
 			if len(writable) > 0 {
 				out = append(out, Finding{Severity: High, Check: "skills",
 					Message: fmt.Sprintf("skill %s can be changed by other users: %s", e.Name(), examples(writable)),
-					Fix:     "chmod go-w (habakkuk security -fix)", apply: chmodAll(writable, 0, 0o022)})
+					Fix:     "chmod go-w (hk security -fix)", apply: chmodAll(writable, 0, 0o022)})
 			}
 			if len(foreign) > 0 {
 				out = append(out, Finding{Severity: High, Check: "skills",
@@ -601,17 +601,17 @@ func checkBackups(o Options) []Finding {
 	if len(archives) > 0 {
 		out = append(out, Finding{Severity: High, Check: "backups",
 			Message: fmt.Sprintf("backup archive(s) readable by other users: %s", examples(archives)),
-			Fix:     "chmod 600 on each (habakkuk security -fix)", apply: chmodAll(archives, 0o600, 0)})
+			Fix:     "chmod 600 on each (hk security -fix)", apply: chmodAll(archives, 0o600, 0)})
 	}
 	switch age := o.Now.Sub(newest); {
 	case newest.IsZero():
 		out = append(out, Finding{Severity: Info, Check: "backups",
-			Message: "no habakkuk backup archive found in " + strings.Join(dirs, ", "),
-			Fix:     "run habakkuk backup -o " + filepath.Join(o.Home, "backups", "habakkuk-backup.tar.gz") + " regularly (a schedule works)"})
+			Message: "no hk backup archive found in " + strings.Join(dirs, ", "),
+			Fix:     "run hk backup -o " + filepath.Join(o.Home, "backups", "habakkuk-backup.tar.gz") + " regularly (a schedule works)"})
 	case age > 14*24*time.Hour:
 		out = append(out, Finding{Severity: Low, Check: "backups",
 			Message: fmt.Sprintf("the newest backup archive is %d days old", int(age.Hours()/24)),
-			Fix:     "run habakkuk backup"})
+			Fix:     "run hk backup"})
 	}
 	// Credential copies (WhatsApp) for accounts no longer configured.
 	whatsapp := false

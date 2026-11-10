@@ -424,9 +424,9 @@ func (s *shell) trayMenu(st core.State) *application.Menu {
 
 	if st.Local != nil && !st.Local.External {
 		if st.Local.State == supervisor.Stopped {
-			m.Add("Resume habakkuk serve").OnClick(func(*application.Context) { go s.localAction(s.ctrl.StartLocal) })
+			m.Add("Resume hk serve").OnClick(func(*application.Context) { go s.localAction(s.ctrl.StartLocal) })
 		} else {
-			m.Add("Pause habakkuk serve").OnClick(func(*application.Context) { go s.localAction(s.ctrl.StopLocal) })
+			m.Add("Pause hk serve").OnClick(func(*application.Context) { go s.localAction(s.ctrl.StopLocal) })
 		}
 	}
 	m.AddCheckbox("Start at Login", st.Settings.StartAtLogin).OnClick(func(ctx *application.Context) {
@@ -445,7 +445,7 @@ func (s *shell) trayMenu(st core.State) *application.Menu {
 
 func (s *shell) localAction(fn func() error) {
 	if err := fn(); err != nil {
-		s.log.Warn("habakkuk serve", "err", err)
+		s.log.Warn("hk serve", "err", err)
 		fallbackNotify("Habakkuk", err.Error())
 	}
 	s.Changed()

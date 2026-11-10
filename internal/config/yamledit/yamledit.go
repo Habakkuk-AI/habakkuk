@@ -1,6 +1,6 @@
 // Package yamledit edits config.yaml as a YAML node tree, so a change
 // touches only what was asked and keeps the rest of the file, comments
-// included. habakkuk setup and habakkuk migrate both use it.
+// included. hk setup and hk migrate both use it.
 package yamledit
 
 import (

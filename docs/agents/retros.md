@@ -9,9 +9,9 @@ A retro (short for retrospective) is when an agent looks back over a period of i
 Once you turn them on, retros run on a timer. You can also run one yourself at any time:
 
 ```bash
-habakkuk retro                      # the default agent's last 7 days, now
-habakkuk retro -agent coder -days 3
-habakkuk retro -dry-run             # print the evidence and the plan; change nothing
+hk retro                            # the default agent's last 7 days, now
+hk retro -agent coder -days 3
+hk retro -dry-run                   # print the evidence and the plan; change nothing
 ```
 
 In a chat, send `/retro` to do the same for the conversation's agent. It replies with the summary.
@@ -65,22 +65,22 @@ retro:
   deliver: ""            # a CHANNEL:CHAT target, none, or empty for the agent's home chat
 ```
 
-- **When.** `habakkuk serve` checks once a minute. A retro covers the time since the previous slot, which is a week for `weekly`. If a slot is more than a day late because the server was down, it's skipped. Habakkuk doesn't run it late. A cron expression may run at most once an hour.
+- **When.** `hk serve` checks once a minute. A retro covers the time since the previous slot, which is a week for `weekly`. If a slot is more than a day late because the server was down, it's skipped. Habakkuk doesn't run it late. A cron expression may run at most once an hour.
 - **Agents.** If `agents` is empty, every agent that had turns in the period gets a retro.
 - **Model.** Habakkuk tries `model` first, then the agent's own chain.
 - **Times** use the `timezone` from the config.
 
-If there's no `retro:` section, nothing runs on a timer. `habakkuk retro` and `/retro` still work.
+If there's no `retro:` section, nothing runs on a timer. `hk retro` and `/retro` still work.
 
 ## Approving proposals
 
 The proposals are numbered in both the summary and the report. You answer them in a chat or in the terminal:
 
 ```bash
-habakkuk retro list [-agent A]          # past retros, newest first
-habakkuk retro show ID                  # the full report; ID may be latest
-habakkuk retro apply ID 1 3             # apply proposals 1 and 3
-habakkuk retro reject ID 2
+hk retro list [-agent A]                # past retros, newest first
+hk retro show ID                        # the full report; ID may be latest
+hk retro apply ID 1 3                   # apply proposals 1 and 3
+hk retro reject ID 2
 ```
 
 ```text
@@ -92,9 +92,9 @@ habakkuk retro reject ID 2
 
 Here's what applying does:
 
-- **Skill, memory and `SOUL.md` changes** are written through the [memory history](memory.md#memory-history-and-undo). Each one is recorded as a change with an id, so you can undo it with `habakkuk memory restore ID` or `/undo-memory ID`. The change notes which retro and which action made it.
-- **Pausing a schedule** is done for you. To turn the schedule back on, run `habakkuk schedules resume ID`. Any other schedule change is spelled out so you can make it yourself.
-- **Config changes are never made for you.** When you apply one, Habakkuk marks it `approved` and prints the exact edit to make in `config.yaml`. A wrong config can stop Habakkuk from starting, and many keys change what agents may do (permissions, approvals, channels, budgets). So the edit stays a decision you make in the file, and `habakkuk doctor` checks it.
+- **Skill, memory and `SOUL.md` changes** are written through the [memory history](memory.md#memory-history-and-undo). Each one is recorded as a change with an id, so you can undo it with `hk memory restore ID` or `/undo-memory ID`. The change notes which retro and which action made it.
+- **Pausing a schedule** is done for you. To turn the schedule back on, run `hk schedules resume ID`. Any other schedule change is spelled out so you can make it yourself.
+- **Config changes are never made for you.** When you apply one, Habakkuk marks it `approved` and prints the exact edit to make in `config.yaml`. A wrong config can stop Habakkuk from starting, and many keys change what agents may do (permissions, approvals, channels, budgets). So the edit stays a decision you make in the file, and `hk doctor` checks it.
 - **Questions** are marked `approved` when you say yes.
 
 Each action has a status. It's one of `proposed`, `applied`, `approved` (you said yes to something only you can do), `rejected` or `failed` (with the reason). If you apply an action twice, the second time changes nothing. You can still apply a rejected action later. You can't reject an applied one, but you can undo it through the memory history.
@@ -105,14 +105,14 @@ These rules hold even with `apply: safe`:
 
 - Changes to `SOUL.md`, config and schedules always wait for you. So do questions.
 - Pinned notes and skills are left alone, and the action stays proposed.
-- A note that a retro writes on its own is marked untrusted, because the evidence includes tool output and messages from outside. Run `habakkuk memory trust SLUG` to vouch for one. Notes you approve aren't marked.
+- A note that a retro writes on its own is marked untrusted, because the evidence includes tool output and messages from outside. Run `hk memory trust SLUG` to vouch for one. Notes you approve aren't marked.
 - Every change the retro makes is recorded in the memory history as made by `retro`, and you can undo it.
 
 ## Reports and delivery
 
 Every retro writes a report to `agents/<agent>/retros/YYYY-MM-DD.md`. The file is named for the last day of the period, with `-2`, `-3` added when there's more than one a day. The report holds the summary, what went well and what went badly, and the follow-up on the last retro. It lists each proposal with its exact change, reason, expected effect, risk, evidence and status. It also holds the evidence itself. When you approve or reject a proposal, the file is updated.
 
-A scheduled retro also sends a short summary to `deliver`, or to the agent's home chat. The summary says what went wrong, what changed, and which numbered proposals need a yes. If nothing notable happened, it sends nothing. A retro you run with `habakkuk retro` or `/retro` isn't delivered, because you see the result where you asked.
+A scheduled retro also sends a short summary to `deliver`, or to the agent's home chat. The summary says what went wrong, what changed, and which numbered proposals need a yes. If nothing notable happened, it sends nothing. A retro you run with `hk retro` or `/retro` isn't delivered, because you see the result where you asked.
 
 Here's an example summary:
 

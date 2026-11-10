@@ -47,12 +47,12 @@ In team channels and group chats, the bot answers when you mention it, and it re
 - It shows a typing indicator.
 - You answer approvals with **yes** or **no**.
 
-Habakkuk learns each conversation's service URL from the messages it receives, and keeps it in `channels/msteams-<name>.json`. That's why schedules and `habakkuk send` can reach a Teams conversation only after someone has written in it.
+Habakkuk learns each conversation's service URL from the messages it receives, and keeps it in `channels/msteams-<name>.json`. That's why schedules and `hk send` can reach a Teams conversation only after someone has written in it.
 
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
-| Messages never arrive | Check the messaging endpoint, that `public_url` reaches `listen`, and `habakkuk doctor`'s webhook URL. |
+| Messages never arrive | Check the messaging endpoint, that `public_url` reaches `listen`, and `hk doctor`'s webhook URL. |
 | Replies fail with an auth error | Check `app_id` and the secret. For a single-tenant bot, set `tenant_id`. |
 | A scheduled message to Teams fails | Nobody has written in that conversation since the channel was set up. Send the bot a message there first. |

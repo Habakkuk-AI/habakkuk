@@ -68,7 +68,7 @@ func (t createTool) Run(ctx context.Context, env *tools.Env, input json.RawMessa
 		return "", err
 	}
 	if in.Command != nil || in.Run != nil {
-		return "", errors.New("schedule_create cannot run commands; only the owner can add a script schedule (habakkuk schedules add -run)")
+		return "", errors.New("schedule_create cannot run commands; only the owner can add a script schedule (hk schedules add -run)")
 	}
 	// Script schedules run shell commands unattended, so this tool must never
 	// set Command, Workdir or the other script fields.

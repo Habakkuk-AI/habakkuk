@@ -136,7 +136,7 @@ Maintainers cut a release by pushing a `v*` tag. `.github/workflows/release.yml`
 3. Tag and push: `git tag -a vX.Y.Z -m "Habakkuk vX.Y.Z" && git push origin vX.Y.Z`. A tag with a hyphen (`v1.4.0-beta.1`) becomes a pre-release, which only the `beta` update channel installs.
 4. Set `version` to the next `-dev` version on `main`.
 
-The release is signed with an Ed25519 key. The private key is the `RELEASE_SIGNING_KEY` repository secret (PEM); its public half is the `RELEASE_PUBLIC_KEY` repository variable (the raw 32 bytes, base64), which is built into every release binary so `habakkuk update` refuses anything signed with another key. The workflow stops before publishing if the two are not one pair. Losing the private key means existing installs cannot update on their own, so keep a copy offline.
+The release is signed with an Ed25519 key. The private key is the `RELEASE_SIGNING_KEY` repository secret (PEM); its public half is the `RELEASE_PUBLIC_KEY` repository variable (the raw 32 bytes, base64), which is built into every release binary so `hk update` refuses anything signed with another key. The workflow stops before publishing if the two are not one pair. Losing the private key means existing installs cannot update on their own, so keep a copy offline.
 
 ## Documentation
 

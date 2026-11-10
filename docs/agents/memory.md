@@ -34,7 +34,7 @@ The user profile is `agents/<name>/USER.md`. It's a short file of `## Section` b
 
 ## Untrusted notes
 
-Outside content means web pages, search results, MCP and other network tools, and an email inbox channel. A note saved in a turn that has read any of it is marked `trust: untrusted`, and the model sees it with a warning. This stops text planted in a page from quietly becoming something the agent believes. Turns like that can't change `USER.md` at all. To vouch for a note, run `habakkuk memory trust <slug>`.
+Outside content means web pages, search results, MCP and other network tools, and an email inbox channel. A note saved in a turn that has read any of it is marked `trust: untrusted`, and the model sees it with a warning. This stops text planted in a page from quietly becoming something the agent believes. Turns like that can't change `USER.md` at all. To vouch for a note, run `hk memory trust <slug>`.
 
 ## In a chat and the terminal
 
@@ -43,13 +43,13 @@ In a chat, send `/remember <text>` to save your words as a note. Send `/forget <
 The terminal has these commands:
 
 ```bash
-habakkuk memory                       # an agent's memories, newest first
-habakkuk memory search coffee         # search them
-habakkuk memory show <slug>           # one note, with where it came from
-habakkuk memory forget <slug>         # move a note to the memory trash
-habakkuk memory trust <slug> [yes|no] # vouch for a note written from outside content
-habakkuk memory profile               # the agent's profile of you (USER.md)
-habakkuk memory log                   # what the background review changed
+hk memory                             # an agent's memories, newest first
+hk memory search coffee               # search them
+hk memory show <slug>                 # one note, with where it came from
+hk memory forget <slug>               # move a note to the memory trash
+hk memory trust <slug> [yes|no] # vouch for a note written from outside content
+hk memory profile                     # the agent's profile of you (USER.md)
+hk memory log                         # what the background review changed
 ```
 
 Add `-agent NAME` to work with an agent other than the default.
@@ -69,7 +69,7 @@ memory:
 ```
 
 - **Embeddings.** Habakkuk embeds each note when it's saved. Embeddings are cached by content, so a note that hasn't changed is never sent again. Search then blends keyword matches with matches on meaning. If the embedding service fails, search carries on with keywords.
-- **Review.** With `review: true`, `habakkuk serve` reviews each conversation once it has been quiet for `review_idle`. It saves what's worth keeping, with `source: review`. It also writes one line per review to `memory/.review.log`, which you can read with `habakkuk memory log`.
+- **Review.** With `review: true`, `hk serve` reviews each conversation once it has been quiet for `review_idle`. It saves what's worth keeping, with `source: review`. It also writes one line per review to `memory/.review.log`, which you can read with `hk memory log`.
 - **Nightly pass.** This merges notes that are near-duplicates. It also archives notes that haven't been updated or read for `stale_days`.
 
 A review looks at the facts in one conversation. A retro looks wider. In a retro, an agent looks back over a week of its own work (failures, denied approvals, stalled tasks, corrections) and proposes changes to its skills, notes and `SOUL.md`. See [Retros](retros.md).
@@ -84,18 +84,18 @@ Whenever something an agent remembers changes, Habakkuk keeps a record. It recor
 - who made the change: the agent (through a tool such as `memory_save` or `set_identity`), you (through a chat command, the CLI or the dashboard), the background review, the skills curator, or a hand edit;
 - the session, when it happened, and whether outside content had entered that turn.
 
-Habakkuk picks up edits you make to the files yourself too. For a note, that happens when the index next looks at it. For everything else, it happens once a minute while `habakkuk serve` runs.
+Habakkuk picks up edits you make to the files yourself too. For a note, that happens when the index next looks at it. For everything else, it happens once a minute while `hk serve` runs.
 
 ```bash
-habakkuk memory history [-agent A] [-file NAME] [-since 7d]   # newest first, with change ids
-habakkuk memory diff <id>                                     # one change as a unified diff
-habakkuk memory restore <id> [-after]                         # put back the text before it (or after it, to redo)
-habakkuk memory pin <slug> | skill:<name> | profile            # background jobs leave it alone
-habakkuk memory unpin <slug> | skill:<name> | profile
-habakkuk memory pins
+hk memory history [-agent A] [-file NAME] [-since 7d]         # newest first, with change ids
+hk memory diff <id>                                           # one change as a unified diff
+hk memory restore <id> [-after]                               # put back the text before it (or after it, to redo)
+hk memory pin <slug> | skill:<name> | profile                  # background jobs leave it alone
+hk memory unpin <slug> | skill:<name> | profile
+hk memory pins
 ```
 
-- **Undo is a change too.** A restore records a new change that names the one it went back to, so you can undo an undo. If you restore a version in which the file didn't exist, the file moves to a `.trash/` folder beside it. For a skill, the history holds `SKILL.md`. If the curator merged a skill away or archived it, run `habakkuk skills restore NAME` to get its supporting files back.
+- **Undo is a change too.** A restore records a new change that names the one it went back to, so you can undo an undo. If you restore a version in which the file didn't exist, the file moves to a `.trash/` folder beside it. For a skill, the history holds `SKILL.md`. If the curator merged a skill away or archived it, run `hk skills restore NAME` to get its supporting files back.
 - **In chat**, `/memory` lists the last 10 changes for the conversation's agent, with their short ids. `/undo-memory <id>` undoes one. The agent also has a read-only `memory_history` tool, so you can ask it "what did you change in my profile?".
 - **Pinned** notes, `USER.md` and skills are left alone by the background review, the nightly pass and the skills curator. None of them rewrites, merges away or archives anything that's pinned. You and the agent can still edit it.
 - **Crash-safe.** Habakkuk first writes a change to the history as pending. Then it replaces the file atomically. Then it marks the change done. After a crash, it keeps the pending change if the file holds the new text, and drops it if the file doesn't. So the history shows every change that happened and none that didn't.

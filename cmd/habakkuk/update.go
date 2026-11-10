@@ -32,12 +32,12 @@ import (
 //     `doctor --upgrade-check` against the current home, which loads the
 //     config and reads every database's schema version without writing
 //     anything; if the new binary objects, nothing has changed;
-//  3. back up config, secrets and every database (habakkuk backup with
+//  3. back up config, secrets and every database (hk backup with
 //     -env, plus memory, usage and nodes), and keep a copy of the current
 //     binary;
 //  4. swap the binary in one step (installBinary).
 //
-// `habakkuk update --rollback` puts the previous binary back and restores
+// `hk update --rollback` puts the previous binary back and restores
 // the databases and config from the backup taken in step 3, after backing
 // up the current state once more so a rollback loses nothing either.
 //
@@ -113,7 +113,7 @@ type updater struct {
 	Restore func(archive, home string) error
 	// Check runs the staged binary's upgrade check against home; nil skips it.
 	Check func(ctx context.Context, exe, home string) error
-	// Running reports a habakkuk serve using home.
+	// Running reports a hk serve using home.
 	Running func(home string) (pid int, ok bool)
 }
 
@@ -226,7 +226,7 @@ func (u *updater) update(ctx context.Context, o updateOptions) error {
 		return nil
 	}
 	if o.checkOnly {
-		fmt.Fprintf(u.Out, "update available on the %s channel: %s -> %s (run `habakkuk update`)\n", ch, u.Current, rel.Tag)
+		fmt.Fprintf(u.Out, "update available on the %s channel: %s -> %s (run `hk update`)\n", ch, u.Current, rel.Tag)
 		return nil
 	}
 	bin, err := u.download(ctx, rel)
@@ -277,7 +277,7 @@ func (u *updater) update(ctx context.Context, o updateOptions) error {
 		return fmt.Errorf("install: %w", err)
 	}
 	u.prune()
-	fmt.Fprintf(u.Out, "updated %s from %s to %s.\nRestart running Habakkuk processes (habakkuk serve) to use it; undo with `habakkuk update --rollback`.\n",
+	fmt.Fprintf(u.Out, "updated %s from %s to %s.\nRestart running Habakkuk processes (hk serve) to use it; undo with `hk update --rollback`.\n",
 		u.Exe, u.Current, rel.Tag)
 	return nil
 }
@@ -298,7 +298,7 @@ func (u *updater) rollback(ctx context.Context, force bool) error {
 	}
 	if u.Running != nil {
 		if pid, ok := u.Running(u.Home); ok && !force {
-			return fmt.Errorf("habakkuk serve is running (pid %d): stop it first so its databases can be restored, or pass -force", pid)
+			return fmt.Errorf("hk serve is running (pid %d): stop it first so its databases can be restored, or pass -force", pid)
 		}
 	}
 	stamp := u.now().UTC().Format("20060102-150405")
@@ -398,7 +398,7 @@ func runUpgradeCheck(ctx context.Context, exe, home string) error {
 	return nil
 }
 
-// serveRunning reports a live habakkuk serve on home from its heartbeat.
+// serveRunning reports a live hk serve on home from its heartbeat.
 func serveRunning(home string) (int, bool) {
 	hb, err := readHeartbeat(home)
 	if err != nil || hb.PID == os.Getpid() {
@@ -446,7 +446,7 @@ func setAsideUnlisted(archive, home, dir string) ([]string, error) {
 // configMigrateCmd writes config.yaml in the current format.
 func configCmd(home string, args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] != "migrate" {
-		return errors.New("usage: habakkuk config migrate [-dry-run]")
+		return errors.New("usage: hk config migrate [-dry-run]")
 	}
 	fs := flag.NewFlagSet("config migrate", flag.ExitOnError)
 	dry := fs.Bool("dry-run", false, "show what would change without writing")

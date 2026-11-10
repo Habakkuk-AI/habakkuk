@@ -61,7 +61,7 @@ func (a *App) a2aHandler(c *config.A2A) http.Handler {
 }
 
 // RunIntegrations runs the Home Assistant event listener until ctx ends;
-// only `habakkuk serve` calls it.
+// only `hk serve` calls it.
 func (a *App) RunIntegrations(ctx context.Context) {
 	h := a.Cfg.HomeAssistant
 	if h == nil || len(h.Triggers) == 0 {

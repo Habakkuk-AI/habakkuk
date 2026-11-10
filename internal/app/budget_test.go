@@ -53,7 +53,7 @@ func TestBudgetWiredAndReloadedInPlace(t *testing.T) {
 	if err := a.Router.Gate(caller, llm.Target{Endpoint: "anthropic", Model: "claude-opus-5-5"}); err != nil {
 		t.Fatalf("raised limit not applied: %v", err)
 	}
-	if !strings.Contains(logs.String(), "spending limits reloaded") || strings.Contains(logs.String(), "restart habakkuk serve") {
+	if !strings.Contains(logs.String(), "spending limits reloaded") || strings.Contains(logs.String(), "restart hk serve") {
 		t.Fatalf("logs: %s", logs.String())
 	}
 	if rep := a.BudgetReport(); rep.Agents[0].PerTurn != 2 {

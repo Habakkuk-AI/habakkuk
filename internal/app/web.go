@@ -9,7 +9,7 @@ import (
 )
 
 // openWeb prepares the HTTP surface when the config has an http section. It
-// opens web.db but does not listen; `habakkuk serve` does that.
+// opens web.db but does not listen; `hk serve` does that.
 func (a *App) openWeb(ctx context.Context, home string) error {
 	h := a.Cfg.HTTP
 	st, err := web.OpenStore(ctx, filepath.Join(home, "web.db"))

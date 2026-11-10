@@ -149,7 +149,7 @@ func (a *App) memoryPool() *jobs.Pool {
 	}
 }
 
-// MemoryLoop runs in `habakkuk serve`: once a minute it queues retros that
+// MemoryLoop runs in `hk serve`: once a minute it queues retros that
 // are due, records hand edits in the memory history, embeds notes that have
 // no vector yet (new or hand-edited ones) and queues reviews of quiet
 // sessions and the nightly pass.

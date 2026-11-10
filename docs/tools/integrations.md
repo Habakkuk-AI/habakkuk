@@ -40,7 +40,7 @@ Add the `homeassistant` toolset to an agent and it gets the tools `ha_states`, `
 
 - A service call goes through only if its domain, and the domain of every entity it targets, is in `allow_domains` or `confirm`.
 - Every call to a `confirm` domain asks a human first, whatever the permission mode.
-- `triggers` follow Home Assistant's event bus, which only happens in `habakkuk serve`. When an event matches, a turn starts in a fresh session and the reply goes to `deliver`.
+- `triggers` follow Home Assistant's event bus, which only happens in `hk serve`. When an event matches, a turn starts in a fresh session and the reply goes to `deliver`.
 - Anything Home Assistant returns is treated as outside content.
 
 For the matching rules, see [Architecture: Home Assistant](../reference/architecture.md#home-assistant).
@@ -113,10 +113,10 @@ For more, see [Architecture: other clients](../reference/architecture.md#other-c
 ## Code editors (ACP)
 
 ```bash
-habakkuk acp [-agent A]
+hk acp [-agent A]
 ```
 
-`habakkuk acp` speaks the Agent Client Protocol (ACP) on stdio. An editor that supports ACP can then use a Habakkuk agent as its coding agent. Set your editor up to run that command.
+`hk acp` speaks the Agent Client Protocol (ACP) on stdio. An editor that supports ACP can then use a Habakkuk agent as its coding agent. Set your editor up to run that command.
 
 - The session's working folder becomes its workspace.
 - The editor gets model text, tool calls and plans as a stream.
@@ -128,10 +128,10 @@ habakkuk acp [-agent A]
 A device node is another machine, such as a phone or a laptop, that lends Habakkuk some of its capabilities. Those are notifications, screenshots, location and the clipboard. When you allow it, they also include running commands, the camera and a folder of files. A `nodes` section turns this on, and it needs `http`. Then you pair each device:
 
 ```bash
-habakkuk node pair                       # on the server: a one-time code and a QR code for phones
-habakkuk node run -server URL -code CODE -name laptop [-allow-run] [-allow-camera] [-dir DIR]   # on the device
-habakkuk nodes                           # paired nodes
-habakkuk nodes revoke laptop
+hk node pair                             # on the server: a one-time code and a QR code for phones
+hk node run -server URL -code CODE -name laptop [-allow-run] [-allow-camera] [-dir DIR]         # on the device
+hk nodes                                 # paired nodes
+hk nodes revoke laptop
 ```
 
 - A browser can be a node too. Pair it through the dashboard, or through `/app/pair.html` on a phone. It offers notifications, location and a camera snapshot, behind the browser's own permission prompts.

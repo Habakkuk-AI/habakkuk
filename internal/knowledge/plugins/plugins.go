@@ -42,7 +42,7 @@ func Hub(home string, f *hub.Fetcher) *hub.Manager {
 	}
 }
 
-// Describe lists what a plugin brings, one line each, for `habakkuk plugins`
+// Describe lists what a plugin brings, one line each, for `hk plugins`
 // to show before it is enabled.
 func Describe(name string, m *config.PluginManifest) []string {
 	var out []string

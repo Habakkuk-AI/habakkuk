@@ -16,11 +16,11 @@ import (
 )
 
 const retroUsage = `usage:
-  habakkuk retro [-agent A] [-days N] [-dry-run]
-  habakkuk retro list [-agent A]
-  habakkuk retro show ID
-  habakkuk retro apply ID N [N...]
-  habakkuk retro reject ID N [N...]
+  hk retro [-agent A] [-days N] [-dry-run]
+  hk retro list [-agent A]
+  hk retro show ID
+  hk retro apply ID N [N...]
+  hk retro reject ID N [N...]
 ID may be latest: the newest retro of the default agent, or of -agent A`
 
 // retroModels, when set, replaces the model a retro asks (tests).
@@ -99,7 +99,7 @@ func retroCmd(ctx context.Context, home string, args []string, w io.Writer) erro
 			return err
 		}
 		if len(list) == 0 {
-			fmt.Fprintln(w, "No retros yet. habakkuk retro runs one now; retro.every in config.yaml runs them on a timer.")
+			fmt.Fprintln(w, "No retros yet. hk retro runs one now; retro.every in config.yaml runs them on a timer.")
 		}
 		for _, ret := range list {
 			state := ret.Summary

@@ -29,7 +29,7 @@ func (a *App) openDash() {
 	a.Web.Dash = d
 }
 
-// DoctorChecks checks what habakkuk doctor checks that a running process can
+// DoctorChecks checks what hk doctor checks that a running process can
 // see: provider keys and logins, the databases, channel, HTTP and MCP
 // credentials. Details name variables, never their values.
 func (a *App) DoctorChecks(ctx context.Context) []web.Check {
@@ -45,7 +45,7 @@ func (a *App) DoctorChecks(ctx context.Context) []web.Check {
 			if _, ok := logins[p.Auth]; ok {
 				add("provider "+name, true, "logged in (%s)", p.Auth)
 			} else {
-				add("provider "+name, false, "not logged in: run habakkuk auth login %s", p.Auth)
+				add("provider "+name, false, "not logged in: run hk auth login %s", p.Auth)
 			}
 			continue
 		}

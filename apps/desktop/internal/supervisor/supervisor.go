@@ -1,4 +1,4 @@
-// Package supervisor runs `habakkuk serve` as a child process: it starts it,
+// Package supervisor runs `hk serve` as a child process: it starts it,
 // keeps its output for the logs view, restarts it with a backoff when it
 // exits on its own, and stops it gracefully (SIGTERM, then a kill after a
 // grace period) when asked.
@@ -177,7 +177,7 @@ func (s *Supervisor) loop(stop, done chan struct{}, first chan<- error) {
 		if exitErr != nil {
 			msg = exitErr.Error()
 		}
-		s.note("habakkuk serve " + msg)
+		s.note("hk serve " + msg)
 		if time.Since(started) >= s.healthy() {
 			restarts = 0
 		}
@@ -254,7 +254,7 @@ func (s *Supervisor) terminate(cmd *exec.Cmd, wait <-chan error) {
 	case err := <-wait:
 		s.note(exitNote(err))
 	case <-time.After(grace):
-		s.note("habakkuk serve did not stop in time; killed")
+		s.note("hk serve did not stop in time; killed")
 		kill(cmd)
 		if err := <-wait; err != nil {
 			s.note(exitNote(err))
@@ -321,7 +321,7 @@ func (s *Supervisor) healthy() time.Duration {
 
 func exitNote(err error) string {
 	if err == nil {
-		return "habakkuk serve stopped"
+		return "hk serve stopped"
 	}
-	return "habakkuk serve stopped: " + err.Error()
+	return "hk serve stopped: " + err.Error()
 }

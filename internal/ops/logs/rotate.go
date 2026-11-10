@@ -1,7 +1,7 @@
 // Package logs writes and reads Habakkuk's JSON log ($HABAKKUK_HOME/habakkuk.log):
 // size-based rotation that several processes can share, redaction of
 // secret values before anything reaches the disk, and pretty printing for
-// `habakkuk logs`.
+// `hk logs`.
 package logs
 
 import (

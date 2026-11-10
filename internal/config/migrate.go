@@ -18,12 +18,12 @@ import (
 // Config files carry a schema version (the top-level version: key). When a
 // release changes the format it bumps CurrentVersion and appends a step to
 // configMigrations. Loading an older file migrates it in memory, so an
-// upgrade never stops Habakkuk from starting; `habakkuk config migrate`
+// upgrade never stops Habakkuk from starting; `hk config migrate`
 // writes the migrated file after keeping a timestamped copy of the old one.
 //
 // Keys this binary does not know are reported and ignored rather than
 // refused: a config edited for a newer release (or kept across a rollback)
-// still loads. `habakkuk doctor` lists them so typos do not go unnoticed.
+// still loads. `hk doctor` lists them so typos do not go unnoticed.
 
 // configStep upgrades a config document from one version to the next. It
 // edits the YAML node tree in place (keeping comments) and returns notes
@@ -58,7 +58,7 @@ func (r *LoadReport) Summary() string {
 	if r == nil || len(r.Migrated) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("config.yaml is version %d; migrated to version %d in memory (%s). Run `habakkuk config migrate` to save it.",
+	return fmt.Sprintf("config.yaml is version %d; migrated to version %d in memory (%s). Run `hk config migrate` to save it.",
 		r.FileVersion, CurrentVersion, strings.Join(r.Migrated, "; "))
 }
 
@@ -81,8 +81,8 @@ func decodeConfig(data []byte, cfg *Config, lenient bool) (*LoadReport, error) {
 		rep.FileVersion = v
 		if v > CurrentVersion {
 			return nil, fmt.Errorf("%w: it is version %d, and this habakkuk understands up to version %d. "+
-				"Update habakkuk (habakkuk update), or restore the config saved before the upgrade "+
-				"(habakkuk update --rollback, or config.yaml.<time>.bak)", ErrConfigTooNew, v, CurrentVersion)
+				"Update habakkuk (hk update), or restore the config saved before the upgrade "+
+				"(hk update --rollback, or config.yaml.<time>.bak)", ErrConfigTooNew, v, CurrentVersion)
 		}
 		if v < CurrentVersion {
 			notes, err := migrateNode(root, v)

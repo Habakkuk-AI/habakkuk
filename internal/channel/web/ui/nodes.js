@@ -230,7 +230,7 @@
         try { j = await api("nodes"); } catch (err) {
           list.textContent = "";
           const off = err.message === "HTTP 404";
-          list.append(h("div", { class: off ? "empty" : "empty err" }, off ? "Nodes are off. Add a nodes section to config.yaml (for example `nodes: {}`) and restart habakkuk serve." : err.message));
+          list.append(h("div", { class: off ? "empty" : "empty err" }, off ? "Nodes are off. Add a nodes section to config.yaml (for example `nodes: {}`) and restart hk serve." : err.message));
           mine.box.hidden = off;
           return;
         }
@@ -256,8 +256,8 @@
           modal(h("h2", {}, "Pair a device"),
             h("p", {}, "Code ", h("code", {}, j.code), ", works once until ", when(j.expires), "."),
             h("p", { class: "small" }, "On a computer, run:"),
-            h("pre", {}, `habakkuk node run -server ${server} -code ${j.code} -name NAME`),
-            h("p", { class: "small" }, "On a phone, open this link (or run `habakkuk node pair` on the server for a QR code):"),
+            h("pre", {}, `hk node run -server ${server} -code ${j.code} -name NAME`),
+            h("p", { class: "small" }, "On a phone, open this link (or run `hk node pair` on the server for a QR code):"),
             h("pre", {}, new URL("pair.html#" + j.code, location.href).href),
             h("div", { class: "row end" }, h("button", { type: "button", onclick: closeModal }, "Done")));
         } catch (err) { fail(err); }

@@ -12,11 +12,11 @@ You can use any provider that speaks the Anthropic, OpenAI Chat Completions, Ope
 
 ## What does it cost?
 
-Habakkuk itself is free and open source, under the Apache License 2.0. What you pay for is what the agent uses at your model providers. Run `habakkuk usage` to see tokens and cost by model and agent. [Spending limits](../models/usage-and-limits.md#spending-limits) cap the cost per day, month and turn. You can cut the bill further with a cheap [`fast_model`](../models/routing.md) for quick messages.
+Habakkuk itself is free and open source, under the Apache License 2.0. What you pay for is what the agent uses at your model providers. Run `hk usage` to see tokens and cost by model and agent. [Spending limits](../models/usage-and-limits.md#spending-limits) cap the cost per day, month and turn. You can cut the bill further with a cheap [`fast_model`](../models/routing.md) for quick messages.
 
 ## Can I use my ChatGPT, Copilot or Claude subscription?
 
-Yes for ChatGPT and GitHub Copilot plans. Run `habakkuk auth login chatgpt` or `copilot`. No for Claude plans. Anthropic's terms don't allow third-party apps to use Claude plan credentials, so use an API key there. See [Subscription logins](../models/subscriptions.md).
+Yes for ChatGPT and GitHub Copilot plans. Run `hk auth login chatgpt` or `copilot`. No for Claude plans. Anthropic's terms don't allow third-party apps to use Claude plan credentials, so use an API key there. See [Subscription logins](../models/subscriptions.md).
 
 ## Can it run fully local?
 
@@ -28,7 +28,7 @@ It's all in `$HABAKKUK_HOME`. That's `~/.habakkuk` on Linux and macOS, and `%APP
 
 ## Does it phone home?
 
-No. Habakkuk sends no usage telemetry, and it checks for updates only when you run `habakkuk update`. It does contact your model providers, your channels, the services you name in `config.yaml`, and pages the agent reads. To list every endpoint, run `habakkuk security -network`. See [Security](../deploy/security.md#no-surprise-network-calls).
+No. Habakkuk sends no usage telemetry, and it checks for updates only when you run `hk update`. It does contact your model providers, your channels, the services you name in `config.yaml`, and pages the agent reads. To list every endpoint, run `hk security -network`. See [Security](../deploy/security.md#no-surprise-network-calls).
 
 ## Does it run on Windows?
 
@@ -36,7 +36,7 @@ Yes. It runs natively, and there's an installer (`irm https://habakkuk.ai/instal
 
 ## Does it run on a Raspberry Pi or a small VPS?
 
-Yes. There are static builds for Linux on arm64 and amd64. The process is light, because the models run at your provider. `habakkuk talk` works on a Pi that has a microphone and a speaker.
+Yes. There are static builds for Linux on arm64 and amd64. The process is light, because the models run at your provider. `hk talk` works on a Pi that has a microphone and a speaker.
 
 ## What happens if it crashes mid-task?
 
@@ -44,7 +44,7 @@ Nothing is lost. Every turn is a job with a lease (a short claim on the job that
 
 ## Can other people talk to my agent?
 
-Yes, in one of two ways. You can add their ids to a channel's `allow_from`. Or they can message the bot, which gives them a pairing code, and you approve it with `habakkuk pair CODE`. People you let in with `allow_from: ["*"]` are guests. Guests never get commands, file writes outside the workspace or computer use. See [Access, groups and delivery](../channels/settings.md#who-may-talk-to-the-bot).
+Yes, in one of two ways. You can add their ids to a channel's `allow_from`. Or they can message the bot, which gives them a pairing code, and you approve it with `hk pair CODE`. People you let in with `allow_from: ["*"]` are guests. Guests never get commands, file writes outside the workspace or computer use. See [Access, groups and delivery](../channels/settings.md#who-may-talk-to-the-bot).
 
 ## How do I stop the agent from running commands?
 
@@ -58,13 +58,13 @@ Yes. You can run as many as you like in one process. Each has its own model, per
 
 Habakkuk delivers a reply when the turn finishes. It doesn't stream text into chat apps. While a long turn runs, you see a typing indicator, a progress message that's edited with each tool step (Telegram, Slack), or a "still working" notice. The dashboard and the terminal UI do show tool calls live.
 
-## Can I run two copies of `habakkuk serve`?
+## Can I run two copies of `hk serve`?
 
 Not on the same `$HABAKKUK_HOME`. Most channels let only one program poll them, and a second `serve` makes them fight. Run one `serve` per home. If you need two, give each its own home (`HABAKKUK_HOME=...`). Separate homes are fully independent.
 
 ## How do I move to a new machine?
 
-Run `habakkuk backup -env -workspaces -o habakkuk.tar.gz` on the old machine. Then run `habakkuk restore habakkuk.tar.gz` on the new one. See [Backups and updates](../deploy/backups-and-updates.md#moving-to-another-machine).
+Run `hk backup -env -workspaces -o habakkuk.tar.gz` on the old machine. Then run `hk restore habakkuk.tar.gz` on the new one. See [Backups and updates](../deploy/backups-and-updates.md#moving-to-another-machine).
 
 ## I use another agent today. Can I bring my setup?
 

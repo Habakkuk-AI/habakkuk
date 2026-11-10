@@ -103,7 +103,7 @@ func TestWatchReloadsHooksAndMemory(t *testing.T) {
 	if a.Hooks.Count() != 1 {
 		t.Fatal("hooks not reloaded")
 	}
-	if !strings.Contains(logs.String(), "restart habakkuk serve to apply") || !strings.Contains(logs.String(), "sections=agents") {
+	if !strings.Contains(logs.String(), "restart hk serve to apply") || !strings.Contains(logs.String(), "sections=agents") {
 		t.Fatalf("no restart notice: %s", logs.String())
 	}
 

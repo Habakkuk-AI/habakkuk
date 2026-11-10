@@ -13,7 +13,7 @@ A chat's session holds the turns that the chat itself started. Other messages la
 
 - the result of a [scheduled task](schedules.md), which runs in its own session (this includes a script schedule with `-on-output deliver` or `agent`);
 - a report or `message_home` post from another agent, when this chat is that agent's [home chat](multi-agent.md#teams-and-home-chats);
-- the result of a background task, a board update, or something sent with `habakkuk send` or the MCP `habakkuk_send` tool.
+- the result of a background task, a board update, or something sent with `hk send` or the MCP `habakkuk_send` tool.
 
 Habakkuk keeps a note of each of these in `state.db`, for the chat it went to. That means the same channel account, chat and thread. When you send your next message, the agent that answers the chat sees the notes it hasn't seen yet, placed before your words. It looks like this:
 
@@ -60,10 +60,10 @@ A session's title starts out as its first message. After the first turn, `title_
 
 ## Compaction
 
-When a session gets long, Habakkuk compacts it. Nothing is rewritten. Older messages are summarized into a record, and the model is sent that summary plus the recent turns. The full transcript is still there for `habakkuk show`.
+When a session gets long, Habakkuk compacts it. Nothing is rewritten. Older messages are summarized into a record, and the model is sent that summary plus the recent turns. The full transcript is still there for `hk show`.
 
 - Compaction happens on its own once a prompt reaches the agent's `compact_at`. The default is 600000 tokens on `anthropic` providers and 150000 otherwise. `-1` turns it off.
-- To compact right away, send `/compact` or run `habakkuk sessions compact ID`.
+- To compact right away, send `/compact` or run `hk sessions compact ID`.
 
 ## Fork and rewind
 
@@ -75,14 +75,14 @@ In both cases, the original session stays as it was.
 ## Export and search
 
 - `/export` sends you the transcript as a Markdown file.
-- `habakkuk sessions export ID -format md|json|html [-o FILE]` writes the transcript from the terminal.
-- `habakkuk sessions search [-agent A] QUERY` searches every session.
-- `habakkuk sessions archive|unarchive|rm ID...` manages sessions, and `habakkuk sessions archived` lists the archived ones.
+- `hk sessions export ID -format md|json|html [-o FILE]` writes the transcript from the terminal.
+- `hk sessions search [-agent A] QUERY` searches every session.
+- `hk sessions archive|unarchive|rm ID...` manages sessions, and `hk sessions archived` lists the archived ones.
 - An agent can search its own past sessions with the `session_search` tool.
 
 ```bash
-habakkuk sessions               # recent sessions
-habakkuk show <session>         # print a transcript
+hk sessions                     # recent sessions
+hk show <session>               # print a transcript
 ```
 
 ## Sub-agents

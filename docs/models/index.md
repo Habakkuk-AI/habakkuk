@@ -17,7 +17,7 @@ agents:
     fallbacks: [local/llama3.3]
 ```
 
-Run `habakkuk models` to see each provider and its credential status. Where the API can list its models, you see those too. Habakkuk doesn't assume any one vendor.
+Run `hk models` to see each provider and its credential status. Where the API can list its models, you see those too. Habakkuk doesn't assume any one vendor.
 
 ## In this section
 

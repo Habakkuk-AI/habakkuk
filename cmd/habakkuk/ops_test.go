@@ -273,7 +273,7 @@ func TestSecurityCmd(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := b.String()
-	for _, want := range []string{"[on ] model", "never: Habakkuk has no usage telemetry", "[off] search", "only when you run habakkuk update"} {
+	for _, want := range []string{"[on ] model", "never: Habakkuk has no usage telemetry", "[off] search", "only when you run hk update"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("network report lacks %q:\n%s", want, out)
 		}

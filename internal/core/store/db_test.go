@@ -76,7 +76,7 @@ func TestOlderBinaryRefusesNewerSchema(t *testing.T) {
 	if !errors.As(err, &tooNew) || tooNew.Have != 2 || tooNew.Know != 1 {
 		t.Fatalf("err = %v", err)
 	}
-	for _, want := range []string{"control.db", "schema version 2", "up to version 1", "habakkuk update", "--rollback"} {
+	for _, want := range []string{"control.db", "schema version 2", "up to version 1", "hk update", "--rollback"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message %q lacks %q", err, want)
 		}

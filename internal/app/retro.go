@@ -22,7 +22,7 @@ import (
 )
 
 // openRetro sets up retros for every agent: on the retro.every timer in
-// `habakkuk serve`, and on demand from `habakkuk retro` and /retro. A retro
+// `hk serve`, and on demand from `hk retro` and /retro. A retro
 // uses retro.model first when set, then the agent's own models.
 func (a *App) openRetro() {
 	rc := a.Cfg.Retro
@@ -70,7 +70,7 @@ func (a *App) openRetro() {
 	}
 }
 
-// retroDeliver queues a retro summary to a `habakkuk send` target.
+// retroDeliver queues a retro summary to a `hk send` target.
 func (a *App) retroDeliver(ctx context.Context, id, target, text string) error {
 	if a.Gateway == nil {
 		return errors.New("no channels configured")
@@ -110,7 +110,7 @@ func (a *App) retroPool() *jobs.Pool {
 
 // RunRetro runs a retro of an agent's last days now and waits for it. The
 // retro is not delivered: the caller shows it. In a process that does not
-// serve, a pool is started for the wait; `habakkuk serve` may pick the job
+// serve, a pool is started for the wait; `hk serve` may pick the job
 // up instead, which is just as good.
 func (a *App) RunRetro(ctx context.Context, agentName string, days int) (*retro.Retro, error) {
 	if days <= 0 {
@@ -148,7 +148,7 @@ func (a *App) RunRetro(ctx context.Context, agentName string, days int) (*retro.
 		}
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("retro %s is still running (%w); habakkuk retro show %s has it once done", id, ctx.Err(), id)
+			return nil, fmt.Errorf("retro %s is still running (%w); hk retro show %s has it once done", id, ctx.Err(), id)
 		case <-tick.C:
 		}
 	}

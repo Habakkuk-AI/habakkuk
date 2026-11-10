@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// welcomePendingFile marks an agent that `habakkuk setup` named (and maybe
+// welcomePendingFile marks an agent that `hk setup` named (and maybe
 // told the user's name) before it met its user. An identity or a profile
 // alone means the agent and its user have met; with this file the first
 // one-to-one chat still runs the welcome, which introduces the agent by
@@ -24,7 +24,7 @@ func KeepWelcome(dir string) error {
 	if err := ResetOnboarding(dir); err != nil {
 		return err
 	}
-	note := fmt.Sprintf("named by habakkuk setup %s; the first chat still runs the welcome\n", time.Now().UTC().Format(time.RFC3339))
+	note := fmt.Sprintf("named by hk setup %s; the first chat still runs the welcome\n", time.Now().UTC().Format(time.RFC3339))
 	return os.WriteFile(filepath.Join(dir, welcomePendingFile), []byte(note), 0o600)
 }
 

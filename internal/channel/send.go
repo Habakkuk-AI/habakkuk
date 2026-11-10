@@ -11,7 +11,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/tools/media"
 )
 
-// ParseTarget reads CHANNEL:CHAT or CHANNEL:CHAT:THREAD, as `habakkuk send`,
+// ParseTarget reads CHANNEL:CHAT or CHANNEL:CHAT:THREAD, as `hk send`,
 // schedules and the board take it.
 func ParseTarget(s string) (Address, error) {
 	acct, rest, ok := strings.Cut(s, ":")
@@ -46,7 +46,7 @@ func (g *Gateway) NormalizeTarget(to Address) (Address, error) {
 }
 
 // SendText queues a message to a conversation without running a turn. The
-// delivery is durable, like a reply: `habakkuk serve` sends it, and the job ID
+// delivery is durable, like a reply: `hk serve` sends it, and the job ID
 // makes a repeated call send once.
 func (g *Gateway) SendText(ctx context.Context, id string, to Address, text string) error {
 	if g.Adapters[to.Account] == nil {
@@ -63,13 +63,13 @@ func (g *Gateway) SendText(ctx context.Context, id string, to Address, text stri
 	return g.enqueue(withSender(ctx), id, deliverPayload{To: to, Text: text})
 }
 
-// withSender names `habakkuk send` as the sender of what is queued under
+// withSender names `hk send` as the sender of what is queued under
 // ctx, unless the caller named another (notes.go).
 func withSender(ctx context.Context) context.Context {
 	if agent.PosterFrom(ctx) != (agent.Poster{}) {
 		return ctx
 	}
-	return agent.WithPoster(ctx, agent.Poster{What: "`habakkuk send`"})
+	return agent.WithPoster(ctx, agent.Poster{What: "`hk send`"})
 }
 
 // SendFile queues a file, with an optional caption, to a conversation. The

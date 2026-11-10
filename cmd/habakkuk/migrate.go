@@ -15,11 +15,11 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/migrate"
 )
 
-// `habakkuk migrate` moves a setup from Hermes Agent or OpenClaw into
+// `hk migrate` moves a setup from Hermes Agent or OpenClaw into
 // Habakkuk. The work is in internal/migrate; this is the command: flags,
 // finding the source, the plan, the confirmation and the closing report.
 
-const migrateUsage = `usage: habakkuk migrate [--from hermes|openclaw] [--source DIR] [--agent NAME]
+const migrateUsage = `usage: hk migrate [--from hermes|openclaw] [--source DIR] [--agent NAME]
                         [--dry-run] [--secrets copy|skip] [--files copy|skip]
                         [--files-dir DIR] [--files-max SIZE] [--force] [-y]
 
@@ -81,7 +81,7 @@ func runMigrate(ctx context.Context, home string, args []string, in io.Reader, o
 		return err
 	}
 	if fs.NArg() > 0 {
-		return fmt.Errorf("unexpected argument %q; see habakkuk migrate -h", fs.Arg(0))
+		return fmt.Errorf("unexpected argument %q; see hk migrate -h", fs.Arg(0))
 	}
 	if fl.secrets != "" && fl.secrets != "copy" && fl.secrets != "skip" {
 		return fmt.Errorf("--secrets %q: want copy or skip", fl.secrets)
@@ -111,7 +111,7 @@ type migration struct {
 	in     *bufio.Reader
 	out    io.Writer
 	getenv func(string) string
-	// inSetup: habakkuk setup runs the import and says what comes next.
+	// inSetup: hk setup runs the import and says what comes next.
 	inSetup bool
 }
 
@@ -143,7 +143,7 @@ func (m *migration) run(ctx context.Context) error {
 	}
 	plan.Write(m.out, m.fl.secrets)
 	if plan.ConfigErr != nil {
-		return errors.New("nothing was written; fix the problem above (or report it), then run habakkuk migrate again")
+		return errors.New("nothing was written; fix the problem above (or report it), then run hk migrate again")
 	}
 	if m.fl.dryRun {
 		m.say("\nDry run: nothing was written.")
@@ -154,7 +154,7 @@ func (m *migration) run(ctx context.Context) error {
 			return errors.New("nothing was written; fix the problem above, or run again with --files skip")
 		}
 		// Nobody chose the copy: go on without it.
-		m.say("\nYour files cannot be copied now, so they stay where they are; habakkuk migrate --files copy brings them over later.")
+		m.say("\nYour files cannot be copied now, so they stay where they are; hk migrate --files copy brings them over later.")
 		o.FilesAsk = false
 		if plan, err = migrate.NewPlan(found, m.home, o); err != nil {
 			return err
@@ -323,9 +323,9 @@ func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
 	}
 	m.reportFiles(p, res)
 	if len(res.Paused) > 0 {
-		m.say("\nSchedules are imported paused. Check them with habakkuk schedules list, then resume each one:")
+		m.say("\nSchedules are imported paused. Check them with hk schedules list, then resume each one:")
 		for _, k := range sortedNames(res.Paused) {
-			m.say("  habakkuk schedules resume %s    # %s", res.Paused[k], k)
+			m.say("  hk schedules resume %s    # %s", res.Paused[k], k)
 		}
 	}
 	if conflicts := p.Conflicts(); len(conflicts) > 0 {
@@ -346,16 +346,16 @@ func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
 	}
 	m.say("\nNext:")
 	if !res.WroteCfg && p.OldConfig == nil {
-		m.say("  habakkuk setup       pick a model and where to talk")
+		m.say("  hk setup       pick a model and where to talk")
 	}
-	m.say("  habakkuk doctor      check the config, keys and channels")
-	m.say("  habakkuk serve       start the agents and connect the channels")
+	m.say("  hk doctor      check the config, keys and channels")
+	m.say("  hk serve       start the agents and connect the channels")
 	switch fp := p.Files; {
 	case fp == nil:
 	case len(fp.Waiting()) > 0 && !fp.Copies():
-		m.say("  habakkuk migrate --files copy    bring your files over from %s, so the new agent stops using that folder", p.Found.Dir)
+		m.say("  hk migrate --files copy    bring your files over from %s, so the new agent stops using that folder", p.Found.Dir)
 	default:
-		m.say("  habakkuk migrate --dry-run       see what still points into %s before you remove it", p.Found.Dir)
+		m.say("  hk migrate --dry-run       see what still points into %s before you remove it", p.Found.Dir)
 	}
 	m.say("Read each agent's SOUL.md and AGENTS.md in %s: text written for the old agent may name tools Habakkuk does not have.", filepath.Join(m.home, "agents"))
 }
@@ -425,7 +425,7 @@ func (m *migration) reportFiles(p *migrate.Plan, res *migrate.Result) {
 			m.say("  - %s: named %s (%s): %s", s.Name, migrate.Times(s.Refs), firstFew(s.Where, 4), s.Why)
 		}
 		if len(fp.Waiting()) > 0 && !fp.Copies() {
-			m.say("habakkuk migrate --files copy copies your own files into %s and rewrites the references.", fp.Dir)
+			m.say("hk migrate --files copy copies your own files into %s and rewrites the references.", fp.Dir)
 		}
 	case len(res.Failed) == 0 && len(p.Conflicts()) == 0:
 		m.say("The imported text no longer names anything in %s.", src)

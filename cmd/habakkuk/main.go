@@ -40,116 +40,116 @@ var version = "0.3.0-dev"
 
 const usage = `Habakkuk: a durable personal AI agent.
 
-Every command also runs as hk, the short name: hk chat is habakkuk chat.
+hk is the short name for habakkuk. Every command runs under either one: hk chat is habakkuk chat.
 
 Any command can run on a remote Habakkuk (a server you reach over ssh, or https):
-  habakkuk -r NAME [-q] [--yes-remote] COMMAND [ARGS...]
+  hk -r NAME [-q] [--yes-remote] COMMAND [ARGS...]
                                     run COMMAND there; HABAKKUK_REMOTE or the default remote do the
                                     same without -r, and -r local runs here; -q hides the
                                     (remote: NAME) line; --yes-remote allows serve, init, restore,
                                     update, migrate, setup service and config migrate there
 
 Usage:
-  habakkuk init                       write a starter config to $HABAKKUK_HOME (default ~/.habakkuk)
-  habakkuk setup [model|channel [TYPE]|name|service] [-y] [flags]
+  hk init                             write a starter config to $HABAKKUK_HOME (default ~/.habakkuk)
+  hk setup [model|channel [TYPE]|name|service] [-y] [flags]
                                     a one-minute wizard: model, where to talk (WhatsApp agent,
-                                    Telegram, web, ...), names; -y runs it from flags (habakkuk setup -h)
-  habakkuk migrate [--from SOURCE] [--dry-run] [--secrets copy|skip] [--force] [-y]
+                                    Telegram, web, ...), names; -y runs it from flags (hk setup -h)
+  hk migrate [--from SOURCE] [--dry-run] [--secrets copy|skip] [--force] [-y]
                                     move agents, memory, skills, schedules, MCP servers, channels
-                                    and keys over from another agent (sources: habakkuk migrate -h)
-  habakkuk chat [-agent A] [-session ID] [-resume] [-plain]
+                                    and keys over from another agent (sources: hk migrate -h)
+  hk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped
-  habakkuk tui [-agent A] [-session ID] [-resume]
+  hk tui [-agent A] [-session ID] [-resume]
                                     the full-screen terminal UI (-resume picks a recent session)
-  habakkuk talk [-agent A] [-session ID] [-wake "hey habakkuk"] [-no-wake]
+  hk talk [-agent A] [-session ID] [-wake "hey habakkuk"] [-no-wake]
                                     a voice loop on this machine: the mic through ffmpeg, replies
                                     spoken with tts; talk over a reply to stop it
-  habakkuk run [-agent A] [-skill NAME] PROMPT
+  hk run [-agent A] [-skill NAME] PROMPT
                                     one turn, print the answer, exit (-skill: follow that skill)
-  habakkuk serve                      run workers: resumes interrupted turns, applies retention;
+  hk serve                            run workers: resumes interrupted turns, applies retention;
                                     with an http section, also the chat page, API and webhooks
-  habakkuk channels                   show channel health
-  habakkuk mcp                        connect to MCP servers and list their status and tools
-  habakkuk mcp serve                  be an MCP server on stdio (habakkuk_ask, sessions, board, schedules)
-  habakkuk mcp catalog [QUERY]        list well-known MCP servers Habakkuk can add
-  habakkuk mcp add NAME [param=value] add a catalog server to config.yaml
-  habakkuk mcp login [-device] NAME   sign in to a remote MCP server that uses OAuth (auth: oauth)
-  habakkuk mcp logout NAME            forget that sign-in
-  habakkuk acp [-agent A]             be a coding agent for an editor (Agent Client Protocol on stdio)
-  habakkuk send -to CHANNEL:CHAT [-file PATH] TEXT
+  hk channels                         show channel health
+  hk mcp                              connect to MCP servers and list their status and tools
+  hk mcp serve                        be an MCP server on stdio (habakkuk_ask, sessions, board, schedules)
+  hk mcp catalog [QUERY]              list well-known MCP servers Habakkuk can add
+  hk mcp add NAME [param=value] add a catalog server to config.yaml
+  hk mcp login [-device] NAME         sign in to a remote MCP server that uses OAuth (auth: oauth)
+  hk mcp logout NAME                  forget that sign-in
+  hk acp [-agent A]                   be a coding agent for an editor (Agent Client Protocol on stdio)
+  hk send -to CHANNEL:CHAT [-file PATH] TEXT
                                     queue a message or file to a chat without running a turn
-  habakkuk pair CODE                  let the sender who got this pairing code talk to Habakkuk
-  habakkuk node pair [-ttl 10m]       print a one-time code (and QR) for pairing a device as a node
-  habakkuk node run -server URL [-code CODE] -name NAME [-allow-run] [-allow-camera] [-dir DIR]
+  hk pair CODE                        let the sender who got this pairing code talk to Habakkuk
+  hk node pair [-ttl 10m]             print a one-time code (and QR) for pairing a device as a node
+  hk node run -server URL [-code CODE] -name NAME [-allow-run] [-allow-camera] [-dir DIR]
                                     lend this machine's capabilities to a Habakkuk server
-  habakkuk nodes [list|revoke NAME]   paired device nodes; revoke cuts one off
-  habakkuk whatsapp link [-account A] [-phone NUMBER]
+  hk nodes [list|revoke NAME]         paired device nodes; revoke cuts one off
+  hk whatsapp link [-account A] [-phone NUMBER]
                                     link a WhatsApp account (phone gives a code instead of a QR)
-  habakkuk schedules [list|add|rm|pause|resume|run]
+  hk schedules [list|add|rm|pause|resume|run]
                                     scheduled tasks (add: -agent A -name N -when SPEC -prompt P [-to CHANNEL:CHAT];
                                     scripts: -run CMD [-on-output deliver|agent|silent] [-timeout 2m] [-workdir DIR])
-  habakkuk board [list|show|add|done|cancel]
+  hk board [list|show|add|done|cancel]
                                     the shared task board (add: -agent A -title T [-body B] [-after IDS] [-to CHANNEL:CHAT];
                                     done: ID -result R)
-  habakkuk meetings [list|show [-transcript] ID|leave ID]
+  hk meetings [list|show [-transcript] ID|leave ID]
                                     meetings Habakkuk attends (meeting_join): status, notes, transcript
-  habakkuk sessions [-agent A]        list recent sessions
-  habakkuk sessions compact SESSION   summarize a long session's older messages now
-  habakkuk sessions export ID [-format md|json|html] [-o FILE]
+  hk sessions [-agent A]              list recent sessions
+  hk sessions compact SESSION         summarize a long session's older messages now
+  hk sessions export ID [-format md|json|html] [-o FILE]
                                     write a transcript as Markdown, JSON or an HTML page
-  habakkuk sessions search [-agent A] QUERY
+  hk sessions search [-agent A] QUERY
                                     full-text search over every session
-  habakkuk sessions archive|unarchive|rm [-y] ID...
+  hk sessions archive|unarchive|rm [-y] ID...
                                     hide, restore or delete sessions; sessions archived lists them
-  habakkuk show SESSION               print a transcript
-  habakkuk memory [-agent A] [search QUERY | show SLUG | forget SLUG | trust SLUG [yes|no] | profile | log]
-  habakkuk memory history [-agent A] [-file NAME] [-since 7d] | diff ID | restore ID [-after] | pin|unpin NOTE
+  hk show SESSION                     print a transcript
+  hk memory [-agent A] [search QUERY | show SLUG | forget SLUG | trust SLUG [yes|no] | profile | log]
+  hk memory history [-agent A] [-file NAME] [-since 7d] | diff ID | restore ID [-after] | pin|unpin NOTE
                                     list, search, read, remove or vouch for an agent's memories;
                                     print its user profile or the background review log;
                                     list, diff and undo changes to memory, profile, identity
                                     and skills; pin what background jobs must not rewrite
-  habakkuk retro [-agent A] [-days N] [-dry-run]
+  hk retro [-agent A] [-days N] [-dry-run]
                                     look back over an agent's work now: what went wrong, likely
                                     causes, proposed changes (-dry-run prints evidence and plan only)
-  habakkuk retro list [-agent A] | show ID | apply ID N [N...] | reject ID N
+  hk retro list [-agent A] | show ID | apply ID N [N...] | reject ID N
                                     past retros; approve or reject their proposals
-  habakkuk skills [-agent A]          list the skills an agent can use
-  habakkuk skills [search|install|update|remove|approve|restore|curate]
-                                    skills from GitHub, URLs, paths and registries (habakkuk skills help)
-  habakkuk plugins [list|search|install|enable|disable|update|remove|restore]
+  hk skills [-agent A]                list the skills an agent can use
+  hk skills [search|install|update|remove|approve|restore|curate]
+                                    skills from GitHub, URLs, paths and registries (hk skills help)
+  hk plugins [list|search|install|enable|disable|update|remove|restore]
                                     plugins: MCP servers, skills, hooks and commands (docs/tools/plugins.md)
-  habakkuk checkpoints [-agent A]     list workspace snapshots taken before turns changed files
-  habakkuk rollback [-agent A] [-y] ID [PATH]
+  hk checkpoints [-agent A]           list workspace snapshots taken before turns changed files
+  hk rollback [-agent A] [-y] ID [PATH]
                                     restore the workspace (or one path) to a checkpoint
-  habakkuk models                     list providers and the models each one serves
-  habakkuk auth [login|list|logout]   subscription logins (login chatgpt|copilot)
-  habakkuk usage [-days N] [-agent A] tokens and cost by model and agent, and spend against the limits
-  habakkuk doctor                     check config, credentials and storage
-  habakkuk status                     version, serve uptime, channels, queue, recent errors, today's cost
-  habakkuk computer view              how to watch the agents' virtual desktops (computer backend xvfb)
-  habakkuk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
+  hk models                           list providers and the models each one serves
+  hk auth [login|list|logout]         subscription logins (login chatgpt|copilot)
+  hk usage [-days N] [-agent A] tokens and cost by model and agent, and spend against the limits
+  hk doctor                           check config, credentials and storage
+  hk status                           version, serve uptime, channels, queue, recent errors, today's cost
+  hk computer view                    how to watch the agents' virtual desktops (computer backend xvfb)
+  hk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
                                     print habakkuk.log readably (-f keeps following it)
-  habakkuk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
+  hk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
-  habakkuk expose tailscale [-port 443] [-print] | status | off
+  hk expose tailscale [-port 443] [-print] | status | off
                                     share the HTTP listener on your tailnet (tailscale serve, never public)
-  habakkuk remote add NAME TARGET [-identity PATH] [-home DIR] [-bin PATH] [-token-env NAME] [-default]
+  hk remote add NAME TARGET [-identity PATH] [-home DIR] [-bin PATH] [-token-env NAME] [-default]
                                     save a remote: ssh://user@host[:port] runs every command,
-                                    https://host runs status and chat (habakkuk remote help)
-  habakkuk remote [list] | rm NAME | default NAME|none
+                                    https://host runs status and chat (hk remote help)
+  hk remote [list] | rm NAME | default NAME|none
                                     list, remove, or pick the remote plain commands run on
-  habakkuk backup [-o FILE] [-env] [-workspaces]
+  hk backup [-o FILE] [-env] [-workspaces]
                                     archive config, agents, skills and database snapshots
-  habakkuk restore [-force] FILE      unpack a backup into $HABAKKUK_HOME
-  habakkuk update [-check] [-force] [-channel stable|beta]
+  hk restore [-force] FILE            unpack a backup into $HABAKKUK_HOME
+  hk update [-check] [-force] [-channel stable|beta]
                                     install the newest release on the channel: checksum (and signature)
                                     verified, checked against this home by the new binary, after a
                                     backup of config and databases
-  habakkuk update --rollback [-force] put back the previous binary, databases and config
-  habakkuk config migrate [-dry-run]  rewrite config.yaml in the current format (keeps a timestamped copy)
-  habakkuk doctor --upgrade-check     check that this binary can run on $HABAKKUK_HOME, changing nothing
-  habakkuk version                    version, commit, build date and database schema versions
+  hk update --rollback [-force] put back the previous binary, databases and config
+  hk config migrate [-dry-run]        rewrite config.yaml in the current format (keeps a timestamped copy)
+  hk doctor --upgrade-check           check that this binary can run on $HABAKKUK_HOME, changing nothing
+  hk version                          version, commit, build date and database schema versions
 `
 
 func main() {
@@ -185,7 +185,7 @@ func main() {
 	case "init":
 		err = app.Init(home)
 		if err == nil {
-			fmt.Printf("Wrote %s/config.yaml and agents/habakkuk/SOUL.md.\nPut API keys in %s/.env (e.g. ANTHROPIC_API_KEY=...), then run `habakkuk chat`.\n", home, home)
+			fmt.Printf("Wrote %s/config.yaml and agents/habakkuk/SOUL.md.\nPut API keys in %s/.env (e.g. ANTHROPIC_API_KEY=...), then run `hk chat`.\n", home, home)
 		}
 	case "chat":
 		err = chatCmd(ctx, home, args)
@@ -491,7 +491,7 @@ func run(ctx context.Context, home string, args []string) error {
 	fs.Parse(args)
 	prompt := strings.Join(fs.Args(), " ")
 	if prompt == "" && *skill == "" {
-		return errors.New("usage: habakkuk run [-skill NAME] PROMPT")
+		return errors.New("usage: hk run [-skill NAME] PROMPT")
 	}
 	a, closeApp, err := open(ctx, home)
 	if err != nil {
@@ -546,7 +546,7 @@ func run(ctx context.Context, home string, args []string) error {
 }
 
 func serve(ctx context.Context, home string) error {
-	// serve.json from the first moment, so habakkuk status says "starting"
+	// serve.json from the first moment, so hk status says "starting"
 	// rather than "not running" while the rest comes up.
 	progress := newServeProgress(home, time.Now)
 	defer progress.run(ctx)()
@@ -650,7 +650,7 @@ func sessions(ctx context.Context, home string, args []string) error {
 // runs beside a turn in progress, and waits for it.
 func compactSession(ctx context.Context, home string, args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: habakkuk sessions compact SESSION")
+		return errors.New("usage: hk sessions compact SESSION")
 	}
 	a, closeApp, err := open(ctx, home)
 	if err != nil {
@@ -686,7 +686,7 @@ func compactSession(ctx context.Context, home string, args []string) error {
 
 func show(ctx context.Context, home string, args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: habakkuk show SESSION")
+		return errors.New("usage: hk show SESSION")
 	}
 	a, closeApp, err := open(ctx, home)
 	if err != nil {
@@ -754,7 +754,7 @@ func doctor(ctx context.Context, home string) error {
 			if _, ok := logins[p.Auth]; ok {
 				fmt.Printf("provider %s: logged in (%s)\n", name, p.Auth)
 			} else {
-				fmt.Printf("provider %s: NOT LOGGED IN (run habakkuk auth login %s)\n", name, p.Auth)
+				fmt.Printf("provider %s: NOT LOGGED IN (run hk auth login %s)\n", name, p.Auth)
 				problems++
 			}
 			continue
@@ -799,7 +799,7 @@ func doctor(ctx context.Context, home string) error {
 			}
 		}
 		if len(missing) > 0 {
-			fmt.Printf("channel %s (%s): MISSING %s; fix: add it to %s, or run habakkuk setup channel %s\n", name, ch.Type,
+			fmt.Printf("channel %s (%s): MISSING %s; fix: add it to %s, or run hk setup channel %s\n", name, ch.Type,
 				strings.Join(missing, ", "), filepath.Join(home, ".env"), ch.Type)
 			problems++
 		} else {
@@ -846,12 +846,12 @@ func doctor(ctx context.Context, home string) error {
 			fmt.Printf("mcp %s: MISSING %s; fix: add it to %s\n", name, strings.Join(missing, ", "), filepath.Join(home, ".env"))
 			problems++
 		case m.Auth == "oauth" && !hasMCPLogin(a, name):
-			fmt.Printf("mcp %s: not signed in; run habakkuk mcp login %s\n", name, name)
+			fmt.Printf("mcp %s: not signed in; run hk mcp login %s\n", name, name)
 			problems++
 		case len(m.Env)+len(m.Headers) == 0:
-			fmt.Printf("mcp %s: no credentials needed (test the connection with habakkuk mcp)\n", name)
+			fmt.Printf("mcp %s: no credentials needed (test the connection with hk mcp)\n", name)
 		default:
-			fmt.Printf("mcp %s: credentials present (test the connection with habakkuk mcp)\n", name)
+			fmt.Printf("mcp %s: credentials present (test the connection with hk mcp)\n", name)
 		}
 	}
 	problems += computerDoctor(cfg, os.Stdout)
@@ -917,7 +917,7 @@ func channels(ctx context.Context, home string) error {
 		ch := a.Cfg.Channels[name]
 		st, ok := byName[name]
 		if !ok {
-			fmt.Printf("%-12s %-9s never started (is `habakkuk serve` running?)\n", name, ch.Type)
+			fmt.Printf("%-12s %-9s never started (is `hk serve` running?)\n", name, ch.Type)
 			continue
 		}
 		line := fmt.Sprintf("%-12s %-9s %-10s since %s", name, ch.Type, st.State, st.Since.Format("2006-01-02 15:04:05"))
@@ -937,7 +937,7 @@ func channels(ctx context.Context, home string) error {
 
 func pair(ctx context.Context, home string, args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: habakkuk pair CODE")
+		return errors.New("usage: hk pair CODE")
 	}
 	a, closeApp, err := open(ctx, home)
 	if err != nil {
@@ -961,7 +961,7 @@ func pair(ctx context.Context, home string, args []string) error {
 
 func whatsappCmd(ctx context.Context, home string, args []string) error {
 	if len(args) == 0 || args[0] != "link" {
-		return errors.New("usage: habakkuk whatsapp link [-account A] [-phone NUMBER]")
+		return errors.New("usage: hk whatsapp link [-account A] [-phone NUMBER]")
 	}
 	fs := flag.NewFlagSet("whatsapp link", flag.ExitOnError)
 	account := fs.String("account", "", "whatsapp account from config (default: the only one)")
@@ -1081,23 +1081,23 @@ func schedules(ctx context.Context, home string, args []string) error {
 		}
 	case "rm", "delete":
 		if len(args) != 1 {
-			return errors.New("usage: habakkuk schedules rm ID")
+			return errors.New("usage: hk schedules rm ID")
 		}
 		return st.Delete(ctx, args[0])
 	case "pause", "resume":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: habakkuk schedules %s ID", sub)
+			return fmt.Errorf("usage: hk schedules %s ID", sub)
 		}
 		return st.SetEnabled(ctx, args[0], sub == "resume")
 	case "run":
 		if len(args) != 1 {
-			return errors.New("usage: habakkuk schedules run ID")
+			return errors.New("usage: hk schedules run ID")
 		}
 		jobID, err := a.Scheduler.RunNow(ctx, args[0])
 		if err != nil {
 			return err
 		}
-		fmt.Printf("queued %s; `habakkuk serve` runs it (see `habakkuk schedules list` for the result)\n", jobID)
+		fmt.Printf("queued %s; `hk serve` runs it (see `hk schedules list` for the result)\n", jobID)
 	default:
 		return fmt.Errorf("unknown schedules command %q", sub)
 	}

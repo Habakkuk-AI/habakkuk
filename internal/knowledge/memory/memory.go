@@ -138,7 +138,7 @@ const (
 	SourceReview = "review" // background review and the nightly pass
 
 	TrustUntrusted = "untrusted" // written from external content
-	TrustTrusted   = "trusted"   // vouched for by the owner (habakkuk memory trust)
+	TrustTrusted   = "trusted"   // vouched for by the owner (hk memory trust)
 )
 
 // Memory is one note.

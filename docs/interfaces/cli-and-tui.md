@@ -4,19 +4,19 @@ description: "Chat with an agent in the terminal: the full-screen UI, its keys a
 order: 1
 ---
 
-Habakkuk works from a terminal too. Use `habakkuk chat` when you want to talk to an agent. Use `habakkuk run` when a script or cron job needs one answer.
+Habakkuk works from a terminal too. Use `hk chat` when you want to talk to an agent. Use `hk run` when a script or cron job needs one answer.
 
 ## The terminal UI
 
 ```bash
-habakkuk chat                     # the terminal UI on a terminal; line by line when piped
-habakkuk chat -agent research     # another agent
-habakkuk chat -resume             # pick a recent session
-habakkuk chat -session ID         # continue a given session
-habakkuk tui                      # always the full-screen UI
+hk chat                           # the terminal UI on a terminal; line by line when piped
+hk chat -agent research           # another agent
+hk chat -resume                   # pick a recent session
+hk chat -session ID               # continue a given session
+hk tui                            # always the full-screen UI
 ```
 
-`habakkuk chat` runs turns in your terminal for as long as it's open, so it doesn't need `habakkuk serve`. Each tool call shows as a card you can expand. You can show or hide the model's thinking. Your first conversation with a new agent opens with its [welcome](../agents/agents.md#the-first-chat).
+`hk chat` runs turns in your terminal for as long as it's open, so it doesn't need `hk serve`. Each tool call shows as a card you can expand. You can show or hide the model's thinking. Your first conversation with a new agent opens with its [welcome](../agents/agents.md#the-first-chat).
 
 ### Keys
 
@@ -58,17 +58,17 @@ When a call needs your approval, the UI shows you the request. You have three ch
 
 ### Plain chat
 
-`habakkuk chat -plain` gives you a line-by-line chat with no full-screen UI. You get the same thing from any `habakkuk chat` whose input is piped. It suits scripts and dumb terminals.
+`hk chat -plain` gives you a line-by-line chat with no full-screen UI. You get the same thing from any `hk chat` whose input is piped. It suits scripts and dumb terminals.
 
 ## One-shot runs
 
 ```bash
-habakkuk run "summarise the files in my workspace"        # one turn, print the answer, exit
-habakkuk run -agent research "compare these two papers"
-habakkuk run -skill weekly-report                          # follow a skill
+hk run "summarise the files in my workspace"              # one turn, print the answer, exit
+hk run -agent research "compare these two papers"
+hk run -skill weekly-report                                # follow a skill
 ```
 
-`habakkuk run` prints the answer and exits, which makes it a good fit for scripts and cron jobs. There's nobody at the keyboard to approve anything, so a call that needs approval is denied. The exception is an agent that has an [approval reviewer](../agents/approvals.md#approvals).
+`hk run` prints the answer and exits, which makes it a good fit for scripts and cron jobs. There's nobody at the keyboard to approve anything, so a call that needs approval is denied. The exception is an agent that has an [approval reviewer](../agents/approvals.md#approvals).
 
 ## Everything else
 

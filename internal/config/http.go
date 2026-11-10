@@ -16,7 +16,7 @@ const DefaultListen = "127.0.0.1:8484"
 // not name one of type web.
 const WebAccount = "web"
 
-// HTTP is the optional HTTP surface `habakkuk serve` runs: a chat page, a JSON
+// HTTP is the optional HTTP surface `hk serve` runs: a chat page, a JSON
 // API with Server-Sent Events, and webhooks. Its chat is the channel account
 // of type web (one is added as "web" when none is configured).
 type HTTP struct {

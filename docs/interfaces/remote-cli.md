@@ -67,7 +67,7 @@ You don't need the flag for `update -check`, `migrate -dry-run` or `config migra
 
 ## Add an https remote
 
-An https remote needs no ssh login. It works when you can reach the server's [HTTP API](../reference/api.md), either behind HTTPS or through `habakkuk expose tailscale`. It runs two commands:
+An https remote needs no ssh login. It works when you can reach the server's [HTTP API](../reference/api.md), either behind HTTPS or through `hk expose tailscale`. It runs two commands:
 
 - `status` shows health, queue, approvals, board, schedules, channels and recent errors.
 - `chat` opens a line-by-line chat in a web conversation. By default that conversation is `cli-<this computer's name>`. Use `-agent A` to pick the agent, and `-conversation ID` to pick another conversation. Type `/exit` to quit. Other `/commands` go to the agent, as in any chat.

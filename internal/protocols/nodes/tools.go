@@ -46,7 +46,7 @@ func (t listTool) Run(ctx context.Context, _ *tools.Env, _ json.RawMessage) (str
 		return "", err
 	}
 	if len(nodes) == 0 {
-		return "No nodes are paired. The user can pair one with `habakkuk node pair` on the server, or from the dashboard's Nodes page.", nil
+		return "No nodes are paired. The user can pair one with `hk node pair` on the server, or from the dashboard's Nodes page.", nil
 	}
 	var b strings.Builder
 	for _, n := range nodes {

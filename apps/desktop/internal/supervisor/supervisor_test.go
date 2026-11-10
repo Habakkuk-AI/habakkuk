@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// The test binary doubles as a fake `habakkuk serve`: with FAKE_HABAKKUK set it
+// The test binary doubles as a fake `hk serve`: with FAKE_HABAKKUK set it
 // behaves as the mode says instead of running tests.
 func TestMain(m *testing.M) {
 	if mode := os.Getenv("FAKE_HABAKKUK"); mode != "" {

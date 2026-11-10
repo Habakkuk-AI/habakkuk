@@ -7,12 +7,12 @@ order: 9
 You can text Habakkuk over SMS and MMS. The `sms` channel uses Twilio. Twilio posts each inbound SMS and MMS to Habakkuk's HTTP server, signed with the account's auth token. Replies go out through Twilio's Messages API.
 
 > [!NOTE]
-> SMS is a [webhook channel](settings.md#webhook-channels). Twilio has to reach `habakkuk serve` over the internet, so you need an `http` section with a `public_url`.
+> SMS is a [webhook channel](settings.md#webhook-channels). Twilio has to reach `hk serve` over the internet, so you need an `http` section with a `public_url`.
 
 ## Set it up
 
 1. In Twilio, buy or pick a number that can send and receive SMS. If you want media, it needs MMS too.
-2. Set the number's **A message comes in** webhook to `<public_url>/channels/<name>`, with HTTP POST as the method. For example, `https://habakkuk.example.com/channels/sms`. Run `habakkuk doctor` to print the URL.
+2. Set the number's **A message comes in** webhook to `<public_url>/channels/<name>`, with HTTP POST as the method. For example, `https://habakkuk.example.com/channels/sms`. Run `hk doctor` to print the URL.
 3. Put the auth token in `.env`, then configure the channel:
 
 ```yaml

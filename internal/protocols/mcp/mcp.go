@@ -201,7 +201,7 @@ func (m *Manager) register(s *server, list []*sdk.Tool) {
 	}
 }
 
-// Status is one server's state, for `habakkuk mcp`.
+// Status is one server's state, for `hk mcp`.
 type Status struct {
 	Name      string
 	Transport string // stdio | http

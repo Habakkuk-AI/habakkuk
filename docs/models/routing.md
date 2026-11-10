@@ -35,11 +35,11 @@ agents:
 | `fast` | Every turn goes to `fast_model` first, with `model` only as a fallback and no escalation |
 | `smart` | Every turn stays on `model`; `fast_model` is used only for chores |
 
-In a chat, send `/model provider/model` to override routing for that conversation. Send `/model` to see the routing in use. To see the split by model, run `habakkuk usage`.
+In a chat, send `/model provider/model` to override routing for that conversation. Send `/model` to see the routing in use. To see the split by model, run `hk usage`.
 
 ## What setup picks
 
-When you pick a provider's recommended model in `habakkuk setup`, setup turns routing on for you. It pairs that model with the same provider's cheaper one, on the same key:
+When you pick a provider's recommended model in `hk setup`, setup turns routing on for you. It pairs that model with the same provider's cheaper one, on the same key:
 
 | Provider | `model` | `fast_model` |
 |---|---|---|

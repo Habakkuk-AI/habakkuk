@@ -18,7 +18,7 @@ import (
 )
 
 // The curator keeps the skills agents write for themselves from piling up.
-// Run on a schedule (skills.curate) or with `habakkuk skills curate`, it
+// Run on a schedule (skills.curate) or with `hk skills curate`, it
 // looks at each agent's own skills (never shared, installed or plugin
 // ones) and:
 //
@@ -31,7 +31,7 @@ import (
 //     (default 90), counting from their last change when never loaded.
 //
 // Every change is backed up first ($HABAKKUK_HOME/skills/.backups), so
-// `habakkuk skills restore NAME` undoes it, and recorded in the memory
+// `hk skills restore NAME` undoes it, and recorded in the memory
 // history when the library has one. Pinned skills are left alone.
 
 // CurateOptions say what the curator looks at.

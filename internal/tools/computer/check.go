@@ -30,7 +30,7 @@ func NativeModel(model string) bool {
 	return err == nil && major >= 5 && major < 100 // not a date stamp
 }
 
-// Check is one line of habakkuk doctor's report.
+// Check is one line of hk doctor's report.
 type Check struct {
 	What   string
 	OK     bool
@@ -107,7 +107,7 @@ func View(cfg config.Computer, home string) string {
 	}
 	running := RunningDesktops(filepath.Join(home, "computer"))
 	if len(running) == 0 {
-		return "No virtual desktops are running. An agent's first computer action starts one (under habakkuk serve, chat or run).\n"
+		return "No virtual desktops are running. An agent's first computer action starts one (under hk serve, chat or run).\n"
 	}
 	var s strings.Builder
 	vnc, novnc := have("x11vnc"), have("novnc_proxy", "websockify")

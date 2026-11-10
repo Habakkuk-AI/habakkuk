@@ -11,7 +11,7 @@ import (
 // Retro configures retrospectives: an agent looks back over a period of
 // its own work, finds what went well and what went wrong from Habakkuk's
 // own records, and proposes changes. A nil section never runs one on a
-// timer; `habakkuk retro` and /retro still work, with the defaults.
+// timer; `hk retro` and /retro still work, with the defaults.
 type Retro struct {
 	// Every is off (default), daily, weekly, or a cron expression.
 	Every string `yaml:"every"`
@@ -27,7 +27,7 @@ type Retro struct {
 	// Apply is propose (default: nothing changes until approved) or safe
 	// (skill and memory changes are applied at once, each undoable).
 	Apply string `yaml:"apply"`
-	// Deliver is where the summary goes: a `habakkuk send` target
+	// Deliver is where the summary goes: a `hk send` target
 	// (CHANNEL:CHAT[:THREAD]), none for the report only, or empty for the
 	// agent's home chat.
 	Deliver string `yaml:"deliver"`

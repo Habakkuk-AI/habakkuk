@@ -7,7 +7,7 @@ import (
 
 // Chat notes are messages that reached a chat from outside its own turns:
 // a scheduled run's result, another agent's post to its home chat, a
-// message sent with `habakkuk send`. The agent that answers the chat never
+// message sent with `hk send`. The agent that answers the chat never
 // wrote them, so they are not in its transcript. Each note waits here until
 // a turn of that chat claims it and writes it into its user message.
 //

@@ -1,5 +1,5 @@
 // Package core is the desktop app without its windows: it switches between
-// connections, runs and supervises a local habakkuk serve, points the loopback
+// connections, runs and supervises a local hk serve, points the loopback
 // proxy at the active Habakkuk, watches it for notifications and status, and
 // serves the app's own JSON API. The native shell (package main) implements
 // UI and calls in from the tray, hotkey and notifications.
@@ -209,7 +209,7 @@ func (c *Controller) prepareLocal(conn connections.Connection) (local.Endpoint, 
 	home := local.Home(conn.Home)
 	if _, err := local.ReadHTTP(home); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return local.Endpoint{}, fmt.Errorf("no Habakkuk is set up in %s yet: run `habakkuk setup`, then add an http section", home)
+			return local.Endpoint{}, fmt.Errorf("no Habakkuk is set up in %s yet: run `hk setup`, then add an http section", home)
 		}
 		return local.Endpoint{}, err
 	}
@@ -228,7 +228,7 @@ func (c *Controller) prepareLocal(conn connections.Connection) (local.Endpoint, 
 	if sup != nil {
 		if !conn.Manual {
 			if err := sup.Start(); err != nil {
-				return local.Endpoint{}, fmt.Errorf("start habakkuk serve: %w", err)
+				return local.Endpoint{}, fmt.Errorf("start hk serve: %w", err)
 			}
 		}
 		addr = sup.Status().Addr
@@ -329,7 +329,7 @@ func (c *Controller) StopLocal() error {
 	sup := c.sups[conn.ID]
 	c.mu.Unlock()
 	if sup == nil {
-		return errors.New("habakkuk serve was not started by the app")
+		return errors.New("hk serve was not started by the app")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.grace()+5*time.Second)
 	defer cancel()
@@ -379,7 +379,7 @@ func (c *Controller) Shutdown(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 			if err := s.Stop(ctx); err != nil {
-				c.log().Warn("stop habakkuk serve", "err", err)
+				c.log().Warn("stop hk serve", "err", err)
 			}
 		}()
 	}

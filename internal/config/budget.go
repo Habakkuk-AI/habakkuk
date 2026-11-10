@@ -10,7 +10,7 @@ import (
 )
 
 // Budget caps what model calls may cost, in US dollars, priced like
-// `habakkuk usage`. The top-level budget covers the whole install; an
+// `hk usage`. The top-level budget covers the whole install; an
 // agent's covers the calls that agent makes. A limit left out is no limit.
 // Days and months start at 00:00 in the configured timezone.
 type Budget struct {

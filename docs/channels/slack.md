@@ -12,7 +12,7 @@ Habakkuk talks on Slack through an app you create. The app connects over Socket 
 2. Under **Event Subscriptions**, subscribe to the bot events `app_mention` and `message.im`. Add `message.channels` and `message.groups` too, so the bot can follow threads it was mentioned in. Then add the OAuth scopes those events need, plus `chat:write`.
 3. If you want files and reactions, add `files:read`, `files:write` and `reactions:write`. If you want approval buttons, turn on **Interactivity**.
 4. Install the app to your workspace and copy the bot token, which looks like `xoxb-...`.
-5. Run `habakkuk setup` and pick **Slack app**. It checks both tokens for you. Or add the channel by hand:
+5. Run `hk setup` and pick **Slack app**. It checks both tokens for you. Or add the channel by hand:
 
 ```yaml
 channels:
@@ -25,7 +25,7 @@ channels:
 
 ## Several Slack apps
 
-When one app is installed in several workspaces, you need one channel. List a bot token for each workspace in `bot_tokens_env`. It's different when each workspace has its own app, for example an app you made in your workspace and another made in a client's. In that case, add one `type: slack` channel per app. Each channel has its own app token and its own Socket Mode connection, and they run side by side in one `habakkuk serve`. Both can go to the same agent:
+When one app is installed in several workspaces, you need one channel. List a bot token for each workspace in `bot_tokens_env`. It's different when each workspace has its own app, for example an app you made in your workspace and another made in a client's. In that case, add one `type: slack` channel per app. Each channel has its own app token and its own Socket Mode connection, and they run side by side in one `hk serve`. Both can go to the same agent:
 
 ```yaml
 channels:
@@ -44,7 +44,7 @@ channels:
     listen_channels: [C0777GHI]
 ```
 
-Each channel has its own `allow_from`, pairing, routes and settings, and its own conversations. `habakkuk setup` edits the first Slack channel. You add the second one by hand, then put its tokens in `.env`.
+Each channel has its own `allow_from`, pairing, routes and settings, and its own conversations. `hk setup` edits the first Slack channel. You add the second one by hand, then put its tokens in `.env`.
 
 ## Access
 

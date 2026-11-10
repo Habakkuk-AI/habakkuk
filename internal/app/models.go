@@ -157,7 +157,7 @@ func (a *App) SessionUsage(ctx context.Context, session string) string {
 	return usage.Summarize(calls, a.Pricer).Brief()
 }
 
-// ProviderModels is one provider in `habakkuk models`.
+// ProviderModels is one provider in `hk models`.
 type ProviderModels struct {
 	Name, Type, BaseURL, Auth string
 	Credentials               string // e.g. "2/2 keys", "logged in", "no key needed"
@@ -211,7 +211,7 @@ func (a *App) credentialStatus(p *config.Provider, ep *llm.Endpoint) string {
 				return "logged in (" + p.Auth + ")"
 			}
 		}
-		return "not logged in: run habakkuk auth login " + p.Auth
+		return "not logged in: run hk auth login " + p.Auth
 	}
 	have := 0
 	for _, c := range ep.Credentials {

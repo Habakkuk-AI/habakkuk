@@ -213,13 +213,13 @@ func restoreCmd(home string, args []string) error {
 	force := fs.Bool("force", false, "overwrite an existing config and databases")
 	fs.Parse(args)
 	if fs.NArg() != 1 {
-		return errors.New("usage: habakkuk restore [-force] FILE")
+		return errors.New("usage: hk restore [-force] FILE")
 	}
 	n, err := restoreBackup(fs.Arg(0), home, *force)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("restored %d files into %s; run `habakkuk doctor` to check them\n", n, home)
+	fmt.Printf("restored %d files into %s; run `hk doctor` to check them\n", n, home)
 	return nil
 }
 

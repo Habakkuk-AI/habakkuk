@@ -14,12 +14,12 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/ops/security"
 )
 
-const securityUsage = `usage: habakkuk security [audit] [-fix] [-network]
+const securityUsage = `usage: hk security [audit] [-fix] [-network]
   (no flags)  the effective tool policy of each agent, then the audit's findings
   -fix        apply the safe fixes (file and folder permissions)
   -network    list every outbound endpoint and whether this config turns it on`
 
-// securityCmd runs `habakkuk security [audit] [-fix] [-network]`.
+// securityCmd runs `hk security [audit] [-fix] [-network]`.
 func securityCmd(home string, args []string, w io.Writer) error {
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		switch args[0] {
@@ -81,7 +81,7 @@ func securityCmd(home string, args []string, w io.Writer) error {
 
 // permissionsDoctor is the doctor's file permission check: chats, memory,
 // credentials and keys under $HABAKKUK_HOME must be owner-only. It returns
-// the number of problems and points at habakkuk security -fix.
+// the number of problems and points at hk security -fix.
 func permissionsDoctor(home string, cfg *config.Config, w io.Writer) int {
 	n := 0
 	for _, f := range security.Audit(security.Options{Home: home, Config: cfg}) {
@@ -94,7 +94,7 @@ func permissionsDoctor(home string, cfg *config.Config, w io.Writer) int {
 	if n == 0 {
 		fmt.Fprintln(w, "permissions: ok (chats, memory and credentials are owner-only)")
 	} else {
-		fmt.Fprintln(w, "permissions: fix with habakkuk security -fix")
+		fmt.Fprintln(w, "permissions: fix with hk security -fix")
 	}
 	return n
 }
@@ -133,7 +133,7 @@ func printFindings(w io.Writer, findings []security.Finding) error {
 		}
 	}
 	if fixable > 0 {
-		fmt.Fprintf(w, "\n%d finding(s) can be fixed with: habakkuk security -fix\n", fixable)
+		fmt.Fprintf(w, "\n%d finding(s) can be fixed with: hk security -fix\n", fixable)
 	}
 	if serious > 0 {
 		return fmt.Errorf("%d high or critical finding(s)", serious)

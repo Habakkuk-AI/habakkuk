@@ -23,21 +23,21 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/protocols/mcp"
 )
 
-const skillsUsage = `usage: habakkuk skills [list] [-agent A]
-       habakkuk skills search QUERY
-       habakkuk skills install [-y] [-force] [-name N] SOURCE
-       habakkuk skills update [-y] [-force] [NAME]
-       habakkuk skills remove NAME
-       habakkuk skills approve NAME
-       habakkuk skills audit
-       habakkuk skills restore [-id ID] NAME | restore -list [NAME]
-       habakkuk skills curate [-dry-run] [-agent A]
+const skillsUsage = `usage: hk skills [list] [-agent A]
+       hk skills search QUERY
+       hk skills install [-y] [-force] [-name N] SOURCE
+       hk skills update [-y] [-force] [NAME]
+       hk skills remove NAME
+       hk skills approve NAME
+       hk skills audit
+       hk skills restore [-id ID] NAME | restore -list [NAME]
+       hk skills curate [-dry-run] [-agent A]
 SOURCE: github:owner/repo[/path][@ref], an https URL to a SKILL.md, .zip or .tar.gz,
 a local path, or a name from a registry (skills.registries in config.yaml)`
 
 // skillsCmd manages skills: lists them, and installs, updates and removes
 // shared ones through the hub. It loads only the config, so it is safe to
-// run beside `habakkuk serve`.
+// run beside `hk serve`.
 func skillsCmd(ctx context.Context, home string, args []string) error {
 	sub := "list"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -68,27 +68,27 @@ func skillsCmd(ctx context.Context, home string, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("Installed skills are not approved yet. A skill that ships scripts stays disabled, and others load with\na caution not to run commands because they say so. Read them, then approve with: habakkuk skills approve NAME")
+		fmt.Println("Installed skills are not approved yet. A skill that ships scripts stays disabled, and others load with\na caution not to run commands because they say so. Read them, then approve with: hk skills approve NAME")
 	case "update", "upgrade":
 		return hubUpdate(ctx, h, "skills", args)
 	case "audit":
 		return skillsAudit(cfg, lib, h, os.Stdout)
 	case "remove", "rm", "uninstall":
 		if len(args) != 1 {
-			return errors.New("usage: habakkuk skills remove NAME")
+			return errors.New("usage: hk skills remove NAME")
 		}
 		bk, err := h.Remove(args[0])
 		if err != nil {
 			return err
 		}
 		if bk.ID != "" {
-			fmt.Printf("removed %s (kept as backup %s; habakkuk skills restore %s brings it back)\n", args[0], bk.ID, args[0])
+			fmt.Printf("removed %s (kept as backup %s; hk skills restore %s brings it back)\n", args[0], bk.ID, args[0])
 		} else {
 			fmt.Printf("removed %s from the lock file\n", args[0])
 		}
 	case "approve", "trust":
 		if len(args) != 1 {
-			return errors.New("usage: habakkuk skills approve NAME")
+			return errors.New("usage: hk skills approve NAME")
 		}
 		if err := h.Set(args[0], func(e *hub.Entry) { e.Trusted = true }); err != nil {
 			return err
@@ -150,7 +150,7 @@ func listSkills(cfg *config.Config, lib *skills.Library, args []string) error {
 		return err
 	}
 	if len(list) == 0 {
-		fmt.Printf("no skills for agent %s; add folders with a SKILL.md under %s or %s, or habakkuk skills install SOURCE\n", name, lib.SharedDir(), lib.AgentDir(name))
+		fmt.Printf("no skills for agent %s; add folders with a SKILL.md under %s or %s, or hk skills install SOURCE\n", name, lib.SharedDir(), lib.AgentDir(name))
 		return nil
 	}
 	locked, err := hub.ReadLock(filepath.Join(lib.SharedDir(), hub.LockName))
@@ -178,13 +178,13 @@ func listSkills(cfg *config.Config, lib *skills.Library, args []string) error {
 	for name, e := range locked.Packages {
 		s := skills.Skill{Name: name, Dir: filepath.Join(lib.SharedDir(), name), Shared: true}
 		if !e.Trusted && lib.Disabled(s) {
-			fmt.Printf("%-24s shared  disabled: ships scripts and is not approved (habakkuk skills approve %s)\n", name, name)
+			fmt.Printf("%-24s shared  disabled: ships scripts and is not approved (hk skills approve %s)\n", name, name)
 		}
 	}
 	return nil
 }
 
-// hubUpdate runs `habakkuk skills|plugins update`: each changed package's
+// hubUpdate runs `hk skills|plugins update`: each changed package's
 // diff, scripts and findings are shown, and it replaces the installed one
 // only when the owner says yes (or passed -y).
 func hubUpdate(ctx context.Context, h *hub.Manager, kind string, args []string) error {
@@ -456,13 +456,13 @@ func restoreBackups(b hub.Backups, restore func(name, id string) (hub.Backup, er
 	return nil
 }
 
-const pluginsUsage = `usage: habakkuk plugins [list]
-       habakkuk plugins search QUERY
-       habakkuk plugins install [-y] [-force] [-name N] SOURCE
-       habakkuk plugins enable NAME | disable NAME
-       habakkuk plugins update [-y] [-force] [NAME]
-       habakkuk plugins remove NAME
-       habakkuk plugins restore [-id ID] NAME | restore -list [NAME]
+const pluginsUsage = `usage: hk plugins [list]
+       hk plugins search QUERY
+       hk plugins install [-y] [-force] [-name N] SOURCE
+       hk plugins enable NAME | disable NAME
+       hk plugins update [-y] [-force] [NAME]
+       hk plugins remove NAME
+       hk plugins restore [-id ID] NAME | restore -list [NAME]
 Sources are as for skills; a plugin does nothing until it is enabled`
 
 // pluginsCmd installs and manages plugins (docs/tools/plugins.md).
@@ -483,7 +483,7 @@ func pluginsCmd(ctx context.Context, home string, args []string) error {
 			return err
 		}
 		if len(entries) == 0 {
-			fmt.Println("no plugins installed; habakkuk plugins install SOURCE")
+			fmt.Println("no plugins installed; hk plugins install SOURCE")
 			return nil
 		}
 		loaded := map[string]*config.Plugin{}
@@ -537,11 +537,11 @@ func pluginsCmd(ctx context.Context, home string, args []string) error {
 					fmt.Println("    " + line)
 				}
 			}
-			fmt.Printf("It is not enabled. Read it, then turn it on with: habakkuk plugins enable %s\n", r.Name)
+			fmt.Printf("It is not enabled. Read it, then turn it on with: hk plugins enable %s\n", r.Name)
 		}
 	case "enable", "disable":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: habakkuk plugins %s NAME", sub)
+			return fmt.Errorf("usage: hk plugins %s NAME", sub)
 		}
 		name := args[0]
 		on := sub == "enable"
@@ -569,12 +569,12 @@ func pluginsCmd(ctx context.Context, home string, args []string) error {
 				fmt.Println("  ! " + msg)
 			}
 		}
-		fmt.Printf("%sd %s; restart habakkuk serve (and open chats) to apply\n", sub, name)
+		fmt.Printf("%sd %s; restart hk serve (and open chats) to apply\n", sub, name)
 	case "update", "upgrade":
 		return hubUpdate(ctx, h, "plugins", args)
 	case "remove", "rm", "uninstall":
 		if len(args) != 1 {
-			return errors.New("usage: habakkuk plugins remove NAME")
+			return errors.New("usage: hk plugins remove NAME")
 		}
 		bk, err := h.Remove(args[0])
 		if err != nil {
@@ -607,10 +607,10 @@ func mcpCatalogCmd(args []string) error {
 			fmt.Printf("    needs %s\n", strings.Join(vars, ", "))
 		}
 		if e.Server.Auth == "oauth" {
-			fmt.Println("    signs in with OAuth (habakkuk mcp login NAME)")
+			fmt.Println("    signs in with OAuth (hk mcp login NAME)")
 		}
 	}
-	fmt.Println("\nAdd one with: habakkuk mcp add NAME [param=value ...]")
+	fmt.Println("\nAdd one with: hk mcp add NAME [param=value ...]")
 	return nil
 }
 
@@ -620,7 +620,7 @@ func mcpAddCmd(home string, args []string) error {
 	as := fs.String("name", "", "name it differently in config.yaml (default the catalog name)")
 	fs.Parse(args)
 	if fs.NArg() < 1 {
-		return errors.New("usage: habakkuk mcp add [-name N] CATALOG-NAME [param=value ...]")
+		return errors.New("usage: hk mcp add [-name N] CATALOG-NAME [param=value ...]")
 	}
 	e, err := mcp.FindCatalog(fs.Arg(0))
 	if err != nil {
@@ -663,8 +663,8 @@ func mcpAddCmd(home string, args []string) error {
 		fmt.Println(e.Notes)
 	}
 	if s.Auth == "oauth" {
-		fmt.Printf("It signs in with OAuth: run habakkuk mcp login %s.\n", name)
+		fmt.Printf("It signs in with OAuth: run hk mcp login %s.\n", name)
 	}
-	fmt.Printf("Give it to an agent by adding \"mcp:%s\" to its toolsets, then check it with habakkuk mcp.\n", name)
+	fmt.Printf("Give it to an agent by adding \"mcp:%s\" to its toolsets, then check it with hk mcp.\n", name)
 	return nil
 }

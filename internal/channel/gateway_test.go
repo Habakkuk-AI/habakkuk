@@ -290,9 +290,9 @@ func TestUnknownSenderPairs(t *testing.T) {
 	r := newRig(t, &config.Channel{})
 	ctx := context.Background()
 	r.g.Handle(ctx, dm("m1", "hi"))
-	waitFor(t, "pairing code", hasText(r.a, "habakkuk pair "))
+	waitFor(t, "pairing code", hasText(r.a, "hk pair "))
 	msg := r.a.texts()[0]
-	code := strings.TrimSuffix(strings.Fields(msg[strings.Index(msg, "habakkuk pair "):])[2], "`")
+	code := strings.TrimSuffix(strings.Fields(msg[strings.Index(msg, "hk pair "):])[2], "`")
 	r.g.Handle(ctx, dm("m2", "hi again")) // throttled: no second notice, no turn
 	time.Sleep(100 * time.Millisecond)
 	if len(r.a.texts()) != 1 || r.model.calls != 0 {

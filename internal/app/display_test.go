@@ -59,7 +59,7 @@ func TestDisplaySettingsReloadWithoutARestart(t *testing.T) {
 	if changed := w.check(ctx); strings.Join(changed, ",") != "config" {
 		t.Fatalf("changed = %v", changed)
 	}
-	if strings.Contains(logs.String(), "restart habakkuk serve to apply") {
+	if strings.Contains(logs.String(), "restart hk serve to apply") {
 		t.Fatalf("a display setting asked for a restart: %s", logs.String())
 	}
 	if d := a.Gateway.Display("tg"); d.Progress != config.ProgressDetailed {
@@ -74,7 +74,7 @@ func TestDisplaySettingsReloadWithoutARestart(t *testing.T) {
 	if d := a.Gateway.Display("tg"); d.Progress != config.ProgressOff || d.ApprovalsDetail != config.ApprovalsFull {
 		t.Fatalf("a hand edit was not applied: %+v", d)
 	}
-	if !strings.Contains(logs.String(), "channel display settings reloaded") || strings.Contains(logs.String(), "restart habakkuk serve to apply") {
+	if !strings.Contains(logs.String(), "channel display settings reloaded") || strings.Contains(logs.String(), "restart hk serve to apply") {
 		t.Fatalf("log: %s", logs.String())
 	}
 

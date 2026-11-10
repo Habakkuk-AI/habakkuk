@@ -4,7 +4,7 @@ description: "Run prompts and scripts on a timer: cron expressions, intervals, o
 order: 5
 ---
 
-A schedule runs an agent on a timer. This page shows how to create one, how its runs behave, and how to schedule a script in place of a prompt. Schedules need `habakkuk serve` running, because it polls them every 15 seconds.
+A schedule runs an agent on a timer. This page shows how to create one, how its runs behave, and how to schedule a script in place of a prompt. Schedules need `hk serve` running, because it polls them every 15 seconds.
 
 ## Creating a schedule
 
@@ -13,9 +13,9 @@ You can ask in a chat, for example "every weekday at 8, summarise my inbox". The
 You can also manage schedules from the terminal:
 
 ```bash
-habakkuk schedules                                  # list
-habakkuk schedules add -agent habakkuk -name standup -when "0 9 * * 1-5" -prompt "Post today's board" -to telegram:123456789
-habakkuk schedules pause|resume|rm|run ID
+hk schedules                                        # list
+hk schedules add -agent habakkuk -name standup -when "0 9 * * 1-5" -prompt "Post today's board" -to telegram:123456789
+hk schedules pause|resume|rm|run ID
 ```
 
 `-when` takes one of these forms:
@@ -33,9 +33,9 @@ sch_4f1c scheduled; first run Mon 2026-11-09 17:57 America/Toronto (22:57 UTC)
 The time was read in America/Toronto, the config timezone. For another zone, give an offset: at 2026-11-09T17:57:00Z is UTC.
 ```
 
-`-to` takes a `CHANNEL:CHAT[:THREAD]` target, the same as `habakkuk send`. To queue an extra run right now, use `habakkuk schedules run ID`.
+`-to` takes a `CHANNEL:CHAT[:THREAD]` target, the same as `hk send`. To queue an extra run right now, use `hk schedules run ID`.
 
-`habakkuk schedules` shows the last result of each schedule. That's `started` while a run is going. Afterwards it's `done`, `failed: <reason>`, or a script's own status. A one-off schedule that has run shows as `ran once`.
+`hk schedules` shows the last result of each schedule. That's `started` while a run is going. Afterwards it's `done`, `failed: <reason>`, or a script's own status. A one-off schedule that has run shows as `ran once`.
 
 ## How runs work
 
@@ -50,7 +50,7 @@ The time was read in America/Toronto, the config timezone. For another zone, giv
 A script schedule runs a command where an ordinary schedule runs a prompt. Use one for frequent jobs, such as syncing a ledger, checking an inbox or sending reminders, where a model call on every run would be slow and costly.
 
 ```bash
-habakkuk schedules add -agent habakkuk -name inbox -when "@every 10m" \
+hk schedules add -agent habakkuk -name inbox -when "@every 10m" \
   -run ./check-inbox.sh -on-output deliver -timeout 2m -to telegram:123456789
 ```
 

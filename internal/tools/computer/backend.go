@@ -82,7 +82,7 @@ func execRun(ctx context.Context, env []string, c cmd) ([]byte, error) {
 	x.Stdout, x.Stderr = &out, &stderr
 	if err := x.Run(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return nil, fmt.Errorf("%s is not installed (habakkuk doctor lists what this backend needs)", c.name)
+			return nil, fmt.Errorf("%s is not installed (hk doctor lists what this backend needs)", c.name)
 		}
 		msg := strings.TrimSpace(stderr.String())
 		if len(msg) > 300 {

@@ -42,12 +42,12 @@ type Config struct {
 	Search *Search `yaml:"search"` // web_search for models without hosted search; nil is off
 
 	Realtime *Realtime `yaml:"realtime"` // the dashboard's Live voice mode; nil is off
-	Talk     *Talk     `yaml:"talk"`     // habakkuk talk, the local voice loop; nil is defaults
+	Talk     *Talk     `yaml:"talk"`     // hk talk, the local voice loop; nil is defaults
 
 	// Hooks run commands on turn, tool, message, session and schedule events.
 	Hooks []*Hook `yaml:"hooks"`
 	// Pricing overrides or adds list prices, keyed by model id or
-	// "<provider>/<model>", for `habakkuk usage` and /usage.
+	// "<provider>/<model>", for `hk usage` and /usage.
 	Pricing map[string]*Price `yaml:"pricing"`
 	// Browser configures the browser toolset; nil is a headless launch
 	// with defaults.
@@ -100,7 +100,7 @@ type Provider struct {
 	// Preset fills type, base_url and keys_env for a known provider (see
 	// providers.go); a provider named after a preset uses it implicitly.
 	Preset string `yaml:"preset"`
-	// Auth uses a subscription login from `habakkuk auth login` instead of
+	// Auth uses a subscription login from `hk auth login` instead of
 	// keys: chatgpt or copilot.
 	Auth   string `yaml:"auth"`
 	Region string `yaml:"region"` // bedrock: AWS region (default AWS_REGION or the shared config)
@@ -140,7 +140,7 @@ type Agent struct {
 	Docker  *DockerSandbox `yaml:"docker"`
 	SSH     *SSHSandbox    `yaml:"ssh"`
 	// Checkpoints snapshot the workspace before a turn's first change, for
-	// habakkuk rollback and /undo (default true); CheckpointMaxMB caps one
+	// hk rollback and /undo (default true); CheckpointMaxMB caps one
 	// snapshot's new and changed files (default 200).
 	Checkpoints     *bool `yaml:"checkpoints"`
 	CheckpointMaxMB int   `yaml:"checkpoint_max_mb"`
@@ -154,7 +154,7 @@ type Agent struct {
 	// Home is the chat where the agent tells its owner about work that
 	// started elsewhere (a delegated task, a board card, a schedule, an A2A
 	// task, another channel): CHANNEL:CONVERSATION[:THREAD], as
-	// `habakkuk send` takes it. It enables the message_home tool.
+	// `hk send` takes it. It enables the message_home tool.
 	Home string `yaml:"home"`
 	// ReportHome posts to the home chat automatically: off, results (the
 	// default with a home: a short result when such work finishes) or all
@@ -241,7 +241,7 @@ type MCPServer struct {
 	Approve []string          `yaml:"approve"` // tools that always need approval
 	Allow   []string          `yaml:"allow"`   // expose only these tools (default all)
 	Timeout time.Duration     `yaml:"timeout"` // per call (default 120s)
-	// Auth "oauth" signs in with the MCP authorization flow (habakkuk mcp
+	// Auth "oauth" signs in with the MCP authorization flow (hk mcp
 	// login NAME); url servers only. The fields below tune it.
 	Auth            string   `yaml:"auth"`
 	ClientID        string   `yaml:"client_id"`         // oauth: a pre-registered client (default: dynamic registration)
@@ -284,7 +284,7 @@ func Load(home string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("no config at %s yet: run `habakkuk setup` to make one (about a minute)", path)
+			return nil, fmt.Errorf("no config at %s yet: run `hk setup` to make one (about a minute)", path)
 		}
 		return nil, err
 	}
@@ -417,7 +417,7 @@ func (c *Config) applyDefaults() {
 func (c *Config) Validate() error {
 	var errs []error
 	if c.Version != CurrentVersion {
-		errs = append(errs, fmt.Errorf("version %d is not supported (want %d); run `habakkuk config migrate`, or update Habakkuk if this config is from a newer release", c.Version, CurrentVersion))
+		errs = append(errs, fmt.Errorf("version %d is not supported (want %d); run `hk config migrate`, or update Habakkuk if this config is from a newer release", c.Version, CurrentVersion))
 	}
 	errs = append(errs, c.validateProviders()...)
 	if c.Judge != nil {
@@ -700,11 +700,11 @@ providers:
     type: openai
     base_url: https://openrouter.ai/api/v1
     keys_env: [OPENROUTER_API_KEY]
-  # Known services need only a name or a preset (see habakkuk models):
+  # Known services need only a name or a preset (see hk models):
   # groq: {}
   # local:
   #   preset: ollama
-  # Or sign in with a subscription (habakkuk auth login chatgpt|copilot):
+  # Or sign in with a subscription (hk auth login chatgpt|copilot):
   # chatgpt:
   #   auth: chatgpt
 
@@ -722,7 +722,7 @@ agents:
     # approvals: reviewer_then_human
     # reviewer_model: anthropic/claude-sonnet-5-5   # default: the agent's own models
     # Where exec runs: none (here) | docker | ssh. Checkpoints snapshot the
-    # workspace before each turn's changes (habakkuk rollback, /undo in chat).
+    # workspace before each turn's changes (hk rollback, /undo in chat).
     # sandbox: docker
     # docker: {image: debian:stable-slim, network: true, cpus: "2", memory: 2g}
     # ssh: {host: build.example.com, user: habakkuk, key_env: BUILD_SSH_KEY, workdir: /srv/habakkuk}
@@ -738,7 +738,7 @@ agents:
     # report_home: results
     # This agent's spending limits in US dollars (see budget: below).
     # budget: {daily: 2, monthly: 40, per_turn: 0.50}
-    # Safety (habakkuk security shows the effective policy). Messages from a
+    # Safety (hk security shows the effective policy). Messages from a
     # chat channel need approval for exec, process, write (outside the
     # workspace), computer and browser (private addresses), in every mode;
     # senders let in by allow_from "*" never get them. After reading outside
@@ -753,19 +753,19 @@ agents:
     # trusted_write_paths: [~/notes]
 
 # Messaging channels. Uncomment one, put its tokens in .env, then run
-# ` + "`habakkuk serve`" + `. Unknown senders get a pairing code for ` + "`habakkuk pair`" + `.
+# ` + "`hk serve`" + `. Unknown senders get a pairing code for ` + "`hk pair`" + `.
 # channels:
 #   telegram:
 #     type: telegram
 #     token_env: TELEGRAM_BOT_TOKEN
-#     allow_from: []        # Telegram user ids; or approve senders with habakkuk pair
+#     allow_from: []        # Telegram user ids; or approve senders with hk pair
 #   slack:
 #     type: slack
 #     app_token_env: SLACK_APP_TOKEN
 #     bot_tokens_env: [SLACK_BOT_TOKEN]   # one per workspace the app is installed in
 #     listen_channels: [C0123ABC]         # answer every message here, no @mention needed
 #   whatsapp:
-#     type: whatsapp        # link with: habakkuk whatsapp link -phone <number>
+#     type: whatsapp        # link with: hk whatsapp link -phone <number>
 #   wagent:
 #     type: whatsappagent   # an agent made in WhatsApp under Settings > Agents; talks only to its creator
 #     token_env: WHATSAPP_AGENT_KEY   # the agent's API key (Chat info > API key); schedules can deliver to wagent:creator
@@ -815,7 +815,7 @@ agents:
 #     twitch: {login: habakkuk_bot, token_env: TWITCH_TOKEN, channels: [mystream]}
 #
 # These receive webhooks at <http.public_url>/channels/<name>, so they need
-# the http section below with public_url set (habakkuk doctor prints the URLs).
+# the http section below with public_url set (hk doctor prints the URLs).
 #   sms:
 #     type: sms             # Twilio
 #     sms: {account_sid: ACxxxxxxxx, auth_token_env: TWILIO_AUTH_TOKEN, from: "+15551234567"}
@@ -885,8 +885,8 @@ agents:
 # screenshots and drive its mouse and keyboard. Every action is exec risk.
 # linux drives this machine's X11 (xdotool) or Wayland (ydotool) screen,
 # macos this Mac's (grant Screen Recording and Accessibility), xvfb gives
-# each agent a private virtual desktop (habakkuk computer view shows how to
-# watch it). habakkuk doctor checks the commands each backend needs.
+# each agent a private virtual desktop (hk computer view shows how to
+# watch it). hk doctor checks the commands each backend needs.
 # computer:
 #   backend: xvfb                     # linux | macos | xvfb
 #   screen: 1280x800                  # xvfb only
@@ -897,11 +897,11 @@ agents:
 # limits reset at midnight and on the 1st of the month in it.
 # timezone: America/Toronto
 
-# Spending limits in US dollars, priced like habakkuk usage. A model call is
+# Spending limits in US dollars, priced like hk usage. A model call is
 # refused once a limit is used up; the turn ends with a message saying when
 # it resets. A warning goes to the chat at 80%. Each agent can have its own
 # (agents.<name>.budget, same keys except unknown_price). Changes apply
-# without a restart. See them with habakkuk usage or /budget.
+# without a restart. See them with hk usage or /budget.
 # budget:
 #   daily: 5                 # the whole install, per day
 #   monthly: "100.00"        # per calendar month
@@ -978,12 +978,12 @@ agents:
 #   review_idle: 15m
 #   nightly: "03:30"        # or off
 #   stale_days: 365         # -1 never archives
-#   history_days: 90        # changes kept for habakkuk memory history/undo; -1 keeps all
+#   history_days: 90        # changes kept for hk memory history/undo; -1 keeps all
 #
 # Retros: an agent looks back over its own work (failed jobs, denied
 # approvals, slow turns, stalled cards, corrections), finds causes and
 # proposes changes to its skills, memory, SOUL.md, config or schedules.
-# habakkuk retro list, show, apply and reject; /retro in a chat.
+# hk retro list, show, apply and reject; /retro in a chat.
 # retro:
 #   every: weekly           # off | daily | weekly | a cron expression
 #   at: "fri 17:00"         # local time for daily (HH:MM) and weekly
@@ -992,12 +992,12 @@ agents:
 #   apply: propose          # propose | safe (skill and memory changes applied at once, undoable)
 #   deliver: ""             # CHANNEL:CHAT, none, or empty for the agent's home chat
 #
-# Skills from outside: habakkuk skills install github:owner/repo[/path][@ref],
+# Skills from outside: hk skills install github:owner/repo[/path][@ref],
 # an https URL, a local path, or a name from a registry index. The curator
 # merges near-duplicate skills agents wrote and archives unused ones (with
-# backups; habakkuk skills restore NAME). Plugins (habakkuk plugins install,
+# backups; hk skills restore NAME). Plugins (hk plugins install,
 # enable) add MCP servers, skills, hooks and commands without editing this
-# file; see docs/tools/plugins.md. habakkuk mcp catalog lists ready-made MCP servers.
+# file; see docs/tools/plugins.md. hk mcp catalog lists ready-made MCP servers.
 # skills:
 #   registries:
 #     - {name: team, url: "https://skills.example.com/index.json"}

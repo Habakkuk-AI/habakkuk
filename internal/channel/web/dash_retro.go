@@ -8,7 +8,7 @@ import (
 )
 
 // Retros: an agent's retrospectives, read only. Proposals are approved
-// with habakkuk retro apply or /retro apply in a chat.
+// with hk retro apply or /retro apply in a chat.
 
 // retroRunner returns the retro runner for an agent's endpoints, or
 // writes the error.

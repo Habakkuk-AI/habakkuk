@@ -17,7 +17,7 @@ import (
 // shell. Devices pair with a one-time code and connect to the HTTP
 // listener at /nodes, so nodes need an http section.
 type Nodes struct {
-	// URL is how devices reach this server, printed by `habakkuk node pair`
+	// URL is how devices reach this server, printed by `hk node pair`
 	// (default http://<http.listen>).
 	URL string `yaml:"url"`
 	// Allow lists, per node name ("*" for every node), the commands that

@@ -136,7 +136,7 @@ func TestBackupAndRestore(t *testing.T) {
 	if _, err := q.Enqueue(ctx, jobs.NewJob{ID: "job_keep", Kind: "turn"}); err != nil {
 		t.Fatal(err)
 	}
-	// The database stays open (as under habakkuk serve) while it is backed up.
+	// The database stays open (as under hk serve) while it is backed up.
 	archive := filepath.Join(t.TempDir(), "b.tar.gz")
 	if _, err := writeBackup(ctx, home, archive, false, false); err != nil {
 		t.Fatal(err)

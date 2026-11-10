@@ -14,7 +14,7 @@ There are three ways to put Habakkuk on WhatsApp. This page compares them and sh
 | Public URL needed | No | No | Yes (webhook) |
 | Account needed | A WhatsApp account | A WhatsApp number (its own is best) | A Meta app, a WhatsApp Business Account and a system user token |
 | Voice replies | As an audio file | As voice notes | As voice notes |
-| In `habakkuk setup` | Yes (recommended) | Yes | No |
+| In `hk setup` | Yes (recommended) | Yes | No |
 
 **Pick the WhatsApp agent** for a personal assistant. It takes a minute, and it gets its own chat with its own name and photo. **Pick the linked device** when other people need to reach the agent, or when you want it in groups. **Pick the Cloud API** for a business number that customers write to.
 
@@ -27,7 +27,7 @@ A WhatsApp agent is a chat you create inside WhatsApp. Habakkuk long-polls `api.
 1. In WhatsApp, open **Settings > Agents** and create an agent. Give it a name and a photo.
 2. Open the agent's chat and send it one message, such as "hi". That's how Habakkuk learns your id.
 3. Still in the chat, open **Chat info > API key** and copy the key.
-4. Run `habakkuk setup` and pick **WhatsApp agent**. Or add the channel by hand:
+4. Run `hk setup` and pick **WhatsApp agent**. Or add the channel by hand:
 
 ```yaml
 channels:
@@ -36,11 +36,11 @@ channels:
     token_env: WHATSAPP_AGENT_KEY     # the key goes in .env
 ```
 
-5. Run `habakkuk serve`.
+5. Run `hk serve`.
 
 ### Access
 
-While the platform is in beta, an agent can only talk to the person who created it. WhatsApp refuses everyone else. Habakkuk always treats that sender as the owner, even when you set `allow_from: ["*"]`. Schedules and `habakkuk send` reach you at `<name>:creator`, for example `wagent:creator`.
+While the platform is in beta, an agent can only talk to the person who created it. WhatsApp refuses everyone else. Habakkuk always treats that sender as the owner, even when you set `allow_from: ["*"]`. Schedules and `hk send` reach you at `<name>:creator`, for example `wagent:creator`.
 
 > [!NOTE]
 > These chats aren't end-to-end encrypted. Meta relays them.
@@ -56,7 +56,7 @@ While the platform is in beta, an agent can only talk to the person who created 
 
 | Symptom | Cause and fix |
 |---|---|
-| `another program is polling with this agent's API key; only one may` | Only one program may poll with a key at a time. Stop the other `habakkuk serve` (or other tool) using it. |
+| `another program is polling with this agent's API key; only one may` | Only one program may poll with a key at a time. Stop the other `hk serve` (or other tool) using it. |
 | `the API key is not valid; it changes when it is regenerated or WhatsApp is reinstalled` | Copy the key again from Chat info > API key into `.env`, then restart `serve`. |
 | `the API key variable is empty` | The variable `token_env` names is not set in the environment or `.env`. |
 | Schedules to `<name>:creator` fail | Send the agent one message first so Habakkuk learns your id. |
@@ -72,24 +72,24 @@ channels:
   whatsapp:
     type: whatsapp
     groups: mention                             # off | mention | all
-    allow_from: ["15551234567"]                 # or approve people with habakkuk pair
+    allow_from: ["15551234567"]                 # or approve people with hk pair
 ```
 
 Next, link the device:
 
 ```bash
-habakkuk whatsapp link                          # prints a QR code
-habakkuk whatsapp link -phone +15551234567      # prints a code to type on the phone instead
+hk whatsapp link                                # prints a QR code
+hk whatsapp link -phone +15551234567            # prints a code to type on the phone instead
 ```
 
 - **QR code.** Without `-phone`, the command prints a QR code in the terminal. It also saves the code as `$HABAKKUK_HOME/whatsapp-qr.png`. Scan it from WhatsApp > Settings > Linked devices > Link a device.
 - **Pairing code.** With `-phone`, the command prints a code. On the phone, choose Link a device, then "Link with phone number instead". Enter the code there.
 
-If you have several `whatsapp` channels, pass `-account NAME`. Linking gives up after five minutes. When that happens, run the command again. `habakkuk setup` can also run the link for you.
+If you have several `whatsapp` channels, pass `-account NAME`. Linking gives up after five minutes. When that happens, run the command again. `hk setup` can also run the link for you.
 
 ### Access
 
-`allow_from` takes phone numbers or LIDs. Anyone else who writes gets a pairing code, which you approve with `habakkuk pair`. In groups, the bot answers when you mention it or reply to it. That's the `groups: mention` setting.
+`allow_from` takes phone numbers or LIDs. Anyone else who writes gets a pairing code, which you approve with `hk pair`. In groups, the bot answers when you mention it or reply to it. That's the `groups: mention` setting.
 
 WhatsApp now identifies many senders by a LID in place of their phone number. A LID is a private id such as `98765432101234@lid`. Habakkuk checks `allow_from` against both. It looks up the phone number behind a LID, and the LID behind a phone number, in the linked device's store. That means either form works:
 
@@ -101,11 +101,11 @@ You can write a phone number with a `+`, spaces or dashes. You can write a LID w
 
 ### Sending to a number
 
-`habakkuk send`, a schedule's `-to` target and an agent's `home:` all accept a phone number, with or without the `+`:
+`hk send`, a schedule's `-to` target and an agent's `home:` all accept a phone number, with or without the `+`:
 
 ```bash
-habakkuk send -to whatsapp:+12025550142 "The report is ready"
-habakkuk send -to whatsapp:98765432101234@lid "Same person, by LID"
+hk send -to whatsapp:+12025550142 "The report is ready"
+hk send -to whatsapp:98765432101234@lid "Same person, by LID"
 ```
 
 Habakkuk turns a bare number into `<digits>@s.whatsapp.net`. It uses a full id as it is, such as `<digits>@lid` or a group's `...@g.us`. Some targets can never work, such as one with an unknown server after the `@`. Those fail at once, so Habakkuk doesn't retry them.
@@ -120,7 +120,7 @@ Habakkuk turns a bare number into `<digits>@s.whatsapp.net`. It uses a full id a
 
 Habakkuk stores the device credentials in `channels/whatsapp-<account>.db`. It makes every change to them as a SQLite transaction, so a crash or a full disk can't leave the credentials file half-written.
 
-Habakkuk also copies them to `backups/whatsapp-<account>-<time>.db`. It makes a copy when it connects, and once a day. The copy on connect happens at most once an hour, however often the connection drops. Habakkuk keeps the five newest copies, plus the newest copy from each of the last seven days. It never deletes the only good copy. Only you can read the copies (mode 0600, in a 0700 folder). That holds even when the process runs with a loose umask, for example under systemd without `UMask=`. `habakkuk backup -env` includes the credentials too.
+Habakkuk also copies them to `backups/whatsapp-<account>-<time>.db`. It makes a copy when it connects, and once a day. The copy on connect happens at most once an hour, however often the connection drops. Habakkuk keeps the five newest copies, plus the newest copy from each of the last seven days. It never deletes the only good copy. Only you can read the copies (mode 0600, in a 0700 folder). That holds even when the process runs with a loose umask, for example under systemd without `UMask=`. `hk backup -env` includes the credentials too.
 
 > [!WARNING]
 > Anyone who has that database can act as the linked device, so keep any backup made with `-env` private.

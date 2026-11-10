@@ -23,25 +23,25 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 )
 
-// `habakkuk setup` takes a new user from download to a first reply in
+// `hk setup` takes a new user from download to a first reply in
 // about a minute without editing YAML: pick a model (keys already in the
 // environment and local servers are found), pick where to talk (a WhatsApp
 // agent is the recommended one), name the agent, then it writes a small
 // config.yaml, runs doctor and offers to start serving. Every answer has a
 // flag, so it also runs unattended in scripts and CI. On an existing home
 // it edits the config in place (after a backup) and keeps what it is not
-// asked to change; `habakkuk setup model|channel|name|service` does one
+// asked to change; `hk setup model|channel|name|service` does one
 // step on its own.
 
-const setupUsage = `usage: habakkuk setup [model | channel [TYPE] | name | service] [flags]
-       habakkuk setup channel NAME [-progress plain|detailed|off] [-approvals-detail summary|full]
+const setupUsage = `usage: hk setup [model | channel [TYPE] | name | service] [flags]
+       hk setup channel NAME [-progress plain|detailed|off] [-approvals-detail summary|full]
 
 With no step, runs them all: model, where to talk, names. Re-running edits
 the existing config (config.yaml.bak keeps the previous one).
 
 The second form only changes what an existing channel shows in its chats:
 while the agent works (-progress) and in approval requests
-(-approvals-detail). A running habakkuk serve picks it up without a restart.
+(-approvals-detail). A running hk serve picks it up without a restart.
 
 Flags (all optional; -y never prompts and uses flags, the environment, then defaults):
 `
@@ -186,11 +186,11 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 		switch steps[0] {
 		case "model", "name", "service":
 			if len(steps) > 1 {
-				return nil, fmt.Errorf("habakkuk setup %s takes no argument %q", steps[0], steps[1])
+				return nil, fmt.Errorf("hk setup %s takes no argument %q", steps[0], steps[1])
 			}
 		case "channel":
 			if len(steps) > 2 {
-				return nil, errors.New("usage: habakkuk setup channel [TYPE]")
+				return nil, errors.New("usage: hk setup channel [TYPE]")
 			}
 			if len(steps) == 2 {
 				s.channelArg = steps[1]
@@ -215,7 +215,7 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 	fs.StringVar(&o.baseURL, "base-url", "", "API base URL (custom providers, or to override a preset's)")
 	fs.StringVar(&o.keyEnv, "key-env", "", "environment variable holding the model key (default: the preset's, e.g. ANTHROPIC_API_KEY)")
 	fs.StringVar(&o.channel, "channel", "", "where to talk: "+strings.Join(channelTypes, ", "))
-	fs.StringVar(&o.allow, "allow", "", "comma-separated sender ids allowed on the channel (default: found or approve with habakkuk pair)")
+	fs.StringVar(&o.allow, "allow", "", "comma-separated sender ids allowed on the channel (default: found or approve with hk pair)")
 	fs.StringVar(&o.phone, "phone", "", "whatsapp: your number with country code, to link with a pairing code instead of a QR")
 	fs.StringVar(&o.name, "name", "", `the agent's name (default "Habakkuk")`)
 	fs.StringVar(&o.user, "user", "", "your name, saved in the agent's profile of you (USER.md)")
@@ -223,9 +223,9 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 	fs.StringVar(&o.agent, "agent", "", "the agent to set up (default habakkuk, or the only one)")
 	fs.BoolVar(&o.skipVerify, "skip-verify", false, "do not check keys and tokens with a live call")
 	fs.DurationVar(&o.timeout, "timeout", 30*time.Second, "how long each live check may take")
-	fs.BoolVar(&o.serve, "serve", false, "start habakkuk serve when done")
+	fs.BoolVar(&o.serve, "serve", false, "start hk serve when done")
 	fs.BoolVar(&o.service, "service", false, "write a background service file (systemd or launchd) and print how to enable it")
-	fs.BoolVar(&o.migrate, "migrate", false, "with -y on a new home: first import another agent's setup found on this computer (see habakkuk migrate)")
+	fs.BoolVar(&o.migrate, "migrate", false, "with -y on a new home: first import another agent's setup found on this computer (see hk migrate)")
 	fs.StringVar(&o.progress, "progress", "", "setup channel NAME: what the chat shows while the agent works: plain (a short status line), detailed (every step) or off")
 	fs.StringVar(&o.approvalsDetail, "approvals-detail", "", "setup channel NAME: what approval requests show: summary (plain words) or full (also the exact command)")
 	fs.Usage = func() {
@@ -236,11 +236,11 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 		return nil, err
 	}
 	if fs.NArg() > 0 {
-		return nil, fmt.Errorf("unexpected argument %q; see habakkuk setup -h", fs.Arg(0))
+		return nil, fmt.Errorf("unexpected argument %q; see hk setup -h", fs.Arg(0))
 	}
 	if o.progress != "" || o.approvalsDetail != "" {
 		if len(s.steps) != 1 || s.steps[0] != "channel" || s.channelArg == "" {
-			return nil, errors.New("-progress and -approvals-detail change one channel: habakkuk setup channel NAME -progress plain -approvals-detail summary")
+			return nil, errors.New("-progress and -approvals-detail change one channel: hk setup channel NAME -progress plain -approvals-detail summary")
 		}
 		if _, ok := config.NormalizeProgress(o.progress); !ok {
 			return nil, fmt.Errorf("-progress %q must be plain, detailed or off", o.progress)
@@ -313,9 +313,9 @@ func (s *setup) run() error {
 	if err := s.write(); err != nil {
 		return err
 	}
-	s.say("\nChecking everything with habakkuk doctor:")
+	s.say("\nChecking everything with hk doctor:")
 	if err := doctor(s.ctx, s.home); err != nil {
-		s.say("\nSetup is saved, but doctor found problems; fix them, then run habakkuk setup again.")
+		s.say("\nSetup is saved, but doctor found problems; fix them, then run hk setup again.")
 		return err
 	}
 	s.took = s.now().Sub(start)

@@ -1,10 +1,10 @@
 ---
 title: Voice
-description: "Talk to Habakkuk out loud through Live mode in the dashboard, habakkuk talk on a laptop or Raspberry Pi, and voice notes with spoken replies in chats."
+description: "Talk to Habakkuk out loud through Live mode in the dashboard, hk talk on a laptop or Raspberry Pi, and voice notes with spoken replies in chats."
 order: 4
 ---
 
-You can talk to Habakkuk out loud. There are two ways to do it: Live mode in the dashboard, and `habakkuk talk` on the machine itself. Both hand the actual work to the agent, which has all its tools. Chat apps add a third way. You send a voice note, and a voice note can come back.
+You can talk to Habakkuk out loud. There are two ways to do it: Live mode in the dashboard, and `hk talk` on the machine itself. Both hand the actual work to the agent, which has all its tools. Chat apps add a third way. You send a voice note, and a voice note can come back.
 
 The [Speech](../models/speech.md) page explains how to configure the speech providers.
 
@@ -25,18 +25,18 @@ realtime:
 There are four more settings: `base_url`, `transcription` (the model that writes your words into the log), `instructions` (added to the voice model's own instructions) and `ttl` (how long a minted secret lasts, default 10m).
 
 > [!NOTE]
-> The page needs a secure context to use the microphone. That means `localhost`, or HTTPS (for example `habakkuk expose tailscale`). The [desktop app](../interfaces/desktop-app.md) serves the page over loopback, so the microphone works there even when Habakkuk itself is on plain `http`.
+> The page needs a secure context to use the microphone. That means `localhost`, or HTTPS (for example `hk expose tailscale`). The [desktop app](../interfaces/desktop-app.md) serves the page over loopback, so the microphone works there even when Habakkuk itself is on plain `http`.
 
 If the agent wants approval for a step, the voice model asks you and passes on your yes or no. If a request runs past four minutes, you're told that the answer will appear in the chat.
 
-## `habakkuk talk` on a laptop or a Raspberry Pi
+## `hk talk` on a laptop or a Raspberry Pi
 
 This one is a local loop that runs through `ffmpeg`. It listens on the default microphone and notices when you stop talking. It transcribes what you said with your `transcription` provider and runs the turn. Then it speaks the reply with `tts`, played with `afplay`, `ffplay`, `paplay` or `aplay`. If you start talking while it speaks, it stops.
 
 ```bash
-habakkuk talk                          # every utterance is a request
-habakkuk talk -wake "hey habakkuk"     # only utterances that start with the phrase
-habakkuk talk -agent ops -session ID   # another agent, or an existing session
+hk talk                                # every utterance is a request
+hk talk -wake "hey habakkuk"           # only utterances that start with the phrase
+hk talk -agent ops -session ID         # another agent, or an existing session
 ```
 
 ```yaml
@@ -76,4 +76,4 @@ channels:
 - Telegram, WhatsApp (linked device and Cloud API) and Feishu show them as voice notes. Other platforms get an audio file.
 - Markdown is stripped from the spoken copy. A reply longer than `tts.max_chars` (default 2000) stays text only. If speaking fails, the text is sent in its place.
 
-For Live mode, `habakkuk talk` and speech in depth, see [Architecture: media](../reference/architecture.md#media).
+For Live mode, `hk talk` and speech in depth, see [Architecture: media](../reference/architecture.md#media).

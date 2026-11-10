@@ -26,7 +26,7 @@ Meetings need Chrome or Chromium, the same as the [browser](browser.md) toolset.
 
 ## How it works
 
-`meeting_join(url, name?, duration_limit?, notes_prompt?)` returns straight away. The attendance itself runs under `habakkuk serve` as a durable job. Here's what happens:
+`meeting_join(url, name?, duration_limit?, notes_prompt?)` returns straight away. The attendance itself runs under `hk serve` as a durable job. Here's what happens:
 
 1. Habakkuk opens its own Chrome with a fresh profile. The `path`, `allow_private` and `blocked_urls` settings from the browser section apply to it.
 2. It enters its name and turns the microphone and camera off. Both are fake devices anyway, sending silence and a black picture.
@@ -37,9 +37,9 @@ Meetings need Chrome or Chromium, the same as the [browser](browser.md) toolset.
 Use `meeting_status` and `meeting_transcript` to see how it's going. There are terminal commands too:
 
 ```bash
-habakkuk meetings                    # list
-habakkuk meetings show [-transcript] ID
-habakkuk meetings leave ID
+hk meetings                          # list
+hk meetings show [-transcript] ID
+hk meetings leave ID
 ```
 
 If Habakkuk stops in the middle of a meeting, it joins again when it restarts and adds to the same transcript. The notes are still written and sent only once.

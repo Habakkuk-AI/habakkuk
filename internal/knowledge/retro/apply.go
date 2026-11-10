@@ -16,7 +16,7 @@ import (
 // apply makes one action's change, as the context's history actor. It
 // returns the action's new status and what to tell the owner. Skill,
 // memory and SOUL.md changes go through the memory history; a pause of a
-// schedule is undone with `habakkuk schedules resume`; config changes and
+// schedule is undone with `hk schedules resume`; config changes and
 // other schedule changes are never made here, only spelled out. Each is
 // safe to apply twice: the second time finds the change already made.
 //
@@ -82,15 +82,15 @@ func (r *Runner) apply(ctx context.Context, ret *Retro, a *ActionState, backgrou
 					return "", "", err
 				}
 			}
-			return Applied, fmt.Sprintf("paused schedule %s; `habakkuk schedules resume %s` turns it back on", a.Target, a.Target), nil
+			return Applied, fmt.Sprintf("paused schedule %s; `hk schedules resume %s` turns it back on", a.Target, a.Target), nil
 		}
-		return Approved, fmt.Sprintf("Change schedule %s yourself, as proposed: %s. See `habakkuk schedules` (or remove it and add it again with the new spec or prompt).",
+		return Approved, fmt.Sprintf("Change schedule %s yourself, as proposed: %s. See `hk schedules` (or remove it and add it again with the new spec or prompt).",
 			a.Target, oneLine(a.Change)), nil
 	case KindConfig:
 		if background {
 			return Proposed, "", nil
 		}
-		return Approved, fmt.Sprintf("Make this edit yourself: in %s set `%s` to\n\n%s\n\nthen run `habakkuk doctor` and restart `habakkuk serve`.",
+		return Approved, fmt.Sprintf("Make this edit yourself: in %s set `%s` to\n\n%s\n\nthen run `hk doctor` and restart `hk serve`.",
 			filepath.Join(r.Home, "config.yaml"), a.Target, fence(a.Change)), nil
 	case KindAsk:
 		if background {
@@ -114,7 +114,7 @@ func (r *Runner) changed(ctx context.Context, ret *Retro, a *ActionState, kind, 
 	note := actionNote(ret.ID, a.N)
 	for _, c := range cs {
 		if c.Note == note {
-			return fmt.Sprintf("applied as change %s; `habakkuk memory restore %s` (or /undo-memory %s) undoes it", c.ID, c.ID, c.ID)
+			return fmt.Sprintf("applied as change %s; `hk memory restore %s` (or /undo-memory %s) undoes it", c.ID, c.ID, c.ID)
 		}
 	}
 	return "applied (it was already in place)"

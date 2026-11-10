@@ -38,7 +38,7 @@ func (c Caps) Names() []string {
 	return out
 }
 
-// LocalOptions says what a `habakkuk node run` device may do beyond the safe
+// LocalOptions says what a `hk node run` device may do beyond the safe
 // defaults.
 type LocalOptions struct {
 	AllowRun    bool   // offer system.run (a shell)

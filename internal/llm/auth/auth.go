@@ -1,4 +1,4 @@
-// Package auth keeps subscription logins: tokens from `habakkuk auth login`
+// Package auth keeps subscription logins: tokens from `hk auth login`
 // for providers that take an account sign-in instead of an API key.
 //
 // Tokens live in $HABAKKUK_HOME/auth.json (mode 0600, replaced atomically).
@@ -28,11 +28,11 @@ const (
 	ChatGPT = "chatgpt"
 	Copilot = "copilot"
 	// MCP is an OAuth sign-in to a remote MCP server, stored as
-	// "mcp:<server>" (habakkuk mcp login).
+	// "mcp:<server>" (hk mcp login).
 	MCP = "mcp"
 )
 
-// Kinds lists the logins `habakkuk auth login` supports.
+// Kinds lists the logins `hk auth login` supports.
 var Kinds = []string{ChatGPT, Copilot}
 
 // ErrNotLoggedIn means there is no stored login of that kind.
@@ -276,9 +276,9 @@ func (s *Store) refresh(ctx context.Context, e Entry) (Entry, error) {
 // loginCommand is the command that signs in again for a stored login name.
 func loginCommand(name string) string {
 	if server, ok := strings.CutPrefix(name, MCP+":"); ok {
-		return "habakkuk mcp login " + server
+		return "hk mcp login " + server
 	}
-	return "habakkuk auth login " + name
+	return "hk auth login " + name
 }
 
 // DeviceCode is what the user needs to finish a device login in a browser.

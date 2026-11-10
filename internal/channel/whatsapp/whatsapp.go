@@ -112,7 +112,7 @@ func (a *Adapter) Run(ctx context.Context, in channel.Inbox) error {
 		return err
 	}
 	if dev.ID == nil {
-		return channel.Fatal{Err: fmt.Errorf("whatsapp account %s is not linked: run `habakkuk whatsapp link -account %s`", a.Account, a.Account)}
+		return channel.Fatal{Err: fmt.Errorf("whatsapp account %s is not linked: run `hk whatsapp link -account %s`", a.Account, a.Account)}
 	}
 	cli := whatsmeow.NewClient(dev, logger{a.Log.With("whatsapp", a.Account)})
 	failed := make(chan error, 1)

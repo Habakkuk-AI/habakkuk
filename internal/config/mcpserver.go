@@ -2,7 +2,7 @@ package config
 
 import "errors"
 
-// MCPServe configures Habakkuk as an MCP server: `habakkuk mcp serve` on stdio,
+// MCPServe configures Habakkuk as an MCP server: `hk mcp serve` on stdio,
 // and with HTTP on, the /mcp endpoint of the HTTP surface (same token).
 type MCPServe struct {
 	// HTTP serves Streamable HTTP at /mcp; needs the http section.

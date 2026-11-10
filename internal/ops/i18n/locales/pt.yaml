@@ -3,7 +3,7 @@
 
 # Gateway: messages, pairing, built-in commands
 turn.queue_failed: "Desculpe, não consegui receber essa mensagem. Por favor, envie de novo."
-pair.offer: "Olá! Ainda não te conheço. Para ter acesso, peça ao meu dono para executar:\n\n`habakkuk pair %s`\n\nO código vale por uma hora."
+pair.offer: "Olá! Ainda não te conheço. Para ter acesso, peça ao meu dono para executar:\n\n`hk pair %s`\n\nO código vale por uma hora."
 help.header: "Comandos:"
 help.new: "começar uma conversa nova"
 help.stop: "parar o que estou fazendo"
@@ -97,7 +97,7 @@ goal.paused: "Objetivo pausado: preciso de você para o passo acima. Responda e 
 goal.stopped: "Objetivo interrompido após %d turnos sem concluir: %s\nEnvie /goal de novo para continuar."
 export.nothing: "Ainda não há nada para exportar."
 export.no_files: "Este chat não pode receber arquivos."
-export.too_large: "Esta conversa é grande demais para enviar num único arquivo; use `habakkuk show %s`."
+export.too_large: "Esta conversa é grande demais para enviar num único arquivo; use `hk show %s`."
 export.prepare_failed: "Desculpe, não consegui preparar o arquivo."
 export.queue_failed: "Desculpe, não consegui colocar o arquivo na fila."
 export.caption: "%d mensagens"
@@ -157,7 +157,7 @@ node.pair.scan: "Ou abra este link num celular (o QR code abaixo o contém) para
 node.run.paired: "Pareado como %s."
 node.run.connected: "Conectado a %s como %s, oferecendo: %s"
 node.run.lost: "Conexão perdida (%s); reconectando em %s."
-nodes.none: "Nenhum nó pareado ainda. Pareie um com `habakkuk node pair`."
+nodes.none: "Nenhum nó pareado ainda. Pareie um com `hk node pair`."
 nodes.revoked: "%s revogado: não pode mais se conectar."
 
 # Plain progress lines, plain approval requests, /progress and /approvals.

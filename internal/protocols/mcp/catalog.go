@@ -17,7 +17,7 @@ import (
 //go:embed catalog.yaml
 var catalogYAML []byte
 
-// CatalogEntry is one well-known MCP server `habakkuk mcp add` can configure.
+// CatalogEntry is one well-known MCP server `hk mcp add` can configure.
 type CatalogEntry struct {
 	Name        string            `yaml:"name"`
 	Title       string            `yaml:"title"`
@@ -71,7 +71,7 @@ func FindCatalog(name string) (CatalogEntry, error) {
 			return e, nil
 		}
 	}
-	return CatalogEntry{}, fmt.Errorf("no %q in the MCP catalog (habakkuk mcp catalog lists it)", name)
+	return CatalogEntry{}, fmt.Errorf("no %q in the MCP catalog (hk mcp catalog lists it)", name)
 }
 
 var reParam = regexp.MustCompile(`\{([a-z][a-z0-9_]*)\}`)

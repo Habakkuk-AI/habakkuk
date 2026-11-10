@@ -46,6 +46,6 @@ It's one program, with nothing else to install. It's also built so that a crash 
 ## Next steps
 
 <!-- cards -->
-- [Quickstart](quickstart.md): install, run `habakkuk setup`, and get a first reply.
+- [Quickstart](quickstart.md): install, run `hk setup`, and get a first reply.
 - [Use cases](use-cases.md): eight setups with the config and commands for each.
 - [Move from another agent](migrate.md): bring an existing agent setup with you.

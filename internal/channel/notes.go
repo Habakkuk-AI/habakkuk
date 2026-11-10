@@ -14,7 +14,7 @@ import (
 
 // Chat notes. A chat's session holds only the turns that chat started, but
 // other messages land in the same chat: a scheduled run delivers its result
-// there, another agent posts to its home chat, `habakkuk send` and
+// there, another agent posts to its home chat, `hk send` and
 // background results arrive. When the user answers one of those, the agent
 // must know it was sent. So every delivery that is not the chat's own turn
 // leaves a note (state.db), and the next turn of the chat's session gets

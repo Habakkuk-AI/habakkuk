@@ -33,7 +33,7 @@ import (
 const (
 	KindTurn     = "turn"     // taken before a turn's first change
 	KindUndo     = "undo"     // the state /undo replaced
-	KindRollback = "rollback" // the state `habakkuk rollback` replaced
+	KindRollback = "rollback" // the state `hk rollback` replaced
 )
 
 var (

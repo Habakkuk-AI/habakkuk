@@ -27,7 +27,7 @@ channels:
     token_env: OTHER_BOT_TOKEN
 `
 
-// habakkuk setup channel NAME -progress ... -approvals-detail ... changes
+// hk setup channel NAME -progress ... -approvals-detail ... changes
 // what one channel shows and nothing else: no wizard, no prompts.
 func TestSetupChannelDisplayFlags(t *testing.T) {
 	home := t.TempDir()
@@ -80,9 +80,9 @@ func TestSetupChannelDisplayFlags(t *testing.T) {
 		{[]string{"channel", "nope", "-progress", "off"}, `no channel "nope" in config.yaml; the channels are: family, other, work`},
 		{[]string{"channel", "work", "-progress", "loud"}, `-progress "loud" must be plain, detailed or off`},
 		{[]string{"channel", "work", "-approvals-detail", "always"}, `-approvals-detail "always" must be summary or full`},
-		{[]string{"channel", "-progress", "off"}, "habakkuk setup channel NAME"},
-		{[]string{"-progress", "off"}, "habakkuk setup channel NAME"},
-		{[]string{"model", "-progress", "off"}, "habakkuk setup channel NAME"},
+		{[]string{"channel", "-progress", "off"}, "hk setup channel NAME"},
+		{[]string{"-progress", "off"}, "hk setup channel NAME"},
+		{[]string{"model", "-progress", "off"}, "hk setup channel NAME"},
 	} {
 		if out, err := r.run(t, home, c.args...); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%v: want %q, got %v\n%s", c.args, c.want, err, out)

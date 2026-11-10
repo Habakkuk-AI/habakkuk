@@ -24,7 +24,7 @@ func (s *setup) offerImport() error {
 		ok, err := s.yes(fmt.Sprintf("Found a %s setup in %s. Import its agents, memory, skills, schedules and keys first?", label, dir), true)
 		if err != nil || !ok {
 			if err == nil {
-				s.say("  Skipped; habakkuk migrate imports it later.")
+				s.say("  Skipped; hk migrate imports it later.")
 			}
 			return err
 		}
@@ -35,7 +35,7 @@ func (s *setup) offerImport() error {
 		return fmt.Errorf("importing from %s: %w", label, err)
 	}
 	if len(found) > 1 {
-		s.say("\nA %s setup is here too: habakkuk migrate --from %s imports it.", migrate.Label(found[1]), found[1])
+		s.say("\nA %s setup is here too: hk migrate --from %s imports it.", migrate.Label(found[1]), found[1])
 	}
 	s.say("")
 	return s.load()

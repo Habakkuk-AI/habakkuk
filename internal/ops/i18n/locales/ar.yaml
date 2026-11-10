@@ -5,7 +5,7 @@
 
 # Gateway: messages, pairing, built-in commands
 turn.queue_failed: "عذرًا، لم أتمكن من استلام هذه الرسالة. يُرجى إرسالها مرة أخرى."
-pair.offer: "مرحبًا! لا أعرفك بعد. للحصول على صلاحية الوصول، اطلب من مالكي تشغيل الأمر:\n\n`habakkuk pair %s`\n\nالرمز صالح لمدة ساعة واحدة."
+pair.offer: "مرحبًا! لا أعرفك بعد. للحصول على صلاحية الوصول، اطلب من مالكي تشغيل الأمر:\n\n`hk pair %s`\n\nالرمز صالح لمدة ساعة واحدة."
 help.header: "الأوامر:"
 help.new: "بدء محادثة جديدة"
 help.stop: "إيقاف ما أعمل عليه"
@@ -99,7 +99,7 @@ goal.paused: "الهدف متوقف مؤقتًا: أحتاج إليك في ال�
 goal.stopped: "توقف الهدف بعد %d دورًا دون أن يكتمل: %s\nأرسل /goal مجددًا للمتابعة."
 export.nothing: "لا يوجد ما يمكن تصديره بعد."
 export.no_files: "لا يمكن لهذه المحادثة استقبال الملفات."
-export.too_large: "هذه المحادثة أكبر من أن تُرسل في ملف واحد؛ استخدم `habakkuk show %s` بدلًا من ذلك."
+export.too_large: "هذه المحادثة أكبر من أن تُرسل في ملف واحد؛ استخدم `hk show %s` بدلًا من ذلك."
 export.prepare_failed: "عذرًا، لم أتمكن من تجهيز الملف."
 export.queue_failed: "عذرًا، لم أتمكن من وضع الملف في قائمة الانتظار."
 export.caption: "عدد الرسائل: %d"
@@ -159,7 +159,7 @@ node.pair.scan: "أو افتح هذا الرابط على هاتف (رمز QR أ
 node.run.paired: "تم الاقتران باسم %s."
 node.run.connected: "متصل بـ %s باسم %s، مع إتاحة: %s"
 node.run.lost: "انقطع الاتصال (%s)؛ إعادة الاتصال خلال %s."
-nodes.none: "لا توجد عُقد مقترنة بعد. اقرن واحدة بالأمر `habakkuk node pair`."
+nodes.none: "لا توجد عُقد مقترنة بعد. اقرن واحدة بالأمر `hk node pair`."
 nodes.revoked: "تم إلغاء %s: لم يعد بإمكانها الاتصال."
 
 # Plain progress lines, plain approval requests, /progress and /approvals.

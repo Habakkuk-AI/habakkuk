@@ -1,12 +1,12 @@
-# Well-known public MCP servers for `habakkuk mcp catalog` and `habakkuk mcp add`.
+# Well-known public MCP servers for `hk mcp catalog` and `hk mcp add`.
 #
 # server is an mcp_servers entry. In env, the key is the variable the server
 # reads and the value the variable Habakkuk takes it from (the environment or
 # $HABAKKUK_HOME/.env); in headers, a value like "Bearer ${VAR}" does the same.
-# {param} placeholders in args or url are filled from `habakkuk mcp add NAME
+# {param} placeholders in args or url are filled from `hk mcp add NAME
 # param=value`. needs lists programs that must be on PATH. A hosted server
 # with auth: oauth signs in through the MCP authorization flow
-# (`habakkuk mcp login NAME`); no variables are needed.
+# (`hk mcp login NAME`); no variables are needed.
 #
 # Only servers whose package or endpoint is published by the vendor, or by
 # the MCP project itself, belong here. Several of the MCP project's
@@ -55,7 +55,7 @@
   server:
     url: https://mcp.linear.app/mcp
     auth: oauth
-  notes: Run habakkuk mcp login linear-oauth.
+  notes: Run hk mcp login linear-oauth.
 
 - name: notion-hosted
   title: Notion (hosted)
@@ -65,7 +65,7 @@
   server:
     url: https://mcp.notion.com/mcp
     auth: oauth
-  notes: Run habakkuk mcp login notion-hosted and pick the pages to share.
+  notes: Run hk mcp login notion-hosted and pick the pages to share.
 
 - name: sentry-hosted
   title: Sentry (hosted)
@@ -75,7 +75,7 @@
   server:
     url: https://mcp.sentry.dev/mcp
     auth: oauth
-  notes: Run habakkuk mcp login sentry-hosted.
+  notes: Run hk mcp login sentry-hosted.
 
 - name: notion
   title: Notion
@@ -342,7 +342,7 @@
   server:
     url: https://mcp.atlassian.com/v1/mcp
     auth: oauth
-  notes: Run habakkuk mcp login atlassian and approve the access for your site.
+  notes: Run hk mcp login atlassian and approve the access for your site.
 
 - name: cloudflare
   title: Cloudflare
@@ -352,7 +352,7 @@
   server:
     url: https://bindings.mcp.cloudflare.com/mcp
     auth: oauth
-  notes: Run habakkuk mcp login cloudflare. Cloudflare runs other servers too (docs, observability); see the homepage.
+  notes: Run hk mcp login cloudflare. Cloudflare runs other servers too (docs, observability); see the homepage.
 
 - name: vercel
   title: Vercel
@@ -362,7 +362,7 @@
   server:
     url: https://mcp.vercel.com
     auth: oauth
-  notes: Run habakkuk mcp login vercel.
+  notes: Run hk mcp login vercel.
 
 - name: railway
   title: Railway

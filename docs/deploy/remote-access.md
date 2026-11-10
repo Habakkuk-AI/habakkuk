@@ -18,18 +18,18 @@ http:
   public_url: https://habakkuk.example.com
 ```
 
-Run `habakkuk doctor` to see each webhook channel's URL under `public_url`.
+Run `hk doctor` to see each webhook channel's URL under `public_url`.
 
 ## On a tailnet
 
 ```bash
-habakkuk expose tailscale                # share the HTTP listener on your tailnet (never public)
-habakkuk expose tailscale -port 443 -print   # pick the port; -print shows the command without running it
-habakkuk expose status
-habakkuk expose off
+hk expose tailscale                      # share the HTTP listener on your tailnet (never public)
+hk expose tailscale -port 443 -print         # pick the port; -print shows the command without running it
+hk expose status
+hk expose off
 ```
 
-A tailnet is your private Tailscale network. `habakkuk expose tailscale` runs `tailscale serve`, which shares the listener over HTTPS with the devices on your tailnet and nobody else. Habakkuk never runs `tailscale funnel`. The command refuses to run unless `http.token_env` is set.
+A tailnet is your private Tailscale network. `hk expose tailscale` runs `tailscale serve`, which shares the listener over HTTPS with the devices on your tailnet and nobody else. Habakkuk never runs `tailscale funnel`. The command refuses to run unless `http.token_env` is set.
 
 > [!NOTE]
 > Twilio, Meta and Microsoft can't reach a tailnet address. For webhook channels, use a public reverse proxy or tunnel.

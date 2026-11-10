@@ -14,7 +14,7 @@ import (
 )
 
 // boardCmd shows and changes the shared task board. Cards added here are
-// dispatched by `habakkuk serve` within a few seconds.
+// dispatched by `hk serve` within a few seconds.
 func boardCmd(ctx context.Context, home string, args []string) error {
 	sub := "list"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -70,7 +70,7 @@ func boardCmd(ctx context.Context, home string, args []string) error {
 		to := fs.String("to", "", "send the result to CHANNEL:CHAT (e.g. tg:123456)")
 		fs.Parse(args)
 		if *agentName == "" {
-			return errors.New("usage: habakkuk board add -agent NAME -title T [-body B]")
+			return errors.New("usage: hk board add -agent NAME -title T [-body B]")
 		}
 		if _, ok := a.Cfg.Agents[*agentName]; !ok {
 			return fmt.Errorf("unknown agent %q", *agentName)
@@ -93,7 +93,7 @@ func boardCmd(ctx context.Context, home string, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s added for %s; `habakkuk serve` starts it when its dependencies are done\n", created.ID, created.Assignee)
+		fmt.Printf("%s added for %s; `hk serve` starts it when its dependencies are done\n", created.ID, created.Assignee)
 	case "done":
 		fs := flag.NewFlagSet("board done", flag.ExitOnError)
 		result := fs.String("result", "", "what was done, with proof")

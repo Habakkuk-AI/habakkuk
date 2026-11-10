@@ -10,10 +10,10 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/tools/computer"
 )
 
-// computerCmd: habakkuk computer view.
+// computerCmd: hk computer view.
 func computerCmd(home string, args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] != "view" {
-		return fmt.Errorf("usage: habakkuk computer view")
+		return fmt.Errorf("usage: hk computer view")
 	}
 	cfg, err := config.Load(home)
 	if err != nil {

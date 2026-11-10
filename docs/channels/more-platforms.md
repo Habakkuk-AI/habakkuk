@@ -6,7 +6,7 @@ order: 14
 
 The platforms that don't have a page of their own are set up here, one short section each. Each platform takes its settings in a block named after its type. The rules in [Access, groups and delivery](settings.md) apply to all of them. For what each one can send and receive, see [What each platform supports](settings.md#what-each-platform-supports).
 
-A platform marked **webhook** receives at `<public_url>/channels/<name>`. It needs an `http` section with a `public_url` the platform can reach. See [Webhook channels](settings.md#webhook-channels). Run `habakkuk doctor` to print each URL.
+A platform marked **webhook** receives at `<public_url>/channels/<name>`. It needs an `http` section with a `public_url` the platform can reach. See [Webhook channels](settings.md#webhook-channels). Run `hk doctor` to print each URL.
 
 ## LINE
 

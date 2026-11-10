@@ -1,7 +1,7 @@
 // Package mcpserver exposes Habakkuk as a Model Context Protocol server, so
 // other MCP clients can ask its agents, read sessions, use the board and
 // schedules, and (when allowed) send messages to chats. It serves stdio
-// (`habakkuk mcp serve`) and Streamable HTTP (/mcp on the HTTP surface).
+// (`hk mcp serve`) and Streamable HTTP (/mcp on the HTTP surface).
 package mcpserver
 
 import (
@@ -83,7 +83,7 @@ func (s *Server) New() *mcp.Server {
 		mcp.AddTool(srv, &mcp.Tool{
 			Name: "habakkuk_send",
 			Description: "Send a text message to a chat through one of Habakkuk's channels (account names a configured channel, " +
-				"conversation the chat id on that platform). The message is queued and delivered by `habakkuk serve`, even across a restart.",
+				"conversation the chat id on that platform). The message is queued and delivered by `hk serve`, even across a restart.",
 			Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
 		}, s.send)
 	}

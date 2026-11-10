@@ -113,7 +113,7 @@ func (s Spend) String() string {
 	return fmt.Sprintf("%s / %s (%.0f%%)", Dollars(s.Spent), Dollars(s.Limit), s.Percent)
 }
 
-// Write prints the report as a table, for habakkuk usage.
+// Write prints the report as a table, for hk usage.
 func (r Report) Write(w io.Writer) {
 	fmt.Fprintf(w, "Spending limits (days and months in %s)\n\n", r.Timezone)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

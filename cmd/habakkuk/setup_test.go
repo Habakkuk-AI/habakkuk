@@ -293,7 +293,7 @@ func TestSetupHappyPathNonInteractive(t *testing.T) {
 		t.Fatal("served without -serve")
 	}
 	raw, _ := os.ReadFile(filepath.Join(home, "config.yaml"))
-	for _, want := range []string{"# Habakkuk settings, written by habakkuk setup", "keys_env: [OPENAI_API_KEY]",
+	for _, want := range []string{"# Habakkuk settings, written by hk setup", "keys_env: [OPENAI_API_KEY]",
 		`allow_from: ["15550001"] # you`, "\nchannels:", "\n\n# Your agent."} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("config.yaml lacks %q:\n%s", want, raw)
