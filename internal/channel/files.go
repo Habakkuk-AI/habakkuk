@@ -211,6 +211,7 @@ func (g *Gateway) deliverFile(ctx context.Context, j *jobs.Job, owner string, a 
 		}
 		return "", err
 	}
+	g.recordNote(ctx, j.ID, p)
 	g.messageOut(ctx, p)
 	return "sent " + p.File.Name, nil
 }

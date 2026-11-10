@@ -365,7 +365,9 @@ type message struct {
 		URL         string `json:"url"`
 	} `json:"attachments"`
 	Referenced *struct {
-		Author user `json:"author"`
+		Author      user       `json:"author"`
+		Content     string     `json:"content"`
+		Attachments []struct{} `json:"attachments"`
 	} `json:"referenced_message"`
 }
 
@@ -468,6 +470,18 @@ func (a *Adapter) convert(m *message) (channel.Message, bool) {
 	}
 	if m.Referenced != nil && m.Referenced.Author.ID == botID {
 		out.Mentioned = true // a reply to the bot
+	}
+	if r := m.Referenced; r != nil {
+		text := r.Content
+		if text == "" && len(r.Attachments) > 0 {
+			text = "(attachment)"
+		}
+		if text != "" {
+			out.Quote = &channel.Quote{Text: text, Self: r.Author.ID == botID, From: r.Author.GlobalName}
+			if out.Quote.From == "" {
+				out.Quote.From = r.Author.Username
+			}
+		}
 	}
 	if followUp {
 		out.Mentioned = true // a thread the bot is already talking in

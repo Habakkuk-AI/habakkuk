@@ -108,7 +108,7 @@ Work that did not start in the home chat is a task another agent delegated, a bo
 - a task an agent delegated to a copy of itself: its parent turn reports instead, so a chain of sub-agents posts once;
 - a run that fails: whoever asked gets the error.
 
-Reports are ordinary queued deliveries with ids derived from the turn, so a retried turn never posts twice. A report never starts a turn, so agents cannot loop.
+Reports are ordinary queued deliveries with ids derived from the turn, so a retried turn never posts twice. A report never starts a turn, so agents cannot loop. When the home chat is answered by another agent, that agent sees the report on your next message there, so a reply such as "yes" answers the question that was actually asked. See [Sessions](sessions.md#messages-from-elsewhere-in-the-same-chat).
 
 ### Posting to the home chat
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/habakkuk-ai/habakkuk/internal/agent"
 	"github.com/habakkuk-ai/habakkuk/internal/tools/media"
 )
 
@@ -32,7 +33,16 @@ func (g *Gateway) SendText(ctx context.Context, id string, to Address, text stri
 		return errors.New("the message is empty")
 	}
 	to.ReplyTo = ""
-	return g.enqueueDelivery(ctx, id, to, text)
+	return g.enqueue(withSender(ctx), id, deliverPayload{To: to, Text: text})
+}
+
+// withSender names `habakkuk send` as the sender of what is queued under
+// ctx, unless the caller named another (notes.go).
+func withSender(ctx context.Context) context.Context {
+	if agent.PosterFrom(ctx) != (agent.Poster{}) {
+		return ctx
+	}
+	return agent.WithPoster(ctx, agent.Poster{What: "`habakkuk send`"})
 }
 
 // SendFile queues a file, with an optional caption, to a conversation. The
@@ -60,5 +70,5 @@ func (g *Gateway) SendFile(ctx context.Context, id string, to Address, name stri
 		return err
 	}
 	to.ReplyTo = ""
-	return g.enqueue(ctx, id, deliverPayload{To: to, Text: strings.TrimSpace(caption), File: f})
+	return g.enqueue(withSender(ctx), id, deliverPayload{To: to, Text: strings.TrimSpace(caption), File: f})
 }

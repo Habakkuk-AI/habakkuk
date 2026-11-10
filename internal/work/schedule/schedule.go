@@ -462,6 +462,9 @@ func (s *Scheduler) Handle(ctx context.Context, j *jobs.Job, _ string) (string, 
 	}
 	s.Runner.Fire(ctx, "schedule_run", sc.Name, map[string]any{"event": "schedule_run", "schedule": sc.ID,
 		"name": sc.Name, "agent": sc.Agent, "spec": sc.Spec, "script": sc.Command != "", "job": j.ID})
+	// What the run delivers itself (script output, notices) is labelled
+	// for the agent that answers the chat it lands in.
+	ctx = agent.WithPoster(ctx, agent.Poster{Agent: sc.Agent, What: fmt.Sprintf("scheduled task %q", sc.Name)})
 	if sc.Command != "" {
 		return s.handleScript(ctx, j, sc)
 	}

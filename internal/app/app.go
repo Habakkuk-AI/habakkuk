@@ -348,7 +348,8 @@ func (a *App) openChannels(home string) {
 		}
 	}
 	a.Runner.Approvers = g.ApproverFor
-	a.Runner.Home = g // posts to agents' home chats
+	a.Runner.Home = g  // posts to agents' home chats
+	a.Runner.Notes = g // what a chat got from outside its own turns
 	channel.RegisterTools(a.Tools, g)
 	a.Gateway = g
 }

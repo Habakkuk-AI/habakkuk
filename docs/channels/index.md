@@ -56,6 +56,7 @@ channels:
 - **Groups.** In groups the bot answers only when addressed (a mention, a reply, or the platform's equivalent). `groups: all` answers everything; `off` ignores groups.
 - **One conversation, one session.** Each chat (and each thread, where the platform has them) is a conversation with its own session. A fresh session starts after 24 hours of silence or when you send `/new`.
 - **Exactly once.** A redelivered message never runs twice, a reply is delivered once, and a long reply resumes at the first unsent chunk after a crash.
+- **Replies keep their context.** When you reply to (quote) a message, the agent sees what you quoted. Messages that reached the chat from elsewhere, such as a scheduled task's result or another agent's question, are shown to the agent on your next message. See [Access, groups and delivery](settings.md#replies-and-quotes) and [Sessions](../agents/sessions.md#messages-from-elsewhere-in-the-same-chat).
 - **Supervised.** Every adapter runs under a supervisor that restarts it with backoff and tears down a connection that stays silent too long.
 - **Several at once.** Run as many channels as you like, of the same or different types, and route each one (or each conversation) to a different [agent](../agents/multi-agent.md#who-answers-a-conversation).
 

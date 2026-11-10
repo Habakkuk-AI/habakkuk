@@ -243,9 +243,13 @@ func convert(cli *whatsmeow.Client, v *events.Message) (channel.Message, bool) {
 		m.SenderAlt = alt.User
 	}
 
-	if info.IsGroup && cli.Store.ID != nil {
-		own := []string{cli.Store.ID.User, cli.Store.LID.User}
-		ci := ext.GetContextInfo()
+	var own []string
+	if cli != nil && cli.Store != nil && cli.Store.ID != nil {
+		own = []string{cli.Store.ID.User, cli.Store.LID.User}
+	}
+	ci := contextInfo(msg)
+	m.Quote = quote(ci, own, []string{m.Sender, m.SenderAlt}, m.SenderName)
+	if info.IsGroup && own != nil {
 		for _, j := range ci.GetMentionedJID() {
 			if u := userOf(j); u != "" && contains(own, u) {
 				m.Mentioned = true
@@ -258,6 +262,66 @@ func convert(cli *whatsmeow.Client, v *events.Message) (channel.Message, bool) {
 	}
 	m.Text = text
 	return m, true
+}
+
+// contextInfo is a message's context: what it quotes and mentions. Text
+// replies carry it on the extended text; media replies on the media.
+func contextInfo(msg *waE2E.Message) *waE2E.ContextInfo {
+	for _, ci := range []*waE2E.ContextInfo{
+		msg.GetExtendedTextMessage().GetContextInfo(),
+		msg.GetImageMessage().GetContextInfo(),
+		msg.GetVideoMessage().GetContextInfo(),
+		msg.GetDocumentMessage().GetContextInfo(),
+		msg.GetAudioMessage().GetContextInfo(),
+		msg.GetStickerMessage().GetContextInfo(),
+	} {
+		if ci != nil {
+			return ci
+		}
+	}
+	return nil
+}
+
+// quote reads the message a reply quotes. own are the bot's user ids, and
+// sender the ids of whoever wrote the reply.
+func quote(ci *waE2E.ContextInfo, own, sender []string, senderName string) *channel.Quote {
+	text := quotedText(ci.GetQuotedMessage())
+	if text == "" {
+		return nil
+	}
+	q := &channel.Quote{Text: text}
+	switch p := userOf(ci.GetParticipant()); {
+	case p != "" && contains(own, p):
+		q.Self = true
+	case p != "" && contains(sender, p):
+		q.From = firstNonEmpty(senderName, "themselves")
+	}
+	return q
+}
+
+// quotedText is what a quoted message said, or what it was when it had no
+// text.
+func quotedText(qm *waE2E.Message) string {
+	if qm == nil {
+		return ""
+	}
+	if t := firstNonEmpty(qm.GetConversation(), qm.GetExtendedTextMessage().GetText()); t != "" {
+		return t
+	}
+	switch {
+	case qm.GetImageMessage() != nil:
+		return firstNonEmpty(qm.GetImageMessage().GetCaption(), "(photo)")
+	case qm.GetVideoMessage() != nil:
+		return firstNonEmpty(qm.GetVideoMessage().GetCaption(), "(video)")
+	case qm.GetDocumentMessage() != nil:
+		dm := qm.GetDocumentMessage()
+		return firstNonEmpty(dm.GetCaption(), "(file "+firstNonEmpty(dm.GetFileName(), "without a name")+")")
+	case qm.GetAudioMessage() != nil:
+		return "(voice note)"
+	case qm.GetStickerMessage() != nil:
+		return "(sticker)"
+	}
+	return ""
 }
 
 func userOf(jid string) string {

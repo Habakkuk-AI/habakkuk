@@ -622,7 +622,7 @@ func (g *Gateway) cmdExport(ctx context.Context, c *Call) {
 		sum := sha256.Sum256([]byte(sess.ID + "\x00" + f.Ref))
 		id = "export_" + hex.EncodeToString(sum[:12])
 	}
-	if err := g.enqueue(ctx, id, deliverPayload{To: to, Text: c.T("export.caption", len(recs)), File: f}); err != nil {
+	if err := g.enqueue(ctx, id, deliverPayload{To: to, Text: c.T("export.caption", len(recs)), File: f, Session: conv.SessionID}); err != nil {
 		c.Reply(c.T("export.queue_failed"))
 	}
 }

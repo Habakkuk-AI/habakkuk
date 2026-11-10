@@ -27,6 +27,16 @@ type Message struct {
 	// Callback is the data of a button the sender pressed (ButtonSender).
 	// Such a message is a button press, not text for the agent.
 	Callback string
+	// Quote is the message this one replies to, when the sender quoted one
+	// and the platform says what it said; nil otherwise.
+	Quote *Quote
+}
+
+// Quote is a message that a reply quotes.
+type Quote struct {
+	From string // who wrote it, as the platform names them; "" when unknown
+	Self bool   // it is one of the bot's own messages
+	Text string // what it said, or a placeholder such as "(photo)"
 }
 
 // Attachment is a file on a message. Fetch downloads it; the gateway calls
