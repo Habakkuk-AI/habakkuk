@@ -87,7 +87,7 @@ func (g *Gateway) TakeNotes(ctx context.Context, sessionID, jobID string) string
 	if err != nil || conv == nil {
 		return ""
 	}
-	notes, err := g.State.ClaimChatNotes(ctx, conv.Address.key(), jobID, g.now().Add(-noteClaimStale))
+	notes, err := g.State.ClaimChatNotes(ctx, conv.key(), jobID, g.now().Add(-noteClaimStale))
 	if err != nil {
 		g.Log.Warn("read chat notes failed", "session", sessionID, "err", err)
 		return ""
