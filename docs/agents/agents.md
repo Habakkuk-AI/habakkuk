@@ -45,7 +45,7 @@ Sometimes a model gets stuck. It runs the same command, gets the same error and 
 
 It watches each round of tool calls for two things:
 
-- **Repeats.** The same call, with the same tool and the same arguments, failing with the same error.
+- **Repeats.** The same call, with the same tool and the same arguments, failing with the same error, and tried again straight away: in the very next round, with nothing that worked in between, within 20 seconds. An agent that waits for a server by trying it, sleeping and trying again isn't repeating itself. The idle check still stops that kind of loop if it never ends.
 - **Idle rounds.** Rounds in a row where every call is one the agent already made in this turn and the results come back the same. Nothing new is learned.
 
 The first time a count reaches its warn level, the agent is told plainly that it's repeating itself and should change its approach or stop and tell you what's blocking it. If it keeps going and reaches the stop level, the turn ends and you get a message saying why, such as "I stopped working on this because I was going round in circles: I tried read_file 5 times and it failed the same way each time". Reply to tell it how to go on.
@@ -79,14 +79,18 @@ Habakkuk reads these files when a session starts. Your edits reach every new ses
 
 ### Project instruction files
 
-Point an agent's `workspace` at a code project and it picks up the instructions that project keeps for coding agents. When a session starts, Habakkuk looks for `AGENTS.md`, `CLAUDE.md` and `.cursorrules` in the workspace and in each folder above it, up to the root of its git repository. They go into the prompt in that order, from the repository root down, so the rules closest to the workspace come last. Outside a repository, only the workspace itself is read.
+Point an agent's `workspace` at a code project and it picks up the instructions that project keeps for coding agents. When a session starts, Habakkuk looks for `AGENTS.md`, `CLAUDE.md` and `.cursorrules` in the workspace and in each folder above it, up to the root of its git repository. They're read in that order, from the repository root down, so the rules closest to the workspace come last. Outside a repository, only the workspace itself is read.
 
 - **Size.** Each file is cut at 16 KB, and all of them together stop at 32 KB. Files past the limit are left out.
-- **What was read.** The prompt names every file it read, cut or left out, and the log has a `project instruction files read` line with the paths.
-- **Links.** A `CLAUDE.md` that links to `AGENTS.md` is read once. A file that links to somewhere outside the project is left out, so a project can't pull another file on your computer into the prompt.
+- **What was read.** The agent is told every file that was read, cut or left out, and the log has a `project instruction files read` line with the paths.
+- **Only plain files.** A `CLAUDE.md` that links to `AGENTS.md` is read once. A link to anything that isn't another of these files inside the project, such as `.env` or a key, is left out, and so is anything that isn't a regular file.
+- **Never your home folder.** Your home folder and `$HABAKKUK_HOME` are never treated as a project, even if you keep them in git, and the search never climbs past them. So your dotfiles stay out.
 - **When edits show up.** Like the files above, they're read when a session starts. Send `/new` after you change one.
 
-Who wrote the files decides how far the agent trusts them. The workspace Habakkuk makes for the agent, `$HABAKKUK_HOME/agents/<name>/workspace`, holds what you and the agent wrote, so its files count as instructions. Any other folder is a project that anyone with a commit could have written to. Those files are marked as untrusted. The agent uses them for the project's conventions, such as code style and how to build and test, but it won't run a command, send anything or change a setting because one of them says so. If a file asks for that, the agent tells you instead. This is the same rule it follows for web pages and tool output.
+Who wrote the files decides how far the agent trusts them:
+
+- **The agent's own workspace.** The folder Habakkuk makes for the agent, `$HABAKKUK_HOME/agents/<name>/workspace`, holds what you and the agent wrote, so its files go into the prompt as instructions. A workspace path that's a link to somewhere else doesn't count. A turn that has read outside content, or a message from someone other than you, can't change `AGENTS.md`, `CLAUDE.md` or `.cursorrules` with the file tools, so a web page can't plant instructions there.
+- **Any other folder.** That's a project anyone with a commit could have written to. Its files are marked untrusted and given to the agent at the start of the session's first message, as information about the project, not as instructions. And because they're there, the whole session is treated like a turn that read a web page: every command, and every write outside the workspace, needs your approval. See [Security](../deploy/security.md#outside-content-taints-a-turn).
 
 ```yaml
 agents:
@@ -95,7 +99,7 @@ agents:
     project_files: trusted   # on (default) | trusted | off
 ```
 
-Use `trusted` only for a project where you know everyone who can change those files. Use `off` to stop reading them.
+`trusted` puts the files in the prompt as instructions and drops the approvals that untrusted files bring. Use it only for a project where you know everyone who can change those files. Use `off` to stop reading them.
 
 ### Personas
 

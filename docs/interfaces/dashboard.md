@@ -34,19 +34,19 @@ Want the dashboard in a window of its own? [Habakkuk Desktop](desktop-app.md) wr
 
 The dashboard can send notifications to your phone or computer, even when it's closed. Open **Config**, find **Notifications** and press **Turn on**. Your browser asks for permission once. Do this on each device you want notified. You get a notification when:
 
-- **An approval is waiting.** A tool call needs your yes or no in any chat. Tap the notification to open **Approvals**.
-- **A reply came while no dashboard showed it.** A dashboard chat got a reply and no open dashboard had that chat on screen. Tap to open the chat.
+- **An approval is waiting.** A tool call needs your yes or no in any chat. The notification says which agent and what kind of thing it wants to do, such as "run a command", never the command itself. Tap it to open **Approvals**.
+- **A reply came while no dashboard showed it.** A dashboard chat got a reply and no open dashboard had that chat on screen. Tap to open the chat. An approval request in a chat isn't counted as a reply.
 - **A scheduled task failed.** A prompt run failed, or a script failed for the first time in a row. You're not told again until it works.
 
 Each device has a switch for each of the three, under **Notifications**. **Send a test** checks that it works. **Turn off** stops notifications on this device, and **Remove** forgets another device, such as an old phone.
 
-How it works: Habakkuk uses standard Web Push. The first time it's needed, it makes a key pair (VAPID) and keeps it in `$HABAKKUK_HOME/push/`, with the devices you registered. Every message is encrypted on your server for the one browser it's for, and goes through that browser's own push service (Google's for Chrome, Mozilla's for Firefox, Apple's for Safari). That service can see when a message is sent, but not what it says. No other service or account is involved, and nothing to install.
+How it works: Habakkuk uses standard Web Push. It sends only to the browsers' own push services: Google's (Chrome, Edge and other Chromium browsers), Mozilla's, Apple's and Microsoft's. A device that names any other server is refused, so someone who once got hold of your dashboard token can't keep collecting your notifications on a server of their own. And when the dashboard token changes, every registered device is forgotten, so turn notifications on again on yours. The first time it's needed, it makes a key pair (VAPID) and keeps it in `$HABAKKUK_HOME/push/`, with the devices you registered. Every message is encrypted on your server for the one browser it's for, and goes through that browser's own push service (Google's for Chrome, Mozilla's for Firefox, Apple's for Safari). That service can see when a message is sent, but not what it says. No other service or account is involved, and nothing to install.
 
 A few things to know:
 
 - **Https or localhost.** Browsers allow push only on a secure page. On this computer, `http://127.0.0.1` works. From another device, reach the dashboard over `https`, for example with `hk expose tailscale`. See [Remote access](../deploy/remote-access.md).
 - **iPhone and iPad.** Add the dashboard to your home screen first (Share, then Add to Home Screen), and turn notifications on from the app you added.
-- **What shows on the lock screen.** A notification shows the start of the reply, the approval summary, or the task's name and error. Your phone's lock screen settings decide whether others can see it.
+- **What shows on the lock screen.** A notification shows the start of the reply, the agent and kind of action for an approval, or the task's name and error. Your phone's lock screen settings decide whether others can see it.
 - **Who you are to the push service.** Each message says how its sender can be reached. Set `http.push_contact` to `mailto:you@example.com` or your own `https` address. The default is your `public_url` when it's `https`.
 - **A new machine.** Backups don't include `push/`, since it holds a private key. After you move to a new machine, turn notifications on again on each device.
 

@@ -11,11 +11,11 @@ Before you look one up, run `hk doctor`. It checks the config, every provider's 
 Some problems have a fix that needs no decision from you. Run `hk doctor --fix` and it makes those fixes first, says what it changed, and then runs the usual checks:
 
 - An older `config.yaml` is rewritten in the current format. The old file is kept as `config.yaml.<time>.bak`.
-- Folders Habakkuk needs and can't find, such as an agent's workspace, are created.
-- Files and folders under `$HABAKKUK_HOME` that other users can read are made owner-only, as `hk security -fix` does.
-- A background service whose program no longer exists (you moved the binary, or installed it from a temporary `go run` build) is pointed at the binary you just ran. The old file is kept as `.bak`, and the fix tells you the command that reloads the service.
+- Folders Habakkuk needs inside `$HABAKKUK_HOME` and can't find, such as an agent's folder or its default workspace, are created. A workspace elsewhere isn't: if it's missing, the drive it's on may not be mounted.
+- Files and folders under `$HABAKKUK_HOME` that other users can read are made owner-only, and skills and backups in it lose the write or read bits others had, as `hk security -fix` does.
+- A background service whose program no longer exists (you moved the binary) is pointed at the binary you just ran. Only the program's path changes; your other settings in the file stay. The old file is copied to `$HABAKKUK_HOME/backups/` with the time in its name, and the fix tells you the command that reloads the service. A service for another home, or a fix that would point at a temporary `go run` build, is left alone.
 
-Anything that needs a key, a login, a choice or a change outside `$HABAKKUK_HOME` stays as advice. A plain `hk doctor` ends with the list of what `--fix` would do.
+Anything that needs a key, a login, a choice or a change outside `$HABAKKUK_HOME`, such as a hook script other users can change, stays as advice. A plain `hk doctor` ends with the list of what `--fix` would do.
 
 After that, run `hk channels` for live channel health, and `hk logs -f -level warn` to see what `serve` is doing.
 

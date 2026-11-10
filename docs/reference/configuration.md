@@ -79,7 +79,7 @@ Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded
 | `approvals` | `human` | `human`, `reviewer` or `reviewer_then_human` |
 | `reviewer_model` | the agent's chain | The approval reviewer's model |
 | `workspace` | | The agent's working folder |
-| `project_files` | `on` | Read the workspace's `AGENTS.md`, `CLAUDE.md` and `.cursorrules` (up to the git root) into new sessions: `on` (untrusted unless it's the agent's own workspace), `trusted` or `off` ([agents](../agents/agents.md#project-instruction-files)) |
+| `project_files` | `on` | Read the workspace's `AGENTS.md`, `CLAUDE.md` and `.cursorrules` (up to the git root) into new sessions: `on` (untrusted unless it's the agent's own workspace, and untrusted files make every command in the session need approval), `trusted` or `off` ([agents](../agents/agents.md#project-instruction-files)) |
 | `toolsets` | `core`, `memory`, `skills`, `schedule`, `delegate`, `board` | The tools it gets; a list replaces the default |
 | `web` | `true` | Use the provider's hosted web search and fetch |
 | `compact_at` | 600000 on `anthropic`, else 150000 | Prompt size that triggers compaction; `-1` turns it off |
