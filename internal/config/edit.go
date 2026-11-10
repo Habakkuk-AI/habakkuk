@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/habakkuk-ai/habakkuk/internal/config/yamledit"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 	"gopkg.in/yaml.v3"
 )
@@ -175,4 +176,63 @@ func insertNode(data []byte, name string, s *MCPServer) ([]byte, error) {
 		return buf.Bytes(), nil
 	}
 	return nil, errors.New("mcp_servers not found")
+}
+
+// SetChannelDisplay changes how a channel shows work in progress
+// (progress) and approval requests (approvals_detail) in home/config.yaml.
+// An empty value leaves that setting as it is. The file is edited as a YAML
+// node tree, so comments and everything else stay; the edited file must
+// load, and the previous one is kept as config.yaml.bak. It returns the
+// channel's settings after the change.
+func SetChannelDisplay(home, name, progress, approvalsDetail string) (*Channel, error) {
+	if progress != "" {
+		mode, ok := NormalizeProgress(progress)
+		if !ok {
+			return nil, fmt.Errorf("progress %q must be plain, detailed or off", progress)
+		}
+		progress = mode
+	}
+	if approvalsDetail != "" {
+		mode, ok := NormalizeApprovalsDetail(approvalsDetail)
+		if !ok {
+			return nil, fmt.Errorf("approvals_detail %q must be summary or full", approvalsDetail)
+		}
+		approvalsDetail = mode
+	}
+	path := filepath.Join(home, "config.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := yamledit.Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	ch := yamledit.Get(yamledit.Get(doc.Content[0], "channels"), name)
+	if ch == nil || ch.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("config.yaml has no channel %q", name)
+	}
+	if progress != "" {
+		yamledit.Set(ch, "progress", yamledit.Str(progress), "")
+	}
+	if approvalsDetail != "" {
+		yamledit.Set(ch, "approvals_detail", yamledit.Str(approvalsDetail), "")
+	}
+	out, err := yamledit.Encode(doc)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := ParseHome(out, home)
+	if err != nil {
+		return nil, fmt.Errorf("config.yaml would not load with the change: %w", err)
+	}
+	if !bytes.Equal(out, data) {
+		if err := store.WriteFileAtomic(path+".bak", data, 0o600); err != nil {
+			return nil, err
+		}
+		if err := store.WriteFileAtomic(path, out, 0o600); err != nil {
+			return nil, err
+		}
+	}
+	return cfg.Channels[name], nil
 }

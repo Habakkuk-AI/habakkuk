@@ -191,7 +191,14 @@ type Channel struct {
 	// (when the user sent a voice note) or always. Needs tts.
 	VoiceReplies string `yaml:"voice_replies"`
 	VoiceText    *bool  `yaml:"voice_text"` // also send the reply as text (default true)
-	Progress     string `yaml:"progress"`   // draft (default) | off: a long turn's live progress message
+	// Progress is how a long turn shows that it is working: plain (default:
+	// one short line in everyday words), detailed (a line per tool step;
+	// draft is its old name) or off. ApprovalsDetail is how much an
+	// approval prompt shows: summary (default: what the agent wants to do,
+	// in everyday words) or full (also the exact call). Both can be changed
+	// while serve runs (hooks.go).
+	Progress        string `yaml:"progress"`
+	ApprovalsDetail string `yaml:"approvals_detail"`
 	// Reactions marks the user's message with an emoji while a turn runs
 	// and when it ends, where the platform has reactions.
 	Reactions bool `yaml:"reactions"`
@@ -770,9 +777,11 @@ agents:
 #     homeserver: https://matrix.example.org
 #     token_env: MATRIX_ACCESS_TOKEN
 #     account: "@habakkuk:example.org"
-# A turn that runs past 8 seconds shows one "working" message that is edited
-# with each tool step and removed when the reply arrives (Telegram, Slack).
-# Set progress: off on a channel to keep only the typing indicator.
+# A turn that runs past 8 seconds shows one short line such as "Checking the
+# web", edited as the work moves on and removed when the reply arrives
+# (Telegram, Slack). Per channel: progress: plain (default) | detailed (a
+# line per tool step) | off (only the typing indicator), and
+# approvals_detail: summary (default) | full (also the exact command).
 #   mail:
 #     type: email           # IMAP in (IDLE or polling), SMTP out; each thread is a conversation
 #     allow_from: [you@example.com]
