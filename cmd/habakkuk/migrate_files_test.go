@@ -140,12 +140,25 @@ func TestMigrateFilesSkippedThenCopied(t *testing.T) {
 		out = migrateOut(t, home, user, "", args...)
 		wantAll(t, out, "Nothing to import: everything is already there.", "run again with --files copy to bring them over")
 
+		// The user has changed one imported file since; it still names the
+		// old folder.
+		own := filepath.Join(home, "agents", "coder", "SOUL.md")
+		if err := os.WriteFile(own, []byte("My own words. Briefs: ~/.hermes/workspaces/briefs\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		out = migrateOut(t, home, user, "", "-y", "--files", "copy")
 		wantAll(t, out, "~ habakkuk: SOUL.md: it will name the copied files", "~ habakkuk: Inbox sync: it will name the copied files",
-			"Copied 4 files (", "Rewrote 3 references")
+			"! coder: SOUL.md: the agent already has a different SOUL.md; kept, with its references to the copied files rewritten",
+			"Copied 4 files (", "Rewrote 4 references to name the copies: 2 in persona files, 1 in schedules, 1 inside 1 copied file.",
+			"Left as they were (1 conflicts)", "In 1 of them only the references to the copied files were rewritten.")
 		if strings.Contains(out, "Schedules are imported paused") {
 			t.Errorf("a schedule changed in place is not a new, paused one:\n%s", out)
 		}
+		if text, _ := os.ReadFile(own); string(text) != "My own words. Briefs: ~/.habakkuk/files/workspaces/briefs\n" {
+			t.Errorf("the user's file is now %q", text)
+		}
+		out = migrateOut(t, home, user, "", "-y", "--files", "copy")
+		wantAll(t, out, "Nothing to import: everything is already there.", "! coder: SOUL.md: the agent already has a different SOUL.md\n")
 	}
 }
 
