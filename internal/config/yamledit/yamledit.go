@@ -87,6 +87,11 @@ func Int(v int) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(v)}
 }
 
+// Bool is a boolean scalar.
+func Bool(v bool) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(v)}
+}
+
 // FlowList is a one-line list of strings: [a, b].
 func FlowList(vals ...string) *yaml.Node {
 	n := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}

@@ -147,13 +147,21 @@ type setup struct {
 	model    *modelChoice      // nil keeps the current model
 	channel  *channelChoice    // nil adds none
 	identity *nameChoice       // nil leaves names alone
+	listen   string            // the HTTP address picked for a new home
+	took     time.Duration     // how long the wizard took, for the summary
+	// runCmd runs a command that installs the background service; tests
+	// stub it.
+	runCmd func(name string, args ...string) error
+	// serveWait is how long to wait for a just-installed service to beat.
+	serveWait time.Duration
 }
 
 func newSetup(ctx context.Context, home string, args []string, in io.Reader, out io.Writer) (*setup, error) {
 	s := &setup{ctx: ctx, home: home, in: bufio.NewReader(in), out: out, ep: defaultEndpoints(),
 		getenv: os.Getenv, now: time.Now, runServe: serve, goos: runtime.GOOS,
 		runChat: func(ctx context.Context, home string) error { return chatCmd(ctx, home, nil) },
-		cfgPath: filepath.Join(home, "config.yaml"), secrets: map[string]string{}}
+		cfgPath: filepath.Join(home, "config.yaml"), secrets: map[string]string{},
+		runCmd: runQuiet, serveWait: 15 * time.Second}
 	s.userHome, _ = os.UserHomeDir()
 	var steps []string
 	for len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -276,7 +284,7 @@ func (s *setup) run() error {
 		s.say("\nSetup is saved, but doctor found problems; fix them, then run habakkuk setup again.")
 		return err
 	}
-	s.say("\nDone in %s.", short(s.now().Sub(start)))
+	s.took = s.now().Sub(start)
 	return s.finish()
 }
 

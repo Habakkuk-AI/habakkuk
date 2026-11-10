@@ -53,6 +53,9 @@ func (s *setup) render() ([]byte, bool, error) {
 		s.applyChannel(root)
 		edited = true
 	}
+	if s.raw == nil {
+		s.applyStarterDefaults(root)
+	}
 	if !edited {
 		return s.raw, false, nil
 	}
@@ -135,10 +138,7 @@ func (s *setup) applyModel(root *yaml.Node) {
 func (s *setup) applyChannel(root *yaml.Node) {
 	c := s.channel
 	if c.typ == "web" {
-		if getKey(root, "http") == nil {
-			h := ensureMap(root, "http", "The web chat at http://"+config.DefaultListen+"/ while habakkuk serve runs.\nREADME: Web chat, API and webhooks.")
-			setKey(h, "listen", str(config.DefaultListen), "loopback only; another address needs token_env")
-		}
+		s.applyHTTP(root)
 		return
 	}
 	chans := ensureMap(root, "channels", "Where you talk to your agent; habakkuk serve connects them.\nREADME: Channels. Add another with habakkuk setup channel.")
@@ -169,6 +169,28 @@ func (s *setup) applyChannel(root *yaml.Node) {
 	}
 	if !c.exists || len(c.allow) > 0 {
 		setKey(ch, "allow_from", flowList(c.allow...), c.allowNote)
+	}
+}
+
+// applyHTTP adds the HTTP listener on loopback: the dashboard at /app/
+// and the web chat at /, while habakkuk serve runs.
+func (s *setup) applyHTTP(root *yaml.Node) {
+	if getKey(root, "http") != nil {
+		return
+	}
+	l := s.webListen()
+	h := ensureMap(root, "http", "The dashboard at http://"+l+"/app/ and the web chat at http://"+l+"/,\nwhile habakkuk serve runs. README: Dashboard; Web chat, API and webhooks.")
+	setKey(h, "listen", str(l), "loopback only; another address needs token_env")
+}
+
+// applyStarterDefaults gives a new home what a first-timer would otherwise
+// have to find in the docs: the dashboard, and memory that keeps itself
+// up to date. A re-run never adds them back once removed.
+func (s *setup) applyStarterDefaults(root *yaml.Node) {
+	s.applyHTTP(root)
+	if getKey(root, "memory") == nil {
+		m := ensureMap(root, "memory", "Memory review: when a chat goes quiet, the agent saves what is worth keeping\n(the fast model does it when there is one). README: Memory.")
+		setKey(m, "review", yamledit.Bool(true), "")
 	}
 }
 
