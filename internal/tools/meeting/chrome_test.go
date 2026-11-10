@@ -181,8 +181,10 @@ func TestChromeLeavesAndDenied(t *testing.T) {
 			}()
 			if tc.name == "leave" {
 				for {
-					r, _ := st.Get(rec.ID)
-					if lines, _ := st.Lines(rec.ID); r.Captions && len(lines) > 0 {
+					// A read can fail while the worker replaces meeting.json
+					// (seen on Windows): that is "not yet", not a nil record.
+					r, err := st.Get(rec.ID)
+					if lines, _ := st.Lines(rec.ID); err == nil && r.Captions && len(lines) > 0 {
 						break
 					}
 					select {
