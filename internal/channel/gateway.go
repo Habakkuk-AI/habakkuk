@@ -666,6 +666,9 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 		}
 		if errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts {
 			msg := g.t(*to, "turn.failed", shorten(err.Error(), 300))
+			if stopped := (agent.LoopStopped{}); errors.As(err, &stopped) {
+				msg = stopped.Message // the loop guard's own message, whole
+			}
 			if derr := g.enqueue(ctx, "dlv_"+j.ID, deliverPayload{To: *to, Text: msg, Draft: j.ID}); derr != nil {
 				g.Log.Error("queue failure notice failed", "err", derr)
 			}

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/session"
@@ -98,9 +100,16 @@ func (g *loopGuard) off() bool {
 // observe records one round: the calls of an assistant message and the
 // blocks of the user message that answers them, which arrived at at (zero
 // when unknown, which counts as straight away). It returns what to do.
-func (g *loopGuard) observe(calls, results []llm.Block, at time.Time) loopVerdict {
+//
+// durs is how long each call ran, by call id (nil when unknown, as in a
+// replay). A call that waited, because it ran for waitAfter or more or
+// because its command sleeps or waits, is not a repeat however often it
+// fails: it is how an agent waits for a server. A round in which every
+// call waited is neither progress nor idle.
+func (g *loopGuard) observe(calls, results []llm.Block, at time.Time, durs map[string]time.Duration) loopVerdict {
 	g.round++
 	busy := false
+	waitedAll := len(calls) > 0
 	byID := map[string]llm.Block{}
 	for _, r := range results {
 		if r.Type == llm.ToolResult {
@@ -116,6 +125,8 @@ func (g *loopGuard) observe(calls, results []llm.Block, at time.Time) loopVerdic
 			fresh = true // no result recorded: cannot tell, so count it as new
 			continue
 		}
+		waited := waits(c, durs[c.ToolUseID])
+		waitedAll = waitedAll && waited
 		call := c.ToolName + "\x00" + canonicalJSON(c.Input)
 		sum := sha256.Sum256([]byte(res.Text))
 		key := fmt.Sprintf("%s\x00%t\x00%x", call, res.IsError, sum[:12])
@@ -124,6 +135,11 @@ func (g *loopGuard) observe(calls, results []llm.Block, at time.Time) loopVerdic
 		}
 		if !res.IsError {
 			busy = true
+			continue
+		}
+		if waited {
+			g.fails[key] = 0
+			delete(g.last, key)
 			continue
 		}
 		prev, ok := g.last[key]
@@ -140,9 +156,12 @@ func (g *loopGuard) observe(calls, results []llm.Block, at time.Time) loopVerdic
 		}
 	}
 	g.busy = busy
-	if fresh {
+	switch {
+	case fresh:
 		g.idle, g.idleOK = 0, false
-	} else if len(calls) > 0 {
+	case waitedAll:
+		// Waiting is neither progress nor going round in circles.
+	case len(calls) > 0:
 		g.idle++
 	}
 	switch {
@@ -173,8 +192,37 @@ func (g *loopGuard) replay(recs []session.Record, jobID string) {
 		if len(calls) == 0 || i+1 >= len(recs) || recs[i+1].Message.Role != llm.User {
 			continue
 		}
-		g.observe(calls, recs[i+1].Message.Blocks, recs[i+1].At)
+		g.observe(calls, recs[i+1].Message.Blocks, recs[i+1].At, nil)
 	}
+}
+
+// waitAfter is how long a call must run to count as waiting.
+const waitAfter = 5 * time.Second
+
+// waitWord finds a command that waits: sleep, wait, timeout, watch, until,
+// or a retry option.
+var waitWord = regexp.MustCompile(`(?i)(^|[\s;&|(])(sleep|wait|timeout|watch|until)(\s|$)|--retry`)
+
+// waits reports whether a call waited: it ran for waitAfter or more, its
+// tool is a waiting tool, or its command sleeps or waits.
+func waits(c llm.Block, ran time.Duration) bool {
+	if ran >= waitAfter {
+		return true
+	}
+	name := strings.ToLower(c.ToolName)
+	if strings.Contains(name, "wait") || strings.Contains(name, "sleep") {
+		return true
+	}
+	var in map[string]any
+	if json.Unmarshal(c.Input, &in) != nil {
+		return false
+	}
+	for _, k := range []string{"command", "cmd", "script"} {
+		if s, ok := in[k].(string); ok && waitWord.MatchString(s) {
+			return true
+		}
+	}
+	return false
 }
 
 // canonicalJSON renders a call's arguments with object keys sorted, so the
@@ -240,7 +288,7 @@ func (t *turn) guardRound(calls, results []llm.Block) ([]llm.Block, *loopVerdict
 	if t.r.Now != nil {
 		now = t.r.Now
 	}
-	v := t.guard.observe(calls, results, now())
+	v := t.guard.observe(calls, results, now(), t.callDur)
 	if v.Action == "" {
 		return results, nil
 	}

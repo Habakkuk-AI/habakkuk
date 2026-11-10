@@ -326,7 +326,7 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	if err == nil && j.Kind == KindTurn && !p.Compact && !t.paused {
 		r.autoTitle(ctx, sess.ID, spec, p.Text, t.final)
 	}
-	if err == nil && home {
+	if (err == nil || t.loopStopped) && home { // a stopped run still reports why
 		news.Final = t.final
 		r.reportHome(ctx, news)
 	}
@@ -375,9 +375,10 @@ type turn struct {
 	usageAt      int       // its seq, or -1
 	compactTried bool
 
-	paused      bool       // a spending limit ended the turn (budget.go)
-	guard       *loopGuard // nil when the loop guard is off (loopguard.go)
-	loopStopped bool       // the loop guard ended the turn
+	paused      bool                     // a spending limit ended the turn (budget.go)
+	guard       *loopGuard               // nil when the loop guard is off (loopguard.go)
+	loopStopped bool                     // the loop guard ended the turn
+	callDur     map[string]time.Duration // how long each call of the last round ran
 }
 
 func (t *turn) run(userText string, media []Attachment) error {
@@ -555,6 +556,13 @@ func hasMedia(msgs []llm.Message) bool {
 func (t *turn) runTools(env *tools.Env, calls []llm.Block, truncated bool) []llm.Block {
 	results := make([]llm.Block, len(calls))
 	media := make([][]llm.Block, len(calls))
+	durs := make([]time.Duration, len(calls))
+	defer func() {
+		t.callDur = make(map[string]time.Duration, len(calls))
+		for i, c := range calls {
+			t.callDur[c.ToolUseID] = durs[i]
+		}
+	}()
 	var wg sync.WaitGroup
 	for i, c := range calls {
 		if truncated {
@@ -567,7 +575,9 @@ func (t *turn) runTools(env *tools.Env, calls []llm.Block, truncated bool) []llm
 			defer wg.Done()
 			t.r.publishEvent(events.Event{Session: t.sess.ID, Kind: events.ToolStart, Text: c.ToolName + " " + preview(string(c.Input)),
 				ToolID: c.ToolUseID, Tool: c.ToolName, Input: c.Input})
+			start := time.Now()
 			res, extra := t.runTool(env, c)
+			durs[i] = time.Since(start)
 			t.r.publishEvent(events.Event{Session: t.sess.ID, Kind: events.ToolDone, Text: c.ToolName + ": " + preview(res.Text),
 				IsError: res.IsError, ToolID: c.ToolUseID, Tool: c.ToolName})
 			results[i], media[i] = res, extra
