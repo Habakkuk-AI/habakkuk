@@ -26,6 +26,7 @@ jobs:
   # key, base64) refuse unsigned or mis-signed updates. The two must be one
   # key pair: a binary built with a public key that no signature matches
   # could never update itself, so the Sign step stops the release instead.
+  # The release notes are the tag's section of CHANGELOG.md.
   binaries:
     needs: test
     runs-on: ubuntu-latest
@@ -102,6 +103,22 @@ jobs:
           base64 -d dist/SHA256SUMS.sig > "$RUNNER_TEMP/SHA256SUMS.sig.bin"
           openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/release-pub.pem" -rawin \
             -in dist/SHA256SUMS -sigfile "$RUNNER_TEMP/SHA256SUMS.sig.bin"
+      - name: Release notes
+        run: |
+          set -eu
+          # This version's section of CHANGELOG.md, with its links into the
+          # repository made absolute. GitHub's generated notes (the compare
+          # link) follow it on the release page.
+          awk -v head="## [${TAG#v}]" '
+            index($0, "## [") == 1 { on = (index($0, head) == 1); next }
+            /^\[[^]]+\]: / { next }
+            on { print }
+          ' CHANGELOG.md \
+            | sed "s#](docs/#](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${TAG}/docs/#g" > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::warning::CHANGELOG.md has no section for ${TAG#v}; the release will have generated notes only"
+          fi
+          cat "$RUNNER_TEMP/notes.md"
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -113,8 +130,8 @@ jobs:
           [ -f dist/SHA256SUMS.sig ] && files="$files dist/SHA256SUMS.sig"
           # shellcheck disable=SC2086
           gh release create "$TAG" $files \
-            --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "Habakkuk $TAG" $pre
-
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "Habakkuk $TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md" --generate-notes $pre
 
   # Habakkuk Desktop (apps/desktop, Wails v3, a module of its own): a universal
   # Habakkuk.app as .zip and .dmg, a Windows .exe and a Linux tar.gz, attached
