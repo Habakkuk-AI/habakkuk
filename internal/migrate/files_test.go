@@ -512,6 +512,61 @@ func TestFilesCopyAfterAnEarlierImport(t *testing.T) {
 	}
 }
 
+// Memory notes, the profile and MCP servers are rewritten too, both when
+// they are first imported and when they were imported before the copy.
+func TestFilesRewriteNotesProfileAndMCP(t *testing.T) {
+	for _, earlier := range []bool{false, true} {
+		w := newWorld(t, Hermes)
+		w.write("workspaces/reports/q3.md", "Quarterly numbers.\n", 0o644)
+		w.write("scripts/local_mcp.py", "print('mcp')\n", 0o755)
+		w.add("memories/MEMORY.md", "\n§\nReports are kept in ~/.hermes/workspaces/reports, one per quarter.\n")
+		w.add("memories/USER.md", "\n§\nReads the briefs in ~/.hermes/workspaces every morning.\n")
+		cfgPath := filepath.Join(w.src, "config.yaml")
+		w.write("config.yaml", strings.Replace(readFile(t, cfgPath), `args: ["mcp-server-time"]`,
+			`args: ["run", "~/.hermes/scripts/local_mcp.py", "--log", "~/.hermes/logs/mcp.log"]`, 1), 0o644)
+		if earlier {
+			w.run("")
+			if cfg, err := config.Load(w.home); err != nil || !slices.Contains(cfg.MCP["time"].Args, "~/.hermes/scripts/local_mcp.py") {
+				t.Fatalf("the earlier import: %v", err)
+			}
+		}
+		p, res := w.run(FilesCopy)
+		want := New
+		if earlier {
+			want = Update
+		}
+		for kind, name := range map[string]string{"note": "Reports are kept in ~/", "profile": "USER.md", "mcp": "time"} {
+			if it := item(p, kind, name); it == nil || it.Status != want || it.Rewritten() == 0 {
+				t.Errorf("earlier %v: %s %s is %+v, want %s with references rewritten", earlier, kind, name, it, want)
+			}
+		}
+		if len(res.Failed) != 0 || len(p.Conflicts()) != 0 {
+			t.Errorf("earlier %v: failed %v, conflicts %v", earlier, res.Failed, p.Conflicts())
+		}
+		note := readFile(t, filepath.Join(w.home, "agents", "habakkuk", "memory", "reports-are-kept-in.md"))
+		if !strings.Contains(note, "kept in ~/.habakkuk/files/workspaces/reports,") || strings.Contains(note, "kept in ~/.hermes") {
+			t.Errorf("earlier %v: the note:\n%s", earlier, note)
+		}
+		user := readFile(t, filepath.Join(w.home, "agents", "habakkuk", "USER.md"))
+		if !strings.Contains(user, "briefs in ~/.habakkuk/files/workspaces every") || strings.Contains(user, "~/.hermes") || strings.Count(user, "Reads the briefs") != 1 {
+			t.Errorf("earlier %v: USER.md:\n%s", earlier, user)
+		}
+		cfg, err := config.Load(w.home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The script moved; the old agent's log folder did not.
+		if got, want := cfg.MCP["time"].Args, []string{"run", "~/.habakkuk/files/scripts/local_mcp.py", "--log", "~/.hermes/logs/mcp.log"}; !slices.Equal(got, want) {
+			t.Errorf("earlier %v: the MCP server's args are %v", earlier, got)
+		}
+		for _, it := range w.plan(w.options(FilesCopy)).Items {
+			if it.Changes() {
+				t.Errorf("earlier %v: the next run would change %s %s (%s: %s)", earlier, it.Kind, it.Name, it.Status, it.Detail)
+			}
+		}
+	}
+}
+
 func TestFilesCopyKeepsModesTimesAndLinks(t *testing.T) {
 	testutil.UnixOnly(t, "permission bits, symlinks and named pipes")
 	w := hermesWorld(t)
