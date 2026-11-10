@@ -21,20 +21,32 @@ import (
 
 // Result is what Apply did.
 type Result struct {
-	Done     []*Item           // items written
+	Done []*Item // items written
+	// Fixed are conflicts that were left as they are except for their
+	// references to copied files, which were rewritten.
+	Fixed    []*Item
 	Failed   map[*Item]error   // items that could not be written
 	Paused   map[string]string // schedule name (agent/name) -> its new ID
 	Copied   []string          // .env variables written
 	ToSet    []string          // variables the user still has to set
 	WroteCfg bool
+	// Files is what the copy of the files the imported text names did; nil
+	// when nothing was to be copied.
+	Files *FilesResult
 }
 
 // Apply carries out the plan. copySecrets writes the keys and tokens into
 // $HABAKKUK_HOME/.env; otherwise their names are returned in ToSet. It
 // goes on past an item that fails and reports it in Failed.
+//
+// When the plan copies files, they are copied first: the imported text
+// names the copies, so nothing else is written if the copy cannot finish.
 func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 	if p.ConfigErr != nil {
 		return nil, p.ConfigErr
+	}
+	if p.Files.Copies() && p.Files.Err != nil {
+		return nil, p.Files.Err
 	}
 	res := &Result{Failed: map[*Item]error{}, Paused: map[string]string{}}
 	if err := os.MkdirAll(p.Home, 0o700); err != nil {
@@ -42,6 +54,12 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 	}
 	if err := os.Chmod(p.Home, 0o700); err != nil { // it holds chats, memory and keys
 		return nil, err
+	}
+	if p.Files != nil {
+		var err error
+		if res.Files, err = p.applyFiles(ctx); err != nil {
+			return nil, fmt.Errorf("%w; nothing else was written, and running the import again goes on from there", err)
+		}
 	}
 	if p.Config != nil {
 		path := filepath.Join(p.Home, "config.yaml")
@@ -57,6 +75,9 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 		for _, it := range p.Items {
 			if it.Changes() && (it.Kind == "agent" || it.Kind == "provider" || it.Kind == "mcp" || it.Kind == "channel") {
 				res.Done = append(res.Done, it)
+			}
+			if it.Fixes() && it.Kind == "mcp" {
+				res.Fixed = append(res.Fixed, it)
 			}
 		}
 	}
@@ -83,6 +104,22 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 				secrets[it.Name] = p.Found.Secrets[it.Name]
 			case !copySecrets && it.Status != Same:
 				res.ToSet = append(res.ToSet, it.Name)
+			}
+			continue
+		}
+		if it.Fixes() && it.Kind != "schedule" && it.Kind != "mcp" {
+			var m *memory.Store
+			var err error
+			if it.Kind == "note" {
+				m, err = openMem()
+			}
+			if err == nil {
+				err = p.fixItem(ctx, m, it)
+			}
+			if err != nil {
+				res.Failed[it] = err
+			} else {
+				res.Fixed = append(res.Fixed, it)
 			}
 			continue
 		}
@@ -132,6 +169,46 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 	return res, nil
 }
 
+// fixItem rewrites the references to copied files in a conflict: a persona
+// file, a note or a skill that differs from the import and is otherwise
+// left as it is.
+func (p *Plan) fixItem(ctx context.Context, m *memory.Store, it *Item) error {
+	switch it.Kind {
+	case "file":
+		path := filepath.Join(p.Home, "agents", it.Agent, it.Name)
+		old, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return store.WriteFileAtomic(path, []byte(p.rw.str(string(old))), 0o600)
+	case "note":
+		old, err := m.Read(ctx, it.Agent, memory.Slugify(it.note.Title))
+		if err != nil {
+			return err
+		}
+		_, _, err = m.Put(ctx, it.Agent, memory.Note{Title: old.Title, Content: p.rw.str(old.Body), Tags: old.Tags,
+			Source: old.Source, Session: old.Session, Untrusted: old.Untrusted()})
+		return err
+	case "skill":
+		dest := p.skillDir(it.Agent, it.skill)
+		var werr error
+		err := skillFiles(dest, func(rel string, data []byte) {
+			out, n := p.rw.bytes(data)
+			if n == 0 || werr != nil {
+				return
+			}
+			path := filepath.Join(dest, rel)
+			info, err := os.Stat(path)
+			if err == nil {
+				err = store.WriteFileAtomic(path, out, info.Mode().Perm())
+			}
+			werr = err
+		})
+		return errors.Join(err, werr)
+	}
+	return nil
+}
+
 // writeFile writes a persona file, keeping the replaced one as NAME.bak.
 func (p *Plan) writeFile(it *Item) error {
 	dir := filepath.Join(p.Home, "agents", it.Agent)
@@ -158,6 +235,21 @@ func (p *Plan) writeProfile(ctx context.Context, m *memory.Store, it *Item) erro
 	a := p.Found.agent(it.Agent)
 	if err := memory.CheckSecrets(a.Profile); err != nil {
 		return errors.New("the profile looks like it holds a key or password; not imported")
+	}
+	if it.inPlace {
+		// Sections imported before their files were copied: rewrite their
+		// references where they are.
+		old, err := m.Profile(it.Agent)
+		if err != nil {
+			return err
+		}
+		for _, s := range splitSections(old) {
+			if body := p.rw.str(s.body); body != s.body && s.name != "" {
+				if _, err := m.UpdateProfile(ctx, it.Agent, s.name, body, memory.ProfileReplace); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	if len(strings.TrimSpace(a.Profile)) > memory.MaxProfile || strings.Contains(it.Detail, "memory note") {
 		_, _, err := m.Put(ctx, it.Agent, memory.Note{Title: "Imported user profile", Content: a.Profile, Tags: []string{"imported", "profile"}, Source: memory.SourceUser})
@@ -191,8 +283,14 @@ func (p *Plan) copySkill(it *Item) error {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	staged := filepath.Join(tmp, it.skill.Name)
-	if err := copyTree(it.skill.Dir, staged); err != nil {
+	if err := copyTree(it.skill.Dir, staged, p.rw); err != nil {
 		return err
+	}
+	if it.Status == Update {
+		// The same skill with its references rewritten: no copy is kept.
+		if err := os.Rename(dest, filepath.Join(tmp, "old")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	if it.Status == Replace {
 		bak := dest + ".bak"
@@ -210,7 +308,7 @@ func (p *Plan) copySkill(it *Item) error {
 func (p *Plan) applySchedules(ctx context.Context, res *Result) error {
 	var todo []*Item
 	for _, it := range p.Items {
-		if it.Kind == "schedule" && it.Changes() {
+		if it.Kind == "schedule" && (it.Changes() || it.Fixes()) {
 			todo = append(todo, it)
 		}
 	}
@@ -224,6 +322,17 @@ func (p *Plan) applySchedules(ctx context.Context, res *Result) error {
 	defer db.Close()
 	st := schedule.NewStore(db, p.location())
 	for _, it := range todo {
+		if it.Fixes() {
+			// A schedule the user changed: only its references move.
+			h := it.have
+			if _, err := db.ExecContext(ctx, `UPDATE schedules SET prompt = ?, command = ?, workdir = ? WHERE id = ?`,
+				p.rw.str(h.Prompt), p.rw.str(h.Command), p.rw.str(h.Workdir), it.oldID); err != nil {
+				res.Failed[it] = err
+				continue
+			}
+			res.Fixed = append(res.Fixed, it)
+			continue
+		}
 		if err := p.createSchedule(ctx, st, db, it, res); err != nil {
 			res.Failed[it] = err
 			continue
@@ -235,6 +344,13 @@ func (p *Plan) applySchedules(ctx context.Context, res *Result) error {
 
 func (p *Plan) createSchedule(ctx context.Context, st *schedule.Store, db *sql.DB, it *Item, res *Result) error {
 	sc := it.schedule
+	if it.inPlace {
+		// Only its references change: it keeps its ID, its runs so far and
+		// whether it is on.
+		_, err := db.ExecContext(ctx, `UPDATE schedules SET prompt = ?, command = ?, workdir = ? WHERE id = ?`,
+			sc.Prompt, sc.Command, sc.Workdir, it.oldID)
+		return err
+	}
 	s := schedule.Schedule{Agent: sc.Agent, Name: sc.Name, Spec: sc.Spec, Prompt: sc.Prompt,
 		Command: sc.Command, OnOutput: sc.OnOutput, Workdir: sc.Workdir}
 	if sc.Command != "" {

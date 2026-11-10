@@ -48,6 +48,7 @@ func readHermes(dir string, o Options) (*Found, error) {
 		p := filepath.Join(dir, "profiles", e.Name())
 		if slices.ContainsFunc(hermesMarks, func(m string) bool { return exists(filepath.Join(p, m)) }) {
 			homes = append(homes, hermesHome{name: e.Name(), dir: p})
+			f.nested = append(f.nested, "profiles/"+e.Name())
 		}
 	}
 	taken := map[string]bool{}
@@ -436,7 +437,7 @@ func (r *hermesReader) skills() error {
 			r.f.skip("skill %s in %s: another skill has the same name", name, d)
 			continue
 		}
-		h, err := treeHash(d)
+		h, err := treeHash(d, nil)
 		if err != nil {
 			return err
 		}

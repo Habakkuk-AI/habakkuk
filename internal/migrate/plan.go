@@ -45,7 +45,54 @@ type Item struct {
 	schedule *Schedule
 	file     string // persona files: the text to write
 	ident    *agent.Identity
-	oldID    string // a schedule a Force replaces
+	oldID    string // a schedule a Force replaces, or one changed in place
+	// inPlace: only the references of what is there change (a schedule
+	// keeps its ID and stays on or paused; a profile keeps its sections).
+	inPlace bool
+	// refs is how many references in its text were rewritten to name
+	// copied files.
+	refs int
+	// fix is how many references to copied files a conflict holds: what is
+	// there differs from the import and stays, but those references are
+	// rewritten where they are.
+	fix  int
+	have *Schedule // schedules: the text of the one that is there
+}
+
+// Rewritten is how many references in the item's text name copied files
+// instead of the source home.
+func (it *Item) Rewritten() int {
+	if it.Status == Conflict {
+		return it.fix
+	}
+	return it.refs
+}
+
+// Fixes reports whether the item is a conflict whose references to copied
+// files are rewritten where they are. The rest of it is left alone.
+func (it *Item) Fixes() bool { return it.Status == Conflict && it.fix > 0 }
+
+// moved is the detail of an item that is already there and only needs its
+// references rewritten.
+const moved = "it will name the copied files"
+
+// fixed is added to the detail of a conflict whose references are
+// rewritten.
+const fixed = "; kept, with its references to the copied files rewritten"
+
+// noteFix counts the references to copied files in the text a conflict
+// holds and marks the item for rewriting them.
+func (p *Plan) noteFix(it *Item, texts ...string) {
+	if it.Status != Conflict {
+		return
+	}
+	for _, t := range texts {
+		_, n := p.rw.apply(t)
+		it.fix += n
+	}
+	if it.fix > 0 {
+		it.Detail += fixed
+	}
 }
 
 // Changes reports whether the item writes anything.
@@ -66,9 +113,16 @@ type Plan struct {
 	ConfigErr error
 	// NoConfig explains why config.yaml is left alone, when it is.
 	NoConfig string
+	// Files is what the import does about the files in the source home
+	// that the imported text names; nil when it names none. When entries
+	// are copied (now, or by an earlier run), Found holds the text as it is
+	// written: with those references rewritten.
+	Files *FilesPlan
 
 	opts   Options
 	dotenv map[string]string
+	rw     *rewriter      // rewrites references to copied entries; nil when there are none
+	refs   map[string]int // hitID -> references rewritten in that item
 }
 
 // NewPlan compares what was found with the Habakkuk home at home. It
@@ -93,6 +147,10 @@ func NewPlan(f *Found, home string, o Options) (*Plan, error) {
 	if p.dotenv, err = readDotEnv(filepath.Join(home, ".env")); err != nil {
 		return nil, err
 	}
+	if err := p.planFiles(); err != nil {
+		return nil, err
+	}
+	f = p.Found // with the references to copied files rewritten
 	var doc *yaml.Node
 	if raw != nil {
 		if doc, err = yamledit.Parse(raw); err != nil {
@@ -139,6 +197,11 @@ func NewPlan(f *Found, home string, o Options) (*Plan, error) {
 	}
 	if err := p.planSchedules(); err != nil {
 		return nil, err
+	}
+	for _, it := range p.Items {
+		if it.ident == nil {
+			it.refs = p.refs[hitID(it.Kind, it.Agent, it.Name)]
+		}
 	}
 	return p, nil
 }
@@ -195,6 +258,16 @@ func (p *Plan) planConfig(cfg *config.Config, root *yaml.Node) bool {
 			}
 		}
 		configured[a.Name] = true
+		// An agent whose workspace was in the source home and is now copied.
+		if have != nil && have.Workspace != a.Workspace && a.Workspace != "" && p.rw.str(have.Workspace) == a.Workspace {
+			setWorkspace(root, a.Name, a.Workspace)
+			edited = true
+			if it.Status == Same {
+				it.Status, it.Detail = Update, "its workspace becomes "+a.Workspace
+			} else {
+				it.Detail += "; its workspace becomes " + a.Workspace
+			}
+		}
 		if it.Changes() {
 			setAgent(root, a, it.Status == Replace, toolsHave)
 			edited = true
@@ -230,7 +303,17 @@ func (p *Plan) planConfig(cfg *config.Config, root *yaml.Node) bool {
 				it.Status = Same
 				continue
 			}
+			if p.rw != nil && sameServerAs(m, have, p.rw.str(have.Command), p.rw.strs(have.Args)) {
+				it.Status, it.Detail = Update, moved
+				moveMCP(root, m)
+				edited = true
+				continue
+			}
 			it.Status, it.Detail = p.conflict(), "config.yaml has a different server by that name"
+			if p.noteFix(it, append([]string{have.Command}, have.Args...)...); it.Fixes() {
+				moveMCP(root, &MCPServer{Name: m.Name, Command: p.rw.str(have.Command), Args: p.rw.strs(have.Args)})
+				edited = true
+			}
 		}
 		if it.Changes() {
 			setMCP(root, m)
@@ -317,8 +400,11 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 			return err
 		case strings.TrimSpace(string(old)) == strings.TrimSpace(text):
 			it.Status = Same
+		case strings.TrimSpace(p.rw.str(string(old))) == strings.TrimSpace(text):
+			it.Status, it.Detail = Update, moved
 		default:
 			it.Status, it.Detail = p.conflict(), "the agent already has a different "+name
+			p.noteFix(it, string(old))
 		}
 	}
 	if a.Identity != nil {
@@ -349,10 +435,14 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 		default:
 			var meta struct{}
 			body, _ := frontmatter.Parse(data, &meta)
-			if strings.TrimSpace(body) == strings.TrimSpace(n.Body) {
+			switch want := strings.TrimSpace(n.Body); {
+			case strings.TrimSpace(body) == want:
 				it.Status = Same
-			} else {
+			case strings.TrimSpace(p.rw.str(body)) == want:
+				it.Status, it.Detail = Update, moved
+			default:
 				it.Status, it.Detail = p.conflict(), "a different note has that title"
+				p.noteFix(it, body)
 			}
 		}
 	}
@@ -376,11 +466,11 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 			it.Detail = fmt.Sprintf("the security scan flagged %s; read it, then habakkuk skills install %s", strings.Join(hub.Summaries(findings[:min(len(findings), 3)]), "; "), shellQuote(s.Dir))
 			continue
 		}
-		want, err := treeHash(s.Dir)
+		want, err := treeHash(s.Dir, p.rw)
 		if err != nil {
 			return err
 		}
-		have, err := treeHash(dest)
+		have, err := treeHash(dest, nil)
 		if err != nil {
 			return err
 		}
@@ -390,6 +480,21 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 			it.Status = Same
 		default:
 			it.Status, it.Detail = p.conflict(), "a different skill by that name is in "+dest
+			if p.rw == nil {
+				break
+			}
+			// The same skill, imported before its files were copied?
+			if after, err := treeHash(dest, p.rw); err != nil {
+				return err
+			} else if after == want {
+				it.Status, it.Detail = Update, moved
+				break
+			}
+			var texts []string
+			if err := skillFiles(dest, func(_ string, data []byte) { texts = append(texts, string(data)) }); err != nil {
+				return err
+			}
+			p.noteFix(it, texts...)
 		}
 	}
 	return nil
@@ -417,10 +522,25 @@ func (p *Plan) planProfile(a *Agent, dir string) {
 	it.Status = Same
 	grow := 0
 	for _, s := range splitSections(a.Profile) {
-		if b, ok := have[strings.ToLower(s.name)]; !ok || !strings.Contains(b, s.body) {
+		b, ok := have[strings.ToLower(s.name)]
+		switch {
+		case ok && strings.Contains(b, s.body):
+		case ok && strings.Contains(p.rw.str(b), s.body):
+			// There already, from before its files were copied.
+		default:
 			it.Status, it.Detail = Update, "adds to the existing profile"
 			grow += len(s.body) + len(s.name) + 8
 		}
+	}
+	// Whatever the profile says about folders that are copied now is
+	// rewritten where it is, the user's own lines included.
+	for _, s := range splitSections(old) {
+		if _, n := p.rw.apply(s.body); n > 0 && s.name != "" {
+			it.inPlace = true
+		}
+	}
+	if it.inPlace && it.Status == Same {
+		it.Status, it.Detail = Update, moved
 	}
 	if it.Status == Update && len(old)+grow > memory.MaxProfile {
 		it.Detail = "too long to add to USER.md; saved as a memory note instead"
@@ -433,7 +553,7 @@ func (p *Plan) planSchedules() error {
 	if len(p.Found.Schedules) == 0 {
 		return nil
 	}
-	type row struct{ id, spec, prompt, command string }
+	type row struct{ id, spec, prompt, command, workdir string }
 	existing := map[string]row{}
 	path := filepath.Join(p.Home, "control.db")
 	if exists(path) {
@@ -445,13 +565,13 @@ func (p *Plan) planSchedules() error {
 			return err
 		}
 		defer db.Close()
-		rows, err := db.QueryContext(context.Background(), `SELECT id, agent, name, spec, prompt, command FROM schedules`)
+		rows, err := db.QueryContext(context.Background(), `SELECT id, agent, name, spec, prompt, command, workdir FROM schedules`)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var r row
 				var ag, name string
-				if err := rows.Scan(&r.id, &ag, &name, &r.spec, &r.prompt, &r.command); err != nil {
+				if err := rows.Scan(&r.id, &ag, &name, &r.spec, &r.prompt, &r.command, &r.workdir); err != nil {
 					return err
 				}
 				existing[ag+"\x00"+name] = r
@@ -466,10 +586,20 @@ func (p *Plan) planSchedules() error {
 	for _, sc := range p.Found.Schedules {
 		it := p.add(&Item{Kind: "schedule", Agent: sc.Agent, Name: sc.Name, Status: New, Detail: sc.Spec, schedule: sc})
 		if r, ok := existing[sc.Agent+"\x00"+sc.Name]; ok {
-			if r.spec == sc.Spec && r.prompt == sc.Prompt && r.command == sc.Command {
+			// A schedule from before its files were copied still names the
+			// source home; it is changed where it is, so it keeps its ID and
+			// stays on if it was resumed.
+			stale := r.prompt != sc.Prompt || r.command != sc.Command || r.workdir != sc.Workdir
+			after := p.rw.str(r.prompt) == sc.Prompt && p.rw.str(r.command) == sc.Command
+			switch {
+			case r.spec == sc.Spec && after && stale && p.rw.str(r.workdir) == sc.Workdir:
+				it.Status, it.Detail, it.oldID, it.inPlace = Update, moved, r.id, true
+			case r.spec == sc.Spec && r.prompt == sc.Prompt && r.command == sc.Command:
 				it.Status = Same
-			} else {
+			default:
 				it.Status, it.Detail, it.oldID = p.conflict(), "a different schedule "+r.id+" has that name", r.id
+				it.have = &Schedule{Prompt: r.prompt, Command: r.command, Workdir: r.workdir}
+				p.noteFix(it, r.prompt, r.command, r.workdir)
 			}
 		}
 	}
@@ -544,6 +674,7 @@ func (p *Plan) Write(w io.Writer, copySecrets string) {
 	section("MCP servers", "mcp", func(it *Item) string { return it.Name })
 	section("Model providers", "provider", func(it *Item) string { return it.Name })
 	section("Channels", "channel", func(it *Item) string { return it.Name })
+	p.writeFiles(w)
 	if names := p.Secrets(); len(names) > 0 {
 		fmt.Fprintf(w, "\nKeys and tokens (names only; values are never shown)\n")
 		for _, it := range p.Items {

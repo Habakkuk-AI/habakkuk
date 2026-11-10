@@ -132,6 +132,12 @@ func (r *ocReader) agents() error {
 		r.f.Agents = append(r.f.Agents, a)
 		ws := r.workspace(oa, defaults, len(list))
 		a.Workspace = tilde(ws, r.o.userHome())
+		if r.f.workspaces == nil {
+			r.f.workspaces = map[string]string{}
+		}
+		if abs, err := filepath.Abs(ws); err == nil {
+			r.f.workspaces[abs] = a.Name
+		}
 		model := oa.cfg["model"]
 		if model == nil {
 			model = defaults["model"]
@@ -165,7 +171,7 @@ func (r *ocReader) agents() error {
 				r.f.skip("skill folder %s: its name cannot be made a skill name", d)
 				continue
 			}
-			if h, _ := treeHash(d); h != "" && sharedHashes[name] == h {
+			if h, _ := treeHash(d, nil); h != "" && sharedHashes[name] == h {
 				continue // the same as the shared copy
 			}
 			if slices.ContainsFunc(a.Skills, func(s Skill) bool { return s.Name == name && !s.Shared }) {
@@ -406,7 +412,7 @@ func (r *ocReader) sharedSkills() ([]Skill, map[string]string) {
 			r.f.skip("skill folder %s: its name cannot be made a skill name", d)
 			continue
 		}
-		hashes[name], _ = treeHash(d)
+		hashes[name], _ = treeHash(d, nil)
 		out = append(out, Skill{Name: name, Dir: d, Shared: true})
 	}
 	return out, hashes
