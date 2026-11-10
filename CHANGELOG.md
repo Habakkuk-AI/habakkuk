@@ -8,6 +8,8 @@ Version in development: `0.3.0-dev`. No release has been tagged yet; this sectio
 
 ### Added
 
+- **Slack `listen_channels`.** A list of channel ids where every message from an allowed sender is for the bot, with no @mention. Each top-level message starts a thread under it, as a mention does. See [Slack](docs/channels/slack.md#channels-where-no-mention-is-needed).
+- **Several Slack apps.** Two `type: slack` channels with different app tokens (one app per workspace) run side by side, each on its own Socket Mode connection, and may go to the same agent. Covered by tests and documented.
 - **`hk`, the short name.** The installers add `hk` beside `habakkuk` (a link, or `hk.cmd` on Windows; `--no-hk` / `-NoHk` skips it) and the container image has it too, so `hk chat` is `habakkuk chat`. Another program already called `hk` is never replaced.
 - **Durable core.** Every turn is a job with a lease and heartbeat in a SQLite queue; a process killed at any point loses no committed work, and a restart reclaims jobs whose owner died. Interrupted tool calls are repaired, not repeated. Storage is split into `control.db`, `transcripts.db`, `state.db`, `web.db`, `usage.db`, `nodes.db` and content-addressed blobs, with retention on by default.
 - **Decision model.** An optional `judge:` (TypeSafe's Jev) makes Habakkuk's own small decisions: which model a message needs, whether a tool call is plainly routine before the reviewer model is asked (never for a turn that read outside content), and whether a chat is worth a memory review. Without a key, or when it is slow, everything works as before.
@@ -23,5 +25,16 @@ Version in development: `0.3.0-dev`. No release has been tagged yet; this sectio
 - **Operations.** `habakkuk setup`, `doctor`, `status`, `logs`, `security audit`, `expose tailscale`, `backup`, `restore` and `update`; Prometheus metrics, OTLP traces, log rotation with secret redaction, secret managers, hooks, and localized chat and CLI text.
 - **Releases.** Static binaries for Linux and macOS (amd64, arm64) with `SHA256SUMS`, a multi-arch container image on ghcr.io, desktop app builds, and install scripts for macOS, Linux and Windows (`curl -fsSL https://habakkuk.ai/install.sh | sh`).
 - **Project.** Contributing guide, code of conduct, security policy, `NOTICE`, Apache License 2.0, trademark policy (`TRADEMARKS.md`), brand guide, issue and pull request templates, Dependabot, a Makefile, and a docs tree under `docs/`.
+
+### Fixed
+
+- **WhatsApp `allow_from` and LIDs.** WhatsApp names many senders by a LID instead of their phone number, so an owner listed by number got a pairing code. The linked device now looks up the phone number behind a LID (and the LID behind a number) in its store, and `allow_from` takes either form: `+1 202 555 0142`, `12025550142@s.whatsapp.net`, `98765432101234` or `98765432101234@lid`.
+- **Sending to a WhatsApp number.** `habakkuk send -to whatsapp:+12025550142`, schedule `-to` targets and `home:` values failed with "unknown server". A bare number (with or without `+`) now becomes `<digits>@s.whatsapp.net`; `<digits>@lid` and full JIDs pass through. A target that can never work fails at once instead of being retried 20 times; network errors still retry.
+- **WhatsApp credential backups.** A copy was written on every reconnect and followed the process umask. Backups are now owner-only (0600 in a 0700 folder) whatever the umask, taken on connect at most once an hour and daily, and pruned to the five newest plus one a day for a week, never deleting the only good copy. The database snapshots in `habakkuk backup` are owner-only too.
+- **Security audit and WhatsApp agents.** A `whatsappagent` channel with `allow_from: "*"` was reported as open to anyone, with a critical for a full-mode agent behind it. A WhatsApp agent only hears from its creator, so it now counts as owner-only.
+- **Schedule status.** One-off schedules kept "last status: started" after their run finished. Runs now settle to `done`, `failed: <reason>` or a script's own status, and a one-off that has run lists as `ran once`. `schedules add` names the timezone of the first run and its UTC time, and says when an `at` time was read in the config timezone.
+- **Slack direct messages.** Replies to a direct message go to the top level of the chat, even when the user wrote inside a thread.
+- **Slow startup.** `habakkuk serve` waited for MCP servers (up to 20 seconds) before any channel connected. MCP servers now connect in the background; a turn that needs one still connecting waits up to 15 seconds, then goes on and the model is told the server is still starting. The log says how long it took to the first channel.
+- **`habakkuk status` during startup.** It said "not running" while `serve` was starting. It now says "starting" and what serve waits for, until channels have connected.
 
 [Unreleased]: https://github.com/habakkuk-ai/habakkuk/commits/main
