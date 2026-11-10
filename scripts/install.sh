@@ -97,7 +97,7 @@ if [ "$os" = darwin ] && [ "$arch" = amd64 ] && [ "$(sysctl -n hw.optional.arm64
 fi
 
 if [ -n "${HABAKKUK_DOWNLOAD_URL:-}" ]; then
-	base="$HABAKKUK_DOWNLOAD_URL"
+	base="${HABAKKUK_DOWNLOAD_URL%/}"
 elif [ "$version" = latest ]; then
 	base="https://github.com/$repo/releases/latest/download"
 else
@@ -164,7 +164,10 @@ fi
 as_owner cp "$tmp/x/habakkuk" "$dir/.habakkuk.new"
 as_owner mv -f "$dir/.habakkuk.new" "$dir/habakkuk"
 
-say "Installed $("$dir/habakkuk" version 2>/dev/null || echo habakkuk) to $dir/habakkuk"
+# The first line of `habakkuk version` is "habakkuk v1.2.3"; the rest is
+# build and schema detail nobody needs here.
+installed=$("$dir/habakkuk" version 2>/dev/null | sed -n 1p) || true
+say "Installed ${installed:-habakkuk} to $dir/habakkuk"
 
 # hk is the short name: a link to habakkuk beside it. Another program called
 # hk is never replaced.
