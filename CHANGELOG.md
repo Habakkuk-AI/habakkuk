@@ -32,7 +32,8 @@ Version in development: `0.3.0-dev`. No release has been tagged yet; this sectio
 ### Fixed
 
 - **`habakkuk update` when there is no release.** Before the first release, or with pre-releases only, `habakkuk update -check` failed with "HTTP 404 from https://api.github.com/...". It now says there is nothing to update to and exits 0; a plain `habakkuk update` fails with the same plain words.
-- **Install script output.** `install.sh` printed every line of `habakkuk version` inside its "Installed ... to" sentence. It prints the version only, and a mirror URL in `HABAKKUK_DOWNLOAD_URL` may end in a slash.
+- **Windows installer and a one-entry PATH.** On an account whose user `PATH` had a single entry, as a clean Windows has, `install.ps1` glued the install folder onto that entry instead of adding it, so `habakkuk` was not found in new terminals and the first entry was broken. The PATH handling is fixed and tested in CI under PowerShell 7 and Windows PowerShell 5.1. An `hk.bat` or `hk.com` beside `habakkuk.exe` now counts as another program too.
+- **Install script output.** `install.sh` printed every line of `habakkuk version` inside its "Installed ... to" sentence. It prints the version only, and a mirror URL in `HABAKKUK_DOWNLOAD_URL` may end in a slash. When the install folder is not on your `PATH`, the hint names the file your shell reads (`~/.zshrc` for zsh, the macOS default) instead of always `~/.profile`.
 - **Pointers in the generated config.** The comments `habakkuk setup` writes into `config.yaml` named README sections that no longer exist. They name the page on habakkuk.ai/docs.
 - **Desktop app license.** The macOS bundle and the Windows version info said "MIT License". Habakkuk is under the Apache License 2.0.
 - **Imported scripts time out less.** `habakkuk migrate` gives a script schedule ten minutes (or its `@every` interval when shorter) instead of the two-minute default, which an imported inbox sync kept hitting.
