@@ -42,6 +42,13 @@ const usage = `Habakkuk: a durable personal AI agent.
 
 Every command also runs as hk, the short name: hk chat is habakkuk chat.
 
+Any command can run on a remote Habakkuk (a server you reach over ssh, or https):
+  habakkuk -r NAME [-q] [--yes-remote] COMMAND [ARGS...]
+                                    run COMMAND there; HABAKKUK_REMOTE or the default remote do the
+                                    same without -r, and -r local runs here; -q hides the
+                                    (remote: NAME) line; --yes-remote allows serve, init, restore,
+                                    update, migrate, setup service and config migrate there
+
 Usage:
   habakkuk init                       write a starter config to $HABAKKUK_HOME (default ~/.habakkuk)
   habakkuk setup [model|channel [TYPE]|name|service] [-y] [flags]
@@ -122,6 +129,11 @@ Usage:
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
   habakkuk expose tailscale [-port 443] [-print] | status | off
                                     share the HTTP listener on your tailnet (tailscale serve, never public)
+  habakkuk remote add NAME TARGET [-identity PATH] [-home DIR] [-bin PATH] [-token-env NAME] [-default]
+                                    save a remote: ssh://user@host[:port] runs every command,
+                                    https://host runs status and chat (habakkuk remote help)
+  habakkuk remote [list] | rm NAME | default NAME|none
+                                    list, remove, or pick the remote plain commands run on
   habakkuk backup [-o FILE] [-env] [-workspaces]
                                     archive config, agents, skills and database snapshots
   habakkuk restore [-force] FILE      unpack a backup into $HABAKKUK_HOME
@@ -136,14 +148,18 @@ Usage:
 `
 
 func main() {
-	if len(os.Args) < 2 {
+	argv, code, done := dispatchRemote(os.Args[1:], remoteStdio(), os.Getenv)
+	if done {
+		os.Exit(code)
+	}
+	if len(argv) < 1 {
 		fmt.Print(usage)
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	home := config.DefaultHome()
-	cmd, args := os.Args[1], os.Args[2:]
+	cmd, args := argv[0], argv[1:]
 	if exe, err := os.Executable(); err == nil && plat.IsWindows {
 		removeReplaced(exe) // binaries an update moved aside
 	}
