@@ -47,11 +47,27 @@ curl -fsSL https://raw.githubusercontent.com/habakkuk-ai/habakkuk/main/scripts/i
 
 Under `irm ... | iex` the Windows script reads its options only from the environment variables.
 
+### Uninstall
+
+Remove the binary and the short name. Your agents, chats and keys are in the data folder (`~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows) and stay until you delete that too, so installing again picks up where you left off.
+
+```bash tab="macOS / Linux"
+rm ~/.local/bin/habakkuk ~/.local/bin/hk     # /usr/local/bin after --system
+rm -rf ~/.habakkuk                            # only if you want the data gone as well
+```
+
+```powershell tab="Windows"
+Remove-Item -Recurse "$env:LOCALAPPDATA\Programs\Habakkuk"
+Remove-Item -Recurse "$env:APPDATA\Habakkuk"   # only if you want the data gone as well
+```
+
+If you let `habakkuk setup` install the background service, stop it first: `systemctl --user disable --now habakkuk` on Linux, or `launchctl bootout gui/$(id -u)/ai.habakkuk.agent` on macOS (then delete `~/Library/LaunchAgents/ai.habakkuk.agent.plist`). On Windows the installer also added the folder to your user `PATH`; remove it under Settings > System > About > Advanced system settings > Environment Variables.
+
 ## Release archives
 
 You can also download an archive from [Releases](https://github.com/habakkuk-ai/habakkuk/releases) yourself and check it against `SHA256SUMS`: `habakkuk_<os>_<arch>.tar.gz` for Linux and macOS, `habakkuk_windows_<arch>.zip` for Windows. Each holds the binary, `LICENSE`, `NOTICE` and `README.md`.
 
-Releases are built by `.github/workflows/release.yml` whenever a `v*` tag is pushed: static binaries (no CGO) for Linux, macOS and Windows on amd64 and arm64, a `SHA256SUMS` file, a GitHub release, desktop app builds, and a multi-arch image on ghcr.io.
+Releases are built by `.github/workflows/release.yml` whenever a `v*` tag is pushed: static binaries (no CGO) for Linux, macOS and Windows on amd64 and arm64, a `SHA256SUMS` file and its signature `SHA256SUMS.sig`, a GitHub release, desktop app builds, and a multi-arch image on ghcr.io. The install scripts check the archive against `SHA256SUMS`; `habakkuk update` also checks the signature with the release key built into the binary.
 
 ## From source
 
