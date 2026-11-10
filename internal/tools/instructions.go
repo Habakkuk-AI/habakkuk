@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -63,4 +64,111 @@ func isInstructionFile(name string) bool {
 		}
 	}
 	return false
+}
+
+// fileState is what an instruction file in the workspace was before a
+// call, so the call's change can be undone.
+type fileState struct {
+	exists  bool
+	info    os.FileInfo
+	link    string // symlink target
+	content []byte // a regular file's bytes, up to maxRestore
+}
+
+// maxRestore is the largest instruction file guardInstructionFiles keeps
+// a copy of; the prompt reads 16 KB of each.
+const maxRestore = 1 << 20
+
+func instructionState(path string) fileState {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fileState{}
+	}
+	st := fileState{exists: true, info: info}
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		st.link, _ = os.Readlink(path)
+	case info.Mode().IsRegular() && info.Size() <= maxRestore:
+		st.content, _ = os.ReadFile(path)
+	}
+	return st
+}
+
+func (a fileState) same(b fileState) bool {
+	if a.exists != b.exists {
+		return false
+	}
+	if !a.exists {
+		return true
+	}
+	return a.info.Mode() == b.info.Mode() && a.info.Size() == b.info.Size() && a.info.ModTime().Equal(b.info.ModTime()) && a.link == b.link
+}
+
+// restore puts the file back as it was.
+func (a fileState) restore(path string) error {
+	cur, err := os.Lstat(path)
+	if err == nil && cur.IsDir() {
+		return fmt.Errorf("%s is now a folder; remove it by hand", path)
+	}
+	if err == nil {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+	}
+	switch {
+	case !a.exists:
+		return nil
+	case a.link != "":
+		return os.Symlink(a.link, path)
+	case a.info.Mode().IsRegular() && a.content != nil:
+		if err := os.WriteFile(path, a.content, a.info.Mode().Perm()); err != nil {
+			return err
+		}
+		return os.Chtimes(path, a.info.ModTime(), a.info.ModTime())
+	}
+	return fmt.Errorf("%s changed and its old content was too large to keep", path)
+}
+
+// guardInstructionFiles covers every tool, not only the file tools that
+// instructionWrite understands: a browser download, a generated image, a
+// received attachment or an MCP tool can also save a file under a name it
+// was given. In a turn that read outside content or came from a guest,
+// and for any call that brings outside content in, it notes the
+// workspace's instruction files before the call; the function it returns
+// puts back anything the call created or changed there and says so. The
+// shell is left out: in such a turn it needs a human, who sees the
+// command. It returns nil when there is nothing to guard.
+func guardInstructionFiles(env *Env, t Tool) func() string {
+	guest := env.Policy != nil && env.Policy.Guest
+	if env.Workspace == "" || env.remote() || t.Risk() == RiskExec || (!env.Taint.Marked() && !guest && !taints(t)) {
+		return nil
+	}
+	before := map[string]fileState{}
+	for _, n := range InstructionFileNames {
+		p := filepath.Join(env.Workspace, n)
+		before[p] = instructionState(p)
+	}
+	return func() string {
+		var put, failed []string
+		for _, n := range InstructionFileNames {
+			p := filepath.Join(env.Workspace, n)
+			was := before[p]
+			if was.same(instructionState(p)) {
+				continue
+			}
+			if err := was.restore(p); err != nil {
+				failed = append(failed, err.Error())
+				continue
+			}
+			put = append(put, n)
+		}
+		var notes []string
+		if len(put) > 0 {
+			notes = append(notes, fmt.Sprintf("this call wrote %s in the workspace; those files hold instructions for future sessions and this turn has outside content in it, so Habakkuk put them back as they were. Save it under another name, or ask the user to make the change.", strings.Join(put, ", ")))
+		}
+		if len(failed) > 0 {
+			notes = append(notes, "could not put back an instruction file: "+strings.Join(failed, "; "))
+		}
+		return strings.Join(notes, "\n")
+	}
 }

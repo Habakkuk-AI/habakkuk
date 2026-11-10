@@ -350,9 +350,19 @@ func (r *Registry) Execute(ctx context.Context, env *Env, call llm.Block) llm.Bl
 		return res
 	}
 	env.checkpoint(ctx, t, call.Input)
+	guard := guardInstructionFiles(env, t)
 	out, err := t.Run(ctx, env, call.Input)
 	if taints(t) {
 		env.Taint.Mark()
+	}
+	if guard != nil {
+		if note := guard(); note != "" {
+			res.IsError = true
+			if out != "" {
+				out += "\n"
+			}
+			out += "error: " + note
+		}
 	}
 	if err != nil {
 		res.IsError = true
