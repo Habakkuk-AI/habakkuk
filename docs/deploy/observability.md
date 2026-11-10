@@ -13,7 +13,7 @@ habakkuk doctor                          # config, credentials, storage, channel
 curl -s localhost:8484/healthz           # no token: channel states and queue depth
 ```
 
-- `habakkuk serve` writes `serve.json` (pid, version, start, listen address) every 15 seconds and removes it on exit. `habakkuk status` uses it to tell whether `serve` is running.
+- `habakkuk serve` writes `serve.json` (pid, version, start, listen address) from its first moment, then every 15 seconds, and removes it on exit. `habakkuk status` uses it to tell whether `serve` is running, or still starting and what it waits for. The log line `first channel connected` gives the time from start to the first channel, and `serve ready` the time until every channel has made its first attempt.
 - `/status` in a chat shows the agent, session and channel health from where you are.
 - `habakkuk doctor` exits non-zero when it finds a problem, and names it: a missing key (`MISSING ...`), an unknown config key, a provider that is not logged in, a database that fails its check.
 

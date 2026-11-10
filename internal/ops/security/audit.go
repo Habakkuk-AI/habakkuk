@@ -246,11 +246,11 @@ func examples(paths []string) string {
 
 // publicChannels are accounts anyone can talk to: allow_from "*" on a
 // platform where strangers can find the bot. The web chat's "*" is gated by
-// the API token.
+// the API token, and a WhatsApp agent only ever hears from its creator.
 func publicChannels(c *config.Config) []string {
 	var out []string
 	for name, ch := range c.Channels {
-		if ch != nil && ch.Type != "web" && slices.Contains(ch.AllowFrom, "*") {
+		if ch != nil && ch.Type != "web" && ch.OpenToAll() {
 			out = append(out, name)
 		}
 	}

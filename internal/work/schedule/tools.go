@@ -84,9 +84,45 @@ func (t createTool) Run(ctx context.Context, env *tools.Env, input json.RawMessa
 	if len(created.DeliverTo) > 0 {
 		where = "results will be sent to this chat"
 	}
-	return fmt.Sprintf("Scheduled %s (%s). First run %s; %s.", created.ID, created.Spec,
-		created.NextRun.In(t.st.loc).Format("Mon 2006-01-02 15:04 MST"), where), nil
+	out := fmt.Sprintf("Scheduled %s (%s). First run %s; %s.", created.ID, created.Spec,
+		When(created.NextRun, t.st.loc), where)
+	if note := ZoneNote(created.Spec, t.st.loc); note != "" {
+		out += " " + note
+	}
+	return out, nil
 }
+
+// When shows a run time in loc, naming the zone (America/Toronto rather
+// than EST) and adding UTC when loc is another zone, so a time typed in
+// the wrong zone is plain to see.
+func When(t time.Time, loc *time.Location) string {
+	at := t.In(loc)
+	zone := loc.String()
+	if zone == "Local" || zone == "" {
+		zone = at.Format("MST")
+	}
+	s := at.Format("Mon 2006-01-02 15:04") + " " + zone
+	if _, off := at.Zone(); off != 0 {
+		s += " (" + t.UTC().Format("15:04") + " UTC)"
+	}
+	return s
+}
+
+// ZoneNote explains, for a one-off "at" time written without a zone, that
+// it was read in the schedule timezone; "" for anything else.
+func ZoneNote(spec string, loc *time.Location) string {
+	at, ok := strings.CutPrefix(strings.TrimSpace(spec), "at ")
+	if !ok {
+		return ""
+	}
+	if _, err := time.Parse(time.RFC3339, strings.TrimSpace(at)); err == nil {
+		return "" // it names its own zone
+	}
+	return fmt.Sprintf("The time was read in %s, the config timezone. For another zone, give an offset: at 2026-11-09T17:57:00Z is UTC.", loc)
+}
+
+// Location is the timezone schedules are read in.
+func (s *Store) Location() *time.Location { return s.loc }
 
 type listTool struct{ st *Store }
 
@@ -116,7 +152,10 @@ func Format(list []Schedule, loc *time.Location) string {
 	var b strings.Builder
 	for _, sc := range list {
 		state := "next " + sc.NextRun.In(loc).Format("Mon 2006-01-02 15:04")
-		if !sc.Enabled {
+		switch {
+		case !sc.Enabled && strings.HasPrefix(sc.Spec, "at ") && !sc.LastRun.IsZero():
+			state = "ran once"
+		case !sc.Enabled:
 			state = "paused"
 		}
 		fmt.Fprintf(&b, "%s  %-24q %-18s %s", sc.ID, sc.Name, sc.Spec, state)

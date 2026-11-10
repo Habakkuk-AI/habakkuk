@@ -1,7 +1,9 @@
 // Package whatsapp is the WhatsApp adapter, a linked device on the user's
 // number. Its credentials live in a SQLite database: every change is a
 // transaction, so a full disk or a crash leaves the previous state intact
-// instead of a truncated credentials file. Backups rotate daily.
+// instead of a truncated credentials file. Owner-only backups are taken on
+// connect (at most hourly) and daily, keeping five recent copies and one a
+// day for a week.
 package whatsapp
 
 import (
@@ -19,6 +21,7 @@ import (
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	wastore "go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -146,7 +149,7 @@ func (a *Adapter) Run(ctx context.Context, in channel.Inbox) error {
 		cli.Disconnect()
 	}()
 
-	a.backup(ctx)
+	a.backup(ctx, reconnectBackupGap)
 	beat := time.NewTicker(15 * time.Second)
 	defer beat.Stop()
 	daily := time.NewTicker(24 * time.Hour)
@@ -164,19 +167,29 @@ func (a *Adapter) Run(ctx context.Context, in channel.Inbox) error {
 				in.Beat()
 			}
 		case <-daily.C:
-			a.backup(ctx)
+			a.backup(ctx, 0)
 		}
 	}
 }
 
-func (a *Adapter) backup(ctx context.Context) {
+// reconnectBackupGap is the least time between two backups taken on
+// (re)connect, so a flapping connection does not write a copy each time.
+const reconnectBackupGap = time.Hour
+
+// backup copies the credentials database, unless a copy is younger than
+// minAge.
+func (a *Adapter) backup(ctx context.Context, minAge time.Duration) {
 	a.mu.Lock()
 	db := a.db
 	a.mu.Unlock()
 	if a.BackupDir == "" || db == nil {
 		return
 	}
-	path, err := store.Backup(ctx, db, a.BackupDir, "whatsapp-"+a.Account, 7)
+	prefix := "whatsapp-" + a.Account
+	if last := store.LatestBackupTime(a.BackupDir, prefix); minAge > 0 && !last.IsZero() && time.Since(last) < minAge {
+		return
+	}
+	path, err := store.Backup(ctx, db, a.BackupDir, prefix, store.DefaultRetention)
 	if err != nil {
 		a.Log.Warn("whatsapp backup failed", "account", a.Account, "err", err)
 		return
@@ -234,14 +247,7 @@ func convert(cli *whatsmeow.Client, v *events.Message) (channel.Message, bool) {
 		Direct:       !info.IsGroup,
 		Attachments:  atts,
 	}
-	sender, alt := info.Sender.ToNonAD(), info.SenderAlt.ToNonAD()
-	if sender.Server == types.HiddenUserServer && !alt.IsEmpty() {
-		sender, alt = alt, sender // prefer the phone number, which is what people put in allow_from
-	}
-	m.Sender = sender.User
-	if !alt.IsEmpty() {
-		m.SenderAlt = alt.User
-	}
+	m.Sender, m.SenderAlt = senderIDs(context.Background(), cli.Store, info.Sender, info.SenderAlt)
 
 	var own []string
 	if cli != nil && cli.Store != nil && cli.Store.ID != nil {
@@ -324,6 +330,31 @@ func quotedText(qm *waE2E.Message) string {
 	return ""
 }
 
+// senderIDs returns the ids allow_from and pairing match a sender by: the
+// phone number first, as people write it, and the LID as the alternative.
+// WhatsApp often names a sender by LID alone; the store's mapping between
+// LIDs and phone numbers then fills in the other.
+func senderIDs(ctx context.Context, dev *wastore.Device, sender, alt types.JID) (string, string) {
+	sender, alt = sender.ToNonAD(), alt.ToNonAD()
+	if alt.IsEmpty() && dev != nil && dev.LIDs != nil {
+		var other types.JID
+		var err error
+		switch sender.Server {
+		case types.HiddenUserServer:
+			other, err = dev.LIDs.GetPNForLID(ctx, sender)
+		case types.DefaultUserServer:
+			other, err = dev.LIDs.GetLIDForPN(ctx, sender)
+		}
+		if err == nil && !other.IsEmpty() {
+			alt = other.ToNonAD()
+		}
+	}
+	if sender.Server == types.HiddenUserServer && !alt.IsEmpty() {
+		sender, alt = alt, sender // the phone number is what people put in allow_from
+	}
+	return sender.User, alt.User
+}
+
 func userOf(jid string) string {
 	j, err := types.ParseJID(jid)
 	if err != nil {
@@ -349,16 +380,16 @@ func firstNonEmpty(a, b string) string {
 }
 
 func (a *Adapter) Send(ctx context.Context, to channel.Address, text, _ string) error {
+	jid, err := parseTarget(to.Conversation)
+	if err != nil {
+		return err
+	}
 	cli, err := a.connected()
 	if err != nil {
 		return err
 	}
-	jid, err := types.ParseJID(to.Conversation)
-	if err != nil {
-		return channel.Undeliverable{Err: err}
-	}
 	_, err = cli.SendMessage(ctx, jid, &waE2E.Message{Conversation: proto.String(text)})
-	return err
+	return sendErr(err)
 }
 
 // Habakkuk's caps on files it sends; images over maxImage go as documents.
@@ -370,20 +401,20 @@ const (
 func (a *Adapter) MaxFileSize() int64 { return maxFile }
 
 func (a *Adapter) SendFile(ctx context.Context, to channel.Address, name, mediaType string, data []byte, caption string) error {
-	cli, err := a.connected()
+	jid, err := parseTarget(to.Conversation)
 	if err != nil {
 		return err
 	}
-	jid, err := types.ParseJID(to.Conversation)
+	cli, err := a.connected()
 	if err != nil {
-		return channel.Undeliverable{Err: err}
+		return err
 	}
 	msg, err := fileMessage(ctx, cli.Upload, name, mediaType, data, caption)
 	if err != nil {
 		return err
 	}
 	_, err = cli.SendMessage(ctx, jid, msg)
-	return err
+	return sendErr(err)
 }
 
 type uploader func(ctx context.Context, data []byte, kind whatsmeow.MediaType) (whatsmeow.UploadResponse, error)
@@ -418,11 +449,11 @@ func fileMessage(ctx context.Context, upload uploader, name, mediaType string, d
 }
 
 func (a *Adapter) Typing(ctx context.Context, to channel.Address) error {
-	cli, err := a.connected()
+	jid, err := parseTarget(to.Conversation)
 	if err != nil {
 		return err
 	}
-	jid, err := types.ParseJID(to.Conversation)
+	cli, err := a.connected()
 	if err != nil {
 		return err
 	}

@@ -146,3 +146,42 @@ func TestWhatsAppAgentChannel(t *testing.T) {
 		}
 	}
 }
+
+func TestSlackListenChannels(t *testing.T) {
+	cfg, err := Parse([]byte(withChannels(`
+  slack:
+    type: slack
+    app_token_env: SLACK_APP_TOKEN
+    bot_tokens_env: [SLACK_BOT_TOKEN]
+    listen_channels: [C0123ABC, T0456/C0456DEF]
+`, "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Channels["slack"].ListenChannels; !slices.Equal(got, []string{"C0123ABC", "T0456/C0456DEF"}) {
+		t.Fatalf("listen_channels = %v", got)
+	}
+	for _, tc := range []struct{ channels, want string }{
+		{"\n  slack:\n    type: slack\n    app_token_env: A\n    bot_tokens_env: [B]\n    listen_channels: [\"#general\"]\n", "not a Slack channel id"},
+		{"\n  tg:\n    type: telegram\n    token_env: T\n    listen_channels: [C0123ABC]\n", "listen_channels is a slack setting"},
+	} {
+		if _, err := Parse([]byte(withChannels(tc.channels, ""))); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%q: err = %v, want %q", tc.channels, err, tc.want)
+		}
+	}
+}
+
+func TestWhatsAppAllowFromTakesPhoneNumbersAndLIDs(t *testing.T) {
+	cfg, err := Parse([]byte(withChannels(`
+  whatsapp:
+    type: whatsapp
+    allow_from: ["+1 202-555-0142", "98765432101234@lid", "15551234567@s.whatsapp.net", "447700900123"]
+`, "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"12025550142", "98765432101234", "15551234567", "447700900123"}
+	if got := cfg.Channels["whatsapp"].AllowFrom; !slices.Equal(got, want) {
+		t.Fatalf("allow_from = %q, want %q", got, want)
+	}
+}

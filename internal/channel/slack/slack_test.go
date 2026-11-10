@@ -26,6 +26,7 @@ type fakeSlack struct {
 	wsURL   string
 	baseURL string
 	uploads []map[string]any // the three steps of each file upload, in order
+	opens   []string         // the app token of each Socket Mode connection
 }
 
 func (f *fakeSlack) handler() http.Handler {
@@ -41,6 +42,9 @@ func (f *fakeSlack) handler() http.Handler {
 		}
 	})
 	mux.HandleFunc("/api/apps.connections.open", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.opens = append(f.opens, r.Header.Get("Authorization"))
+		f.mu.Unlock()
 		w.Write([]byte(`{"ok":true,"url":"` + f.wsURL + `"}`))
 	})
 	mux.HandleFunc("/api/users.info", func(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +177,101 @@ func TestSocketModeEvents(t *testing.T) {
 	defer f.mu.Unlock()
 	if len(f.acks) < 5 {
 		t.Fatalf("acked %v", f.acks)
+	}
+}
+
+func TestListenChannelsAndTopLevelDMs(t *testing.T) {
+	f := &fakeSlack{frames: []string{
+		// A DM written inside a thread: still answered at the top level.
+		envelope("e1", "TA", `{"type":"message","channel_type":"im","channel":"D1","user":"U1","text":"hi","ts":"1.2","thread_ts":"1.1"}`),
+		// A listen channel: a top-level message with no mention starts a thread.
+		envelope("e2", "TA", `{"type":"message","channel_type":"channel","channel":"CLISTEN","user":"U1","text":"status?","ts":"2.1"}`),
+		// ... and a reply in some thread there continues that thread.
+		envelope("e3", "TA", `{"type":"message","channel_type":"channel","channel":"CLISTEN","user":"U1","text":"and now?","ts":"2.3","thread_ts":"2.2"}`),
+		// A listen entry with a workspace only matches that workspace.
+		envelope("e4", "TB", `{"type":"message","channel_type":"channel","channel":"CB","user":"U2","text":"beta","ts":"3.1"}`),
+		envelope("e5", "TA", `{"type":"message","channel_type":"channel","channel":"CB","user":"U2","text":"alpha","ts":"3.2"}`),
+		// An ordinary channel still needs a mention.
+		envelope("e6", "TA", `{"type":"message","channel_type":"channel","channel":"COTHER","user":"U1","text":"chatter","ts":"4.1"}`),
+		// A mention in a listen channel comes once, through app_mention.
+		envelope("e7", "TA", `{"type":"message","channel_type":"channel","channel":"CLISTEN","user":"U1","text":"<@UBOT> hi","ts":"5.1"}`),
+		// Bots in a listen channel are never answered.
+		envelope("e8", "TA", `{"type":"message","channel_type":"channel","channel":"CLISTEN","bot_id":"B9","user":"U9","text":"beep","ts":"6.1"}`),
+		`{"type":"disconnect","reason":"refresh_requested"}`,
+	}}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	f.wsURL = "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	a := New("xapp-1", []string{"xoxb-a", "xoxb-b"}, srv.URL+"/api")
+	a.Listen = []string{"CLISTEN", "TB/CB"}
+	in := &inbox{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	a.Run(ctx, in)
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	var got []string
+	for _, m := range in.msgs {
+		got = append(got, m.Conversation+" "+m.Thread+" "+m.Text+" "+strconv.FormatBool(m.Mentioned || m.Direct))
+	}
+	want := []string{"TA/D1  hi true", "TA/CLISTEN 2.1 status? true", "TA/CLISTEN 2.2 and now? true", "TB/CB 3.1 beta true", "TA/CB  alpha false", "TA/COTHER  chatter false"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// Two Slack apps (one per workspace, each with its own app token) run side
+// by side in one process: each holds its own Socket Mode connection and
+// answers with its own bot token.
+func TestTwoAppsSideBySide(t *testing.T) {
+	f1 := &fakeSlack{frames: []string{
+		envelope("a1", "TA", `{"type":"app_mention","channel":"C1","user":"U1","text":"<@UBOT> one","ts":"1.1"}`),
+		`{"type":"disconnect","reason":"refresh_requested"}`,
+	}}
+	f2 := &fakeSlack{frames: []string{
+		envelope("b1", "TB", `{"type":"message","channel_type":"im","channel":"D2","user":"U2","text":"two","ts":"2.1"}`),
+		`{"type":"disconnect","reason":"refresh_requested"}`,
+	}}
+	srv1, srv2 := httptest.NewServer(f1.handler()), httptest.NewServer(f2.handler())
+	defer srv1.Close()
+	defer srv2.Close()
+	f1.wsURL = "ws" + strings.TrimPrefix(srv1.URL, "http") + "/ws"
+	f2.wsURL = "ws" + strings.TrimPrefix(srv2.URL, "http") + "/ws"
+	a1 := New("xapp-one", []string{"xoxb-a"}, srv1.URL+"/api")
+	a2 := New("xapp-two", []string{"xoxb-b"}, srv2.URL+"/api")
+	in1, in2 := &inbox{}, &inbox{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var wg sync.WaitGroup
+	for _, run := range []func(){func() { a1.Run(ctx, in1) }, func() { a2.Run(ctx, in2) }} {
+		wg.Add(1)
+		go func() { defer wg.Done(); run() }()
+	}
+	wg.Wait()
+	if len(in1.msgs) != 1 || in1.msgs[0].Conversation != "TA/C1" || in1.msgs[0].Text != "one" || in1.conn != "Alpha" {
+		t.Fatalf("app one: %q %+v", in1.conn, in1.msgs)
+	}
+	if len(in2.msgs) != 1 || in2.msgs[0].Conversation != "TB/D2" || in2.msgs[0].Text != "two" || in2.conn != "Beta" {
+		t.Fatalf("app two: %q %+v", in2.conn, in2.msgs)
+	}
+	if len(f1.opens) != 1 || f1.opens[0] != "Bearer xapp-one" || len(f2.opens) != 1 || f2.opens[0] != "Bearer xapp-two" {
+		t.Fatalf("socket connections: %v %v", f1.opens, f2.opens)
+	}
+	if err := a1.Send(ctx, channel.Address{Conversation: "TA/C1", Thread: "1.1"}, "from one", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := a2.Send(ctx, channel.Address{Conversation: "TB/D2"}, "from two", ""); err != nil {
+		t.Fatal(err)
+	}
+	if p := f1.posts; len(p) != 1 || p[0]["token"] != "Bearer xoxb-a" {
+		t.Fatalf("app one posts: %v", p)
+	}
+	if p := f2.posts; len(p) != 1 || p[0]["token"] != "Bearer xoxb-b" {
+		t.Fatalf("app two posts: %v", p)
+	}
+	// Each app knows only its own workspace.
+	if err := a1.Send(ctx, channel.Address{Conversation: "TB/D2"}, "x", ""); !errors.As(err, new(channel.Undeliverable)) {
+		t.Fatalf("app one sending to app two's workspace: %v", err)
 	}
 }
 

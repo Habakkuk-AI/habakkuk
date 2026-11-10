@@ -50,7 +50,7 @@ func (g *Gateway) home(target string) (Address, error) {
 	if g.Adapters[to.Account] == nil {
 		return Address{}, fmt.Errorf("%w %q", errNoAdapter, to.Account)
 	}
-	return to, nil
+	return g.NormalizeTarget(to)
 }
 
 // atHome reports whether a reply address (JSON, as turns carry it) is the

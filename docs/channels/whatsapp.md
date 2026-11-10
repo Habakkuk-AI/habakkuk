@@ -89,7 +89,26 @@ With several `whatsapp` channels, pass `-account NAME`. Linking gives up after f
 
 ### Access
 
-`allow_from` takes phone numbers without the `+`. Anyone else who writes gets a pairing code for `habakkuk pair`. In groups the bot answers mentions and replies (`groups: mention`).
+`allow_from` takes phone numbers or LIDs. Anyone else who writes gets a pairing code for `habakkuk pair`. In groups the bot answers mentions and replies (`groups: mention`).
+
+WhatsApp now names many senders by a LID (a private id such as `98765432101234@lid`) instead of their phone number. Habakkuk matches `allow_from` against both: it looks up the phone number behind a LID, and the LID behind a phone number, in the linked device's store. So either form works:
+
+```yaml
+    allow_from: ["+1 202 555 0142", "98765432101234"]
+```
+
+A phone number may have a `+`, spaces or dashes. A LID may be written with or without `@lid`. `/whoami` in the chat shows the ids Habakkuk sees for you.
+
+### Sending to a number
+
+`habakkuk send`, schedule `-to` targets and an agent's `home:` take a phone number, with or without `+`:
+
+```bash
+habakkuk send -to whatsapp:+12025550142 "The report is ready"
+habakkuk send -to whatsapp:98765432101234@lid "Same person, by LID"
+```
+
+A bare number becomes `<digits>@s.whatsapp.net`. A full id (`<digits>@lid`, a group's `...@g.us`) is used as it is. A target that can never work, such as an unknown server after the `@`, fails at once instead of being retried.
 
 ### What works
 
@@ -99,7 +118,9 @@ With several `whatsapp` channels, pass `-account NAME`. Linking gives up after f
 
 ### Credentials
 
-The device credentials live in `channels/whatsapp-<account>.db`. Every change to them is a SQLite transaction, so a crash or a full disk never leaves a half-written credentials file, and `backups/` keeps seven rotating copies. `habakkuk backup -env` includes them.
+The device credentials live in `channels/whatsapp-<account>.db`. Every change to them is a SQLite transaction, so a crash or a full disk never leaves a half-written credentials file.
+
+Habakkuk copies them to `backups/whatsapp-<account>-<time>.db` when it connects (at most once an hour, however often the connection drops) and once a day. It keeps the five newest copies plus the newest copy of each of the last seven days, and never deletes the only good copy. The copies are readable by you alone (mode 0600, in a 0700 folder), even when the process runs with a loose umask, for example under systemd without `UMask=`. `habakkuk backup -env` includes the credentials too.
 
 > [!WARNING]
 > Anyone with that database can act as the linked device. Keep backups made with `-env` private.

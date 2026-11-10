@@ -30,6 +30,9 @@ type Adapter struct {
 	BotTokens []string
 	APIURL    string // default https://slack.com/api
 	HTTP      *http.Client
+	// Listen holds the channel ids (C0123ABC, or TEAM/C0123ABC) where every
+	// message is for the bot, with no mention needed. Set before Run.
+	Listen []string
 
 	mu      sync.RWMutex
 	teams   map[string]*team // team id -> workspace
@@ -274,8 +277,20 @@ func (a *Adapter) convert(ctx context.Context, payload json.RawMessage) (channel
 	}
 	switch {
 	case e.Type == "message" && e.ChannelType == "im":
+		// A direct chat is one conversation: answer at the top level, even
+		// a message the user wrote inside a thread.
 		m.Direct = true
+	case e.Type == "message" && a.listening(t.id, e.Channel):
+		if strings.Contains(e.Text, "<@"+t.botUser+">") {
+			return channel.Message{}, false // the app_mention event carries it
+		}
+		// A listen channel: every message is for the bot. A top-level one
+		// starts a thread under it, as a mention does.
+		m.Mentioned = true
 		m.Thread = e.ThreadTS
+		if m.Thread == "" {
+			m.Thread = e.TS
+		}
 	case e.Type == "app_mention":
 		m.Mentioned = true
 		m.Thread = e.ThreadTS
@@ -302,6 +317,17 @@ func (a *Adapter) convert(ctx context.Context, payload json.RawMessage) (channel
 		m.SenderName = a.userName(ctx, t, e.User)
 	}
 	return m, true
+}
+
+// listening reports whether a channel is one where every message is for
+// the bot (Listen).
+func (a *Adapter) listening(teamID, ch string) bool {
+	for _, id := range a.Listen {
+		if id == ch || id == teamID+"/"+ch {
+			return true
+		}
+	}
+	return false
 }
 
 var (

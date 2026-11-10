@@ -198,6 +198,10 @@ type Runner struct {
 	// Notes puts messages a chat got from outside its own turns before the
 	// next user message of that chat's session (origin.go); nil means none.
 	Notes ChatNotes
+	// ToolsPending waits briefly for tool sources a turn's toolsets need
+	// that are still starting (MCP servers connecting in the background)
+	// and names those still not ready; nil means none ever are.
+	ToolsPending func(ctx context.Context, toolsets []string) []string
 }
 
 // Attach registers an approver for a session while a client is present.
@@ -403,9 +407,16 @@ func (t *turn) run(userText string, media []Attachment) error {
 		env.Approver = t.r.Approvers(t.sess.ID)
 	}
 	t.applyPolicy(env)
+	var pending []string
+	if t.r.ToolsPending != nil {
+		pending = t.r.ToolsPending(t.ctx, t.toolsets())
+	}
 	specs := t.toolSpecs()
 
 	system, effort := t.r.system(t.ctx, t.sess.SystemPrompt, t.sess.ID), t.r.effort(t.ctx, t.spec, t.sess.ID)
+	if len(pending) > 0 {
+		system += "\n\n" + pendingNote(pending)
+	}
 	t.pickRoute(userText, media)
 	paused, rounds := false, 0
 	for i := 0; i < t.spec.MaxIterations; i++ {

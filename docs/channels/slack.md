@@ -23,13 +23,57 @@ channels:
     routes: {T0123456: ops}                     # a workspace or conversation can go to another agent
 ```
 
+## Several Slack apps
+
+One app installed in several workspaces needs one channel, with a bot token per workspace in `bot_tokens_env`. When each workspace has its own app (for example, an app you made in your workspace and another made in a client's), add one `type: slack` channel per app. Each has its own app token and its own Socket Mode connection, and they run side by side in one `habakkuk serve`. Both can go to the same agent:
+
+```yaml
+channels:
+  slack:
+    type: slack
+    agent: habakkuk
+    app_token_env: SLACK_APP_TOKEN
+    bot_tokens_env: [SLACK_BOT_TOKEN]
+    allow_from: [U0123ABCD]
+  slack-acme:
+    type: slack
+    agent: habakkuk                     # the same agent, or another
+    app_token_env: ACME_SLACK_APP_TOKEN
+    bot_tokens_env: [ACME_SLACK_BOT_TOKEN]
+    allow_from: [U0999WXYZ]             # user ids from that workspace
+    listen_channels: [C0777GHI]
+```
+
+Each channel keeps its own `allow_from`, pairing, routes and settings, and its conversations are its own. `habakkuk setup` edits the first Slack channel; add the second by hand, then put its tokens in `.env`.
+
 ## Access
 
 `allow_from` takes Slack user ids (`U0123ABCD`). Anyone else who sends a direct message gets a pairing code. `routes` maps a workspace (team id) or a conversation to another agent, so one app can serve several teams with different agents.
 
 ## Channels and threads
 
-In channels the bot answers mentions and replies in a thread under the mention. Once it has replied in a thread, later messages there count as addressed to it. Direct messages are answered directly.
+In channels the bot answers mentions and replies in a thread under the mention. Once it has replied in a thread, later messages there count as addressed to it.
+
+Direct messages are answered at the top level of the chat, even when you write inside a thread there.
+
+### Channels where no mention is needed
+
+`listen_channels` lists channels where every message from an allowed sender is for the bot, with no `@mention`:
+
+```yaml
+channels:
+  slack:
+    type: slack
+    app_token_env: SLACK_APP_TOKEN
+    bot_tokens_env: [SLACK_BOT_TOKEN]
+    allow_from: [U0123ABCD, U0456EFGH]
+    listen_channels: [C0123ABC, C0456DEF]
+```
+
+- Use channel ids, not names. In Slack, open the channel's name, then **About**: the id is at the bottom. With several workspaces, `T0123/C0123ABC` limits an entry to one workspace.
+- A top-level message starts a thread under it, and the bot answers there. A message inside a thread continues that thread, as with a mention.
+- Only senders in `allow_from` (or paired) are answered. Others are ignored without a pairing code, and so are other bots.
+- Invite the bot to each channel, and subscribe to `message.channels` (and `message.groups` for private channels) with the `channels:history` (and `groups:history`) scope.
 
 ## What works
 

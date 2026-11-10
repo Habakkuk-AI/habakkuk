@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -55,6 +56,7 @@ type Manager struct {
 	log     *slog.Logger
 	servers map[string]*server
 	start   sync.Once
+	started atomic.Bool // StartBackground ran
 
 	ctx    context.Context // canceled by Close; bounds connects and retries
 	cancel context.CancelFunc
@@ -75,7 +77,7 @@ func New(cfgs map[string]*config.MCPServer, reg *tools.Registry, secret func(str
 	m := &Manager{StartTimeout: 20 * time.Second, reg: reg, secret: secret, log: log, servers: map[string]*server{}}
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	for name, c := range cfgs {
-		s := &server{m: m, name: name, cfg: c, risk: parseRisk(c.Risk), names: map[string]string{}}
+		s := &server{m: m, name: name, cfg: c, risk: parseRisk(c.Risk), names: map[string]string{}, first: make(chan struct{})}
 		s.approve = sliceSet(c.Approve)
 		if len(c.Allow) > 0 {
 			s.allow = sliceSet(c.Allow)
@@ -91,28 +93,63 @@ func New(cfgs map[string]*config.MCPServer, reg *tools.Registry, secret func(str
 // Start connects to every server in parallel and returns once each has
 // answered or StartTimeout has passed, whichever is first. Servers that are
 // not up keep retrying in the background; their tools are registered when
-// they connect. Later calls do nothing.
+// they connect. Later calls only wait.
 func (m *Manager) Start(ctx context.Context) {
-	m.start.Do(func() {
-		ctx, cancel := context.WithTimeout(ctx, m.StartTimeout)
-		defer cancel()
-		var wg sync.WaitGroup
-		for _, s := range m.servers {
-			first := make(chan struct{})
-			if !m.spawn(func() { s.warm(first) }) {
-				return
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				select {
-				case <-first:
-				case <-ctx.Done():
-				}
-			}()
+	m.StartBackground()
+	ctx, cancel := context.WithTimeout(ctx, m.StartTimeout)
+	defer cancel()
+	for _, s := range m.servers {
+		select {
+		case <-s.first:
+		case <-ctx.Done():
+			return
 		}
-		wg.Wait()
+	}
+}
+
+// StartBackground connects to every server in the background and returns
+// at once, so a slow server never delays the rest of startup. Turns that
+// use a server still connecting wait for it with Pending. Later calls (and
+// Start) do not connect again.
+func (m *Manager) StartBackground() {
+	m.start.Do(func() {
+		m.started.Store(true)
+		for _, s := range m.servers {
+			if !m.spawn(func() { s.warm(s.first) }) {
+				close(s.first)
+			}
+		}
 	})
+}
+
+// Pending waits up to wait for the servers among toolsets ("mcp:<name>")
+// that are still making their first connection, and returns the names of
+// those still connecting. Before StartBackground nothing is pending: tool
+// calls connect on demand.
+func (m *Manager) Pending(ctx context.Context, toolsets []string, wait time.Duration) []string {
+	if !m.started.Load() {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	var out []string
+	for _, ts := range toolsets {
+		name, ok := strings.CutPrefix(ts, "mcp:")
+		s := m.servers[name]
+		if !ok || s == nil {
+			continue
+		}
+		select {
+		case <-s.first:
+		case <-ctx.Done():
+			select {
+			case <-s.first:
+			default:
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }
 
 // Close stops every server (closing stdin, then signalling and killing the
@@ -220,6 +257,7 @@ type server struct {
 	approve map[string]bool
 	allow   map[string]bool // nil exposes every tool
 	oauth   *oauthHandler   // auth: oauth; nil otherwise
+	first   chan struct{}   // closed when the first connection attempt ends
 
 	mu         sync.Mutex
 	conn       *conn

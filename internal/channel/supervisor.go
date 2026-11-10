@@ -21,6 +21,9 @@ type Supervisor struct {
 	HealthyAfter time.Duration // a run this long resets the backoff; default 1m
 	Check        time.Duration // watchdog interval; default 5s
 	Grace        time.Duration // how long a canceled adapter gets to return; default 30s
+	// OnState, when set, hears every state change (connecting, connected,
+	// backoff, stopped) of every account.
+	OnState func(account, state string)
 }
 
 func (s *Supervisor) defaults() {
@@ -155,6 +158,9 @@ func (s *Supervisor) setStatus(ctx context.Context, st *Status, state, detail, l
 		if err := s.Store.SetStatus(ctx, *st); err != nil && ctx.Err() == nil {
 			s.Log.Warn("record channel status failed", "err", err)
 		}
+	}
+	if s.OnState != nil {
+		s.OnState(st.Account, state)
 	}
 }
 

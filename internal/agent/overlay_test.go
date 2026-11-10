@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -94,6 +95,30 @@ func TestOverlayShapesTheTurn(t *testing.T) {
 	want := "session_new:habakkuk,turn_start:habakkuk,tool_before:list_dir,tool_after:list_dir,turn_end:habakkuk"
 	if got := strings.Join(hooks.events, ","); got != want {
 		t.Fatalf("hooks %s\nwant %s", got, want)
+	}
+}
+
+func TestTurnWaitsForToolsStillStarting(t *testing.T) {
+	ctx := context.Background()
+	model := &recordingModel{}
+	h := newHarness(t, model)
+	h.runner.Agents["habakkuk"].Toolsets = []string{"core", "mcp:crm"}
+	var asked []string
+	h.runner.ToolsPending = func(_ context.Context, toolsets []string) []string {
+		asked = toolsets
+		return []string{"crm"}
+	}
+	s, _ := h.runner.NewSession(ctx, "habakkuk")
+	h.runner.Submit(ctx, s.ID, "what's here?")
+	j, _ := h.queue.Claim(ctx, "w1", time.Minute, KindTurn)
+	if _, err := h.runner.HandleTurn(ctx, j, "w1"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(asked, []string{"core", "mcp:crm"}) {
+		t.Fatalf("asked about %v", asked)
+	}
+	if sys := model.reqs[0].System; !strings.Contains(sys, "MCP server(s) crm are still connecting") {
+		t.Fatalf("system prompt does not say crm is connecting: %q", sys)
 	}
 }
 

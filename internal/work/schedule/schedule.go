@@ -326,8 +326,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 }
 
-// Tick enqueues every due slot once and returns how many it started.
+// Tick records how finished runs ended, then enqueues every due slot once
+// and returns how many it started.
 func (s *Scheduler) Tick(ctx context.Context) (int, error) {
+	if err := s.Settle(ctx); err != nil {
+		return 0, err
+	}
 	grace := s.Grace
 	if grace == 0 {
 		grace = time.Hour
@@ -379,7 +383,7 @@ func (s *Scheduler) Tick(ctx context.Context) (int, error) {
 		if err := s.enqueue(ctx, sc, id, slot); err != nil {
 			return started, err
 		}
-		won, err := s.Store.advance(ctx, sc, slot, slot, id, "started")
+		won, err := s.Store.advance(ctx, sc, slot, slot, id, statusStarted)
 		if err != nil {
 			return started, err
 		}
@@ -391,6 +395,73 @@ func (s *Scheduler) Tick(ctx context.Context) (int, error) {
 		s.Wake()
 	}
 	return started, nil
+}
+
+// statusStarted is a run's status from when its slot is queued until Settle
+// records how it ended.
+const statusStarted = "started"
+
+// Settle records how started runs ended. A prompt run's job only queues a
+// turn, so its outcome is the turn's; a script records its own, but a slot
+// advanced after the script already finished is caught here too. Tick
+// calls it; habakkuk schedules list calls it before listing.
+func (s *Scheduler) Settle(ctx context.Context) error {
+	rows, err := s.Store.db.QueryContext(ctx, `SELECT id, last_job FROM schedules
+		WHERE last_status = ? AND last_job != ''`, statusStarted)
+	if err != nil {
+		return err
+	}
+	type run struct{ id, job string }
+	var runs []run
+	for rows.Next() {
+		var r run
+		if err := rows.Scan(&r.id, &r.job); err != nil {
+			rows.Close()
+			return err
+		}
+		runs = append(runs, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, r := range runs {
+		status, err := s.outcome(ctx, r.job)
+		if err != nil || status == "" {
+			continue // still running, or unreadable for now
+		}
+		if _, err := s.Store.db.ExecContext(ctx, `UPDATE schedules SET last_status = ?
+			WHERE id = ? AND last_job = ? AND last_status = ?`, status, r.id, r.job, statusStarted); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// outcome says how a run's job ended, or "" while it is still going.
+func (s *Scheduler) outcome(ctx context.Context, jobID string) (string, error) {
+	j, err := s.Queue.Get(ctx, jobID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "finished", nil // pruned long ago
+	}
+	if err != nil {
+		return "", err
+	}
+	switch j.Status {
+	case jobs.Pending, jobs.Running:
+		return "", nil
+	case jobs.Failed:
+		return "failed: " + oneLine(j.LastError, 200), nil
+	case jobs.Canceled:
+		return "canceled", nil
+	}
+	if turnID := j.Result; j.Kind == KindScheduled && strings.HasPrefix(turnID, "turn_") {
+		return s.outcome(ctx, turnID)
+	}
+	if j.Kind != KindScheduled || j.Result == "" {
+		return "done", nil // a turn: its result is the reply, not a status
+	}
+	return oneLine(j.Result, 200), nil // a script's own status, or a skip
 }
 
 // enqueue queues one run. Script runs share a serial key so two never

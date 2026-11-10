@@ -183,6 +183,10 @@ type Channel struct {
 	APIURL       string            `yaml:"api_url"`        // override the platform API base URL; signal: the signal-cli daemon (default http://127.0.0.1:8080)
 	Account      string            `yaml:"account"`        // signal: the bot's number (+15551234567); matrix: its user id (optional, checked against the token)
 	Homeserver   string            `yaml:"homeserver"`     // matrix: client-server API base URL
+	// ListenChannels (slack): channel ids (C0123ABC, or T0123/C0123ABC for
+	// one workspace) where every message from an allowed sender is for the
+	// bot, without an @mention. Each top-level message starts a thread.
+	ListenChannels []string `yaml:"listen_channels"`
 	// VoiceReplies speaks replies as voice notes: off (default), mirror
 	// (when the user sent a voice note) or always. Needs tts.
 	VoiceReplies string `yaml:"voice_replies"`
@@ -570,8 +574,20 @@ func (c *Config) validateChannel(name string, ch *Channel) []error {
 	if ch.SessionIdle < 0 {
 		bad("session_idle must not be negative")
 	}
+	if len(ch.ListenChannels) > 0 && ch.Type != "slack" {
+		bad("listen_channels is a slack setting")
+	}
+	for _, id := range ch.ListenChannels {
+		if !slackChannelID.MatchString(id) {
+			bad("listen_channels: %q is not a Slack channel id; use the id (C0123ABC, under the channel's name > About), not its name", id)
+		}
+	}
 	return errs
 }
+
+// slackChannelID is a channel id, optionally with its workspace: C0123ABC
+// or T0123/C0123ABC.
+var slackChannelID = regexp.MustCompile(`^(T[A-Z0-9]+/)?[CG][A-Z0-9]+$`)
 
 func isHTTPURL(s string) bool {
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
@@ -736,6 +752,7 @@ agents:
 #     type: slack
 #     app_token_env: SLACK_APP_TOKEN
 #     bot_tokens_env: [SLACK_BOT_TOKEN]   # one per workspace the app is installed in
+#     listen_channels: [C0123ABC]         # answer every message here, no @mention needed
 #   whatsapp:
 #     type: whatsapp        # link with: habakkuk whatsapp link -phone <number>
 #   wagent:

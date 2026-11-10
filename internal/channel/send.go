@@ -22,6 +22,29 @@ func ParseTarget(s string) (Address, error) {
 	return Address{Account: acct, Conversation: chat, Thread: thread}, nil
 }
 
+// TargetNormalizer is implemented by adapters whose conversations can be
+// written more than one way, such as a WhatsApp phone number for its JID.
+// NormalizeTarget returns the form inbound messages use, or an error when
+// nothing can ever be sent there.
+type TargetNormalizer interface {
+	NormalizeTarget(conversation string) (string, error)
+}
+
+// NormalizeTarget puts a target's conversation in its adapter's canonical
+// form. Targets on other adapters come back unchanged.
+func (g *Gateway) NormalizeTarget(to Address) (Address, error) {
+	n, ok := g.Adapters[to.Account].(TargetNormalizer)
+	if !ok {
+		return to, nil
+	}
+	conv, err := n.NormalizeTarget(to.Conversation)
+	if err != nil {
+		return to, err
+	}
+	to.Conversation = conv
+	return to, nil
+}
+
 // SendText queues a message to a conversation without running a turn. The
 // delivery is durable, like a reply: `habakkuk serve` sends it, and the job ID
 // makes a repeated call send once.
@@ -31,6 +54,10 @@ func (g *Gateway) SendText(ctx context.Context, id string, to Address, text stri
 	}
 	if strings.TrimSpace(text) == "" {
 		return errors.New("the message is empty")
+	}
+	to, err := g.NormalizeTarget(to)
+	if err != nil {
+		return err
 	}
 	to.ReplyTo = ""
 	return g.enqueue(withSender(ctx), id, deliverPayload{To: to, Text: text})
@@ -63,9 +90,12 @@ func (g *Gateway) SendFile(ctx context.Context, id string, to Address, name stri
 	case utf8.RuneCountInString(caption) > maxCaption:
 		return fmt.Errorf("the caption is longer than %d characters", maxCaption)
 	}
+	to, err := g.NormalizeTarget(to)
+	if err != nil {
+		return err
+	}
 	name = media.SafeName(name)
 	f := &outFile{Name: name, MediaType: media.Detect(name, "", data), Size: int64(len(data))}
-	var err error
 	if f.Ref, err = g.Blobs.Put(data); err != nil {
 		return err
 	}

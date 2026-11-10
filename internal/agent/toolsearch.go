@@ -304,3 +304,10 @@ func cutRunes(s string, n int) string {
 	}
 	return s
 }
+
+// pendingNote tells the model which tool servers are still connecting, so
+// it says so instead of acting as if their tools did not exist.
+func pendingNote(servers []string) string {
+	return "Note: the MCP server(s) " + strings.Join(servers, ", ") + " are still connecting, so their tools " +
+		"are not available in this turn. If the request needs them, say they are still starting and to try again in a minute."
+}
