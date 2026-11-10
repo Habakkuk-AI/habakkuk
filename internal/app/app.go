@@ -9,11 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
@@ -42,6 +44,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/llm/judge"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/usage"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/hooks"
+	"github.com/habakkuk-ai/habakkuk/internal/ops/logs"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/secrets"
 	"github.com/habakkuk-ai/habakkuk/internal/protocols/mcp"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
@@ -311,6 +314,21 @@ func (a *App) openChannels(home string) {
 	g := &channel.Gateway{
 		Channels: a.Cfg.Channels, Adapters: map[string]channel.Adapter{}, Runner: a.Runner,
 		Queue: a.Queue, Store: channel.NewStore(a.Control), Log: a.Log, Blobs: a.Blobs, Language: a.Cfg.Language,
+	}
+	// What a chat is shown word for word (the exact call of an approval)
+	// goes through the same redaction as the log.
+	red := logs.NewRedactor(io.Discard)
+	red.Add(a.SecretValues()...)
+	g.Redact = red.Redact
+	// The two display settings (progress, approvals_detail) can be changed
+	// while serve runs: from a chat, the dashboard or by editing the file.
+	// Saving edits config.yaml in place; the gateway then uses the new
+	// values from the next turn (watch.go applies edits made by hand).
+	var saving sync.Mutex
+	g.SaveDisplay = func(account, progress, approvalsDetail string) (*config.Channel, error) {
+		saving.Lock()
+		defer saving.Unlock()
+		return config.SetChannelDisplay(home, account, progress, approvalsDetail)
 	}
 	if t := a.Cfg.Transcription; t != nil {
 		p := a.Cfg.Providers[t.Provider]

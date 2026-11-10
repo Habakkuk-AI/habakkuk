@@ -53,7 +53,12 @@ type dashRig struct {
 // transcriber and a fake speaker.
 func newDashRig(t *testing.T) *dashRig {
 	t.Helper()
-	r := newRig(t, token)
+	return newDashRigWith(t, nil)
+}
+
+func newDashRigWith(t *testing.T, prepare func(g *channel.Gateway)) *dashRig {
+	t.Helper()
+	r := newRigWith(t, token, prepare)
 	ctx := context.Background()
 	home := t.TempDir()
 	migs := slices.Concat(jobs.Migrations, channel.Migrations, schedule.Migrations, board.Migrations)
@@ -115,7 +120,7 @@ func list(m map[string]any, key string) []any {
 func TestDashNeedsTokenAndRefusesCrossSite(t *testing.T) {
 	r := newDashRig(t)
 	paths := []string{"/api/app", "/api/overview", "/api/sessions", "/api/board", "/api/schedules", "/api/memory/habakkuk",
-		"/api/skills/habakkuk", "/api/usage", "/api/approvals", "/api/config", "/api/chat/conversations"}
+		"/api/skills/habakkuk", "/api/usage", "/api/approvals", "/api/config", "/api/channels", "/api/chat/conversations"}
 	for _, p := range paths {
 		if code, _ := r.do(t, "GET", p, "", "", ""); code != http.StatusUnauthorized {
 			t.Errorf("%s without token: %d", p, code)
@@ -454,7 +459,10 @@ func TestDashApprovals(t *testing.T) {
 		ok, _ := g.ApproverFor(sess.ID).Approve(ctx, tools.ApprovalRequest{Tool: "exec", Summary: "rm -rf build/", Review: "deletes files"})
 		answer <- ok
 	}()
-	if e := st.next(t); !strings.Contains(e.Text, "Approval needed") {
+	// The web chat is the owner's own screen: plain words first, and the
+	// exact call with them.
+	if e := st.next(t); !strings.HasPrefix(e.Text, "I'd like to run a command on your computer.\nI'm asking because my reviewer was not sure: deletes files") ||
+		!strings.Contains(e.Text, "rm -rf build/") || !strings.Contains(e.Text, "Reply **yes** or **no**.") {
 		t.Fatalf("prompt: %+v", e)
 	}
 	var id string

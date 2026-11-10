@@ -70,6 +70,13 @@ type rig struct {
 
 func newRig(t *testing.T, tok string) *rig {
 	t.Helper()
+	return newRigWith(t, tok, nil)
+}
+
+// newRigWith is newRig with a chance to change the gateway (more channels,
+// say) before anything runs.
+func newRigWith(t *testing.T, tok string, prepare func(g *channel.Gateway)) *rig {
+	t.Helper()
 	ctx := context.Background()
 	dir := t.TempDir()
 	control, err := store.Open(ctx, filepath.Join(dir, "control.db"), slices.Concat(jobs.Migrations, channel.Migrations))
@@ -115,6 +122,9 @@ func newRig(t *testing.T, tok string) *rig {
 	tg, _ := NewHook("tg", &config.Webhook{Agent: "ops", Deliver: "web:ops-room"}, "bearer-secret")
 	s.Hooks["tg"] = tg
 
+	if prepare != nil {
+		prepare(g)
+	}
 	pool := &jobs.Pool{Queue: q, Handlers: map[string]jobs.Handler{agent.KindTurn: g.HandleTurn, channel.KindDeliver: g.HandleDeliver},
 		Concurrency: 2, Lease: 5 * time.Second, Poll: 10 * time.Millisecond, Log: quiet}
 	g.Wake = pool.Wake

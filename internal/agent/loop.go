@@ -407,6 +407,7 @@ func (t *turn) run(userText string, media []Attachment) error {
 		env.Approver = t.r.Approvers(t.sess.ID)
 	}
 	t.applyPolicy(env)
+	t.restoreTaint(env, recs)
 	var pending []string
 	if t.r.ToolsPending != nil {
 		pending = t.r.ToolsPending(t.ctx, t.toolsets())

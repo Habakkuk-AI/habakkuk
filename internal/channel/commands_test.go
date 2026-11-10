@@ -86,15 +86,22 @@ func toolCall(id, name, input string) *llm.Response {
 
 func newStateRig(t *testing.T, ch *config.Channel) *rig {
 	t.Helper()
-	r := newRig(t, ch)
-	st, err := state.Open(context.Background(), filepath.Join(t.TempDir(), "state.db"))
+	return openStateRig(t, t.TempDir(), ch)
+}
+
+// openStateRig is openRig with state.db, also in dir.
+func openStateRig(t *testing.T, dir string, ch *config.Channel, prepare ...func(*rig)) *rig {
+	t.Helper()
+	st, err := state.Open(context.Background(), filepath.Join(dir, "state.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(st.Close)
-	r.g.State = st
-	r.g.Runner.Overlay = state.Overlay{Store: st, Personas: r.g.Personas}
-	return r
+	withState := func(r *rig) {
+		r.g.State = st
+		r.g.Runner.Overlay = state.Overlay{Store: st, Personas: r.g.Personas}
+	}
+	return openRig(t, dir, ch, append([]func(*rig){withState}, prepare...)...)
 }
 
 func send(r *rig, id, text string) { r.g.Handle(context.Background(), dm(id, text)) }
@@ -288,7 +295,7 @@ func TestClarifyAsksAndWaits(t *testing.T) {
 }
 
 func TestProgressDraftIsReplacedByTheReply(t *testing.T) {
-	r := newStateRig(t, &config.Channel{AllowFrom: []string{"7"}})
+	r := newStateRig(t, &config.Channel{AllowFrom: []string{"7"}, Progress: config.ProgressDetailed})
 	ed := &editor{recorder: r.a}
 	r.g.Adapters["tg"] = ed
 	r.g.ProgressAfter, r.g.ProgressEvery = 30*time.Millisecond, 20*time.Millisecond

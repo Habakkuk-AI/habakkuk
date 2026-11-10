@@ -2,8 +2,11 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 )
 
 // AgentSecurity is an agent's safety settings, written inline in
@@ -28,6 +31,12 @@ type AgentSecurity struct {
 	// outside the workspace as the mode says. Off, such calls need a human
 	// even in full mode.
 	AllowTaintedExec bool `yaml:"allow_tainted_exec"`
+	// TrustedWritePaths are folders outside the workspace (absolute, or
+	// under ~/) where the file tools may write notes without approval, in
+	// a channel turn and in one that read outside content. Commands are
+	// not covered, nor are scripts, programs, hidden files, or anything in
+	// Habakkuk's own folders (TrustedWriteDirs, ProtectedDirs).
+	TrustedWritePaths []string `yaml:"trusted_write_paths"`
 }
 
 // SecurityCapabilities are the names channel_allow takes.
@@ -45,7 +54,124 @@ func (a *Agent) validateSecurity(name string) []error {
 			errs = append(errs, fmt.Errorf("agent %s: channel_allow %q must be one of exec, process, write, computer, browser", name, c))
 		}
 	}
+	for _, p := range a.TrustedWritePaths {
+		dir, ok := expandTrusted(p)
+		switch {
+		case !ok:
+			errs = append(errs, fmt.Errorf("agent %s: trusted_write_paths %q must be an absolute path or start with ~/", name, p))
+		case tooBroad(dir):
+			errs = append(errs, fmt.Errorf("agent %s: trusted_write_paths %q is too broad: name a folder for notes, not your home folder or a folder that contains it", name, p))
+		}
+	}
 	return errs
+}
+
+// expandTrusted turns a trusted_write_paths entry into an absolute, cleaned
+// path; ok is false when it is neither absolute nor under ~/.
+func expandTrusted(p string) (string, bool) {
+	p = strings.TrimSpace(p)
+	if p == "~" {
+		p = "~/"
+	}
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", false
+		}
+		return filepath.Join(home, rest), true
+	}
+	if !filepath.IsAbs(p) {
+		return "", false
+	}
+	return filepath.Clean(p), true
+}
+
+// tooBroad reports whether dir is a filesystem root, the user's home, or a
+// folder that contains the home: trusting it would trust shell startup
+// files, keys and everything else a person keeps there.
+func tooBroad(dir string) bool {
+	if filepath.Dir(dir) == dir {
+		return true
+	}
+	home, err := os.UserHomeDir()
+	return err == nil && contains(dir, home)
+}
+
+// contains reports whether p is dir or inside it.
+func contains(dir, p string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && !filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// TrustedWriteDirs are an agent's trusted_write_paths as absolute folders.
+// An entry that contains Habakkuk's home, or is one of its protected
+// folders or inside one, is left out and returned in ignored: trusting it
+// would let a page that the agent read rewrite the agent.
+func (c *Config) TrustedWriteDirs(agent string) (dirs, ignored []string) {
+	a := c.Agents[agent]
+	if a == nil {
+		return nil, nil
+	}
+	protected := c.ProtectedDirs()
+	for _, p := range a.TrustedWritePaths {
+		dir, ok := expandTrusted(p)
+		bad := !ok || tooBroad(dir) || (c.Home != "" && contains(dir, c.Home))
+		for _, pr := range protected {
+			bad = bad || contains(pr, dir)
+		}
+		if bad {
+			ignored = append(ignored, p)
+			continue
+		}
+		dirs = append(dirs, dir)
+	}
+	return dirs, ignored
+}
+
+// protectedFolders are the folders of Habakkuk's home that hold what the
+// agent is and does: its home and memory, skills, plugins, hooks,
+// personas, channel credentials and backups.
+var protectedFolders = []string{"agents", "skills", "plugins", "hooks", "personalities", "channels", "backups", "scripts"}
+
+// ProtectedDirs are the folders a trusted_write_paths entry never covers:
+// Habakkuk's own folders under its home, and the folders hook commands
+// name, since a file there runs on the next event.
+func (c *Config) ProtectedDirs() []string {
+	var out []string
+	if c.Home != "" {
+		for _, f := range protectedFolders {
+			out = append(out, filepath.Join(c.Home, f))
+		}
+	}
+	for _, h := range c.Hooks {
+		if h != nil {
+			out = append(out, CommandDirs(h.Command)...)
+		}
+	}
+	return out
+}
+
+// CommandDirs lists the folders a shell command names: the folder of each
+// path it mentions (a word that is absolute or starts with ~/), or the path
+// itself when it is a folder. These are where the script of a hook or a
+// scheduled command lives. A path so broad that it is the user's home or
+// above is left out.
+func CommandDirs(command string) []string {
+	var out []string
+	for _, word := range strings.Fields(command) {
+		path, ok := expandTrusted(strings.Trim(word, `"';`))
+		if !ok {
+			continue
+		}
+		dir := filepath.Dir(path)
+		if st, err := os.Stat(path); err == nil && st.IsDir() {
+			dir = path
+		}
+		if !tooBroad(dir) && !slices.Contains(out, dir) {
+			out = append(out, dir)
+		}
+	}
+	return out
 }
 
 // ChannelAllowed is the set of capabilities the owner's channel turns may

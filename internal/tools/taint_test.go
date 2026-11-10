@@ -42,3 +42,21 @@ func TestNetworkToolsTaintTheTurn(t *testing.T) {
 		t.Fatal("nil or preset taint")
 	}
 }
+
+// MayTaint is what a resumed turn uses to set its taint again, so anything
+// it cannot vouch for counts as outside content.
+func TestMayTaintErrsOnTheSideOfYes(t *testing.T) {
+	r := NewRegistry()
+	r.Register("t", riskTool{"local_read", RiskRead})
+	r.Register("t", riskTool{"local_exec", RiskExec})
+	r.Register("t", riskTool{"fetch", RiskNetwork})
+	r.Register("computer", riskTool{"computer_screenshot", RiskRead})
+	for name, want := range map[string]bool{
+		"local_read": false, "local_exec": false, "fetch": true,
+		"computer_screenshot": true, "mcp__gone__search": true,
+	} {
+		if got := r.MayTaint(name); got != want {
+			t.Errorf("MayTaint(%s) = %v, want %v", name, got, want)
+		}
+	}
+}

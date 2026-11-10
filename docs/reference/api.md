@@ -45,11 +45,12 @@ What the page needs to start.
   "errors": [{"id": "...", "kind": "card", "agent": "habakkuk", "status": "failed", "error": "...", "...": "..."}],
   "approvals": 0,
   "open_cards": 3,
-  "schedules": {"total": 4, "enabled": 3}
+  "schedules": {"total": 4, "enabled": 3},
+  "established": true
 }
 ```
 
-`channels` lists every configured account (`state` is `never started` when `habakkuk serve` has not run it). `errors` are jobs that failed for good, or recorded an error on a retried attempt, in the last 7 days (newest 20).
+`channels` lists every configured account (`state` is `never started` when `habakkuk serve` has not run it). `established` is true once the install is in use: an agent has answered a message, or there is a schedule, or more than one messaging channel. The dashboard hides its Get started panel then. `errors` are jobs that failed for good, or recorded an error on a retried attempt, in the last 7 days (newest 20).
 
 ## Chat
 
@@ -257,4 +258,29 @@ Present when the config has a `nodes` section. Devices themselves use `/nodes` (
 - string fields whose names read like secrets (token, password, key, ...) and do not name a variable, and MCP header values that are not variable references, are replaced whole;
 - passwords in URLs, secret-looking query parameters, and strings shaped like well-known API keys, bearer tokens, JWTs and private keys are replaced.
 
+`progress` and `approvals_detail` under each channel are the values in effect now, which may be newer than the ones `serve` started with.
+
 `doctor` checks what `habakkuk doctor` checks that the running process can see: provider keys and logins, `control.db` and `transcripts.db` integrity, channel, HTTP and MCP credentials (by variable name, never value), and MCP servers that failed to connect.
+
+### `GET /api/channels`
+
+What each chat channel shows while the agent works and in approval requests. Only messaging channels are listed, not the web chat.
+
+```json
+{
+  "channels": [{"account": "slack", "type": "slack", "progress": "plain", "approvals_detail": "summary", "live_progress": true}],
+  "progress": ["plain", "detailed", "off"],
+  "approvals_detail": ["summary", "full"],
+  "writable": true
+}
+```
+
+`live_progress` says whether the platform can edit a message; without it a long turn shows a typing indicator or one notice whatever `progress` says. `progress` and `approvals_detail` at the top level are the values each setting takes. `writable` is false in a process that cannot save the config.
+
+### `PUT /api/channels/{account}`
+
+```json
+{"progress": "detailed", "approvals_detail": "full"}
+```
+
+Changes one or both settings for a channel and answers with its entry as in the list. The change is written to `config.yaml` in place (comments kept, the previous file saved as `config.yaml.bak`) and applies from the channel's next message, with no restart. `400` for a value that is not one of those listed or a body with neither setting, `404` for an account that is not a messaging channel, `501` when the process cannot save. Like every change in this API it needs the token and a JSON body.

@@ -35,6 +35,7 @@ func (s *Server) configView(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "render the config", err)
 		return
 	}
+	s.liveDisplay(tree) // progress and approvals_detail may have changed since serve started
 	out := map[string]any{"config": tree, "home": d.Config.Home}
 	if d.Doctor != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)

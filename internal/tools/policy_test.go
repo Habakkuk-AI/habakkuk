@@ -202,3 +202,27 @@ func TestLocalTurnUnchanged(t *testing.T) {
 		t.Fatalf("tainted local computer click: %+v", res)
 	}
 }
+
+// The approver is told why it is asked, so a chat can say it in its own
+// words instead of showing the policy's sentence.
+func TestApprovalRequestSaysWhy(t *testing.T) {
+	exec := call("exec", map[string]any{"command": "true"})
+	ap := &countingApprover{yes: true}
+	r, env := setup(t, ModeFull, ap)
+	env.Taint = NewTaint(true)
+	r.Execute(context.Background(), env, exec)
+	if ap.last.Cause != CauseTainted || !ap.last.Tainted {
+		t.Fatalf("tainted exec: cause %q, tainted %v", ap.last.Cause, ap.last.Tainted)
+	}
+	r, env = setup(t, ModeFull, ap)
+	env.Policy = &Policy{Channel: "slack"}
+	r.Execute(context.Background(), env, exec)
+	if ap.last.Cause != CauseChannel {
+		t.Fatalf("channel exec: cause %q", ap.last.Cause)
+	}
+	r, env = setup(t, ModeAsk, ap)
+	r.Execute(context.Background(), env, exec)
+	if ap.last.Cause != "" {
+		t.Fatalf("ask mode: cause %q, want none", ap.last.Cause)
+	}
+}

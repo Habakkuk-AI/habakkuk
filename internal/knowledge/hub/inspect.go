@@ -60,6 +60,19 @@ func Files(dir string) ([]string, error) {
 	return out, err
 }
 
+// ScriptLike reports whether a file could run as a program: an executable
+// bit, a script extension, a #! line or a program binary. name is its path,
+// mode its permission bits (0 when unknown) and head its first bytes (nil
+// when unknown). It is the one test for "this is a script": skills use it
+// to decide a package ships scripts, and the file tools to keep programs
+// out of trusted notes folders.
+func ScriptLike(name string, mode fs.FileMode, head []byte) bool {
+	if mode.Perm()&0o111 != 0 || scriptExt[strings.ToLower(filepath.Ext(name))] {
+		return true
+	}
+	return bytes.HasPrefix(head, []byte("#!")) || isExecutable(head)
+}
+
 // Scripts lists the files under dir an agent could run as a program: an
 // executable bit, a #! line, a script extension or a program binary.
 func Scripts(dir string) []string {
@@ -71,7 +84,7 @@ func Scripts(dir string) []string {
 		if err != nil {
 			continue
 		}
-		if info.Mode().Perm()&0o111 != 0 || scriptExt[strings.ToLower(filepath.Ext(rel))] {
+		if ScriptLike(rel, info.Mode(), nil) {
 			out = append(out, rel)
 			continue
 		}
@@ -82,7 +95,7 @@ func Scripts(dir string) []string {
 		head := make([]byte, 512)
 		n, _ := f.Read(head)
 		f.Close()
-		if bytes.HasPrefix(head[:n], []byte("#!")) || isExecutable(head[:n]) {
+		if ScriptLike(rel, 0, head[:n]) {
 			out = append(out, rel)
 		}
 	}

@@ -154,12 +154,25 @@ type rig struct {
 	q     *jobs.Queue
 	model *scripted
 	pool  *jobs.Pool
+	dir   string
+	// stop shuts the rig down the way SIGTERM stops serve: the workers are
+	// told to stop and waited for. It is safe to call more than once.
+	stop func()
 }
 
 func newRig(t *testing.T, ch *config.Channel) *rig {
 	t.Helper()
+	return openRig(t, t.TempDir(), ch)
+}
+
+// openRig starts a gateway on the databases in dir. Calling it again on the
+// same dir, after the first rig's stop, is a restart: the same jobs,
+// conversations and transcripts, and nothing that was only in memory.
+// prepare runs before the workers start, so a restarted rig is fully set up
+// before it resumes the jobs it finds.
+func openRig(t *testing.T, dir string, ch *config.Channel, prepare ...func(*rig)) *rig {
+	t.Helper()
 	ctx := context.Background()
-	dir := t.TempDir()
 	control, err := store.Open(ctx, filepath.Join(dir, "control.db"), slices.Concat(jobs.Migrations, Migrations))
 	if err != nil {
 		t.Fatal(err)
@@ -206,11 +219,17 @@ func newRig(t *testing.T, ch *config.Channel) *rig {
 	pool := &jobs.Pool{Queue: q, Handlers: map[string]jobs.Handler{agent.KindTurn: g.HandleTurn, KindDeliver: g.HandleDeliver},
 		Concurrency: 2, Lease: 5 * time.Second, Poll: 10 * time.Millisecond, Log: quiet}
 	g.Wake = pool.Wake
+	r := &rig{g: g, a: rec, q: q, model: model, pool: pool, dir: dir}
+	for _, f := range prepare {
+		f(r)
+	}
 	pctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() { pool.Run(pctx); close(done) }()
-	t.Cleanup(func() { cancel(); <-done })
-	return &rig{g: g, a: rec, q: q, model: model, pool: pool}
+	var once sync.Once
+	r.stop = func() { once.Do(func() { cancel(); <-done }) }
+	t.Cleanup(r.stop)
+	return r
 }
 
 func dm(id, text string) Message {
@@ -334,9 +353,9 @@ func TestApprovalInChat(t *testing.T) {
 	r := newRig(t, &config.Channel{AllowFrom: []string{"7"}})
 	ctx := context.Background()
 	r.g.Handle(ctx, dm("m1", "please run it"))
-	waitFor(t, "approval prompt", hasText(r.a, "Approval needed"))
+	waitFor(t, "approval prompt", hasText(r.a, "I'd like to run a command on your computer."))
 	r.g.Handle(ctx, dm("m2", "what is this?"))
-	waitFor(t, "reminder", hasText(r.a, "waiting on the approval"))
+	waitFor(t, "reminder", hasText(r.a, "waiting on the request"))
 	r.g.Handle(ctx, dm("m3", "yes"))
 	waitFor(t, "tool output", hasText(r.a, "approved-run"))
 }
@@ -345,7 +364,7 @@ func TestApprovalDenied(t *testing.T) {
 	r := newRig(t, &config.Channel{AllowFrom: []string{"7"}})
 	ctx := context.Background()
 	r.g.Handle(ctx, dm("m1", "run it"))
-	waitFor(t, "approval prompt", hasText(r.a, "Approval needed"))
+	waitFor(t, "approval prompt", hasText(r.a, "I'd like to run a command on your computer."))
 	r.g.Handle(ctx, dm("m2", "no"))
 	waitFor(t, "denial result", hasText(r.a, "tool said:"))
 	if hasText(r.a, "approved-run\n")() {
@@ -452,11 +471,11 @@ func TestNewDuringApprovalDeclinesIt(t *testing.T) {
 	r := newRig(t, &config.Channel{AllowFrom: []string{"7"}})
 	ctx := context.Background()
 	r.g.Handle(ctx, dm("m1", "run it"))
-	waitFor(t, "approval prompt", hasText(r.a, "Approval needed"))
+	waitFor(t, "approval prompt", hasText(r.a, "I'd like to run a command on your computer."))
 	r.g.Handle(ctx, dm("m2", "/new"))
 	waitFor(t, "fresh conversation", hasText(r.a, "fresh conversation"))
 	waitFor(t, "old turn ends with the call declined", hasText(r.a, "tool said:"))
-	if hasText(r.a, "waiting on the approval")() {
+	if hasText(r.a, "waiting on the request")() {
 		t.Fatal("/new was swallowed by the approval reminder")
 	}
 }

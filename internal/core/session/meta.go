@@ -104,3 +104,12 @@ func (s *Store) Fork(ctx context.Context, src string, upto int, title string) (*
 	}
 	return sess, tx.Commit()
 }
+
+// HasTurns reports whether any agent has ever answered: some session holds
+// an assistant message. The dashboard uses it to tell a fresh install from
+// one in use.
+func (s *Store) HasTurns(ctx context.Context) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM messages WHERE role = 'assistant')`).Scan(&n)
+	return n == 1, err
+}

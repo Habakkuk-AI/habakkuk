@@ -43,7 +43,7 @@ In groups the bot answers mentions and replies (`groups: mention`). Forum topics
 | In | Text, photos, files, voice notes |
 | Out | Text, photos up to 10 MB, documents up to 50 MB, voice notes |
 | Typing indicator | Yes |
-| Live progress | A draft message edited with each tool step (`progress: draft`, the default) |
+| Live progress | One short line such as "Checking the web", edited as the work moves on (`progress: plain`, the default); `detailed` shows a line per tool step |
 | Approval buttons | Approve and Deny buttons under the request |
 | Reactions | With `reactions: true`, on your message when a turn starts and ends |
 | Polls | Native polls (the `poll` tool) |

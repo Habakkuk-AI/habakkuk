@@ -218,6 +218,19 @@ func (q *Queue) Fail(ctx context.Context, id, owner string, cause error, retry b
 	return leaseResult(res, err)
 }
 
+// Release hands a running job back without holding it against the job: it
+// is pending again at its old place in line, and the run that was cut short
+// does not count as an attempt. A worker calls it when the process is asked
+// to stop (SIGTERM, a deploy), so the job resumes as soon as a worker starts
+// and a planned restart never uses up its retries. A crash never gets here:
+// that lease expires, and the next claim counts as another attempt.
+func (q *Queue) Release(ctx context.Context, id, owner string) error {
+	res, err := q.db.ExecContext(ctx, `UPDATE jobs SET status = 'pending', lease_owner = '', lease_until = 0,
+		attempts = MAX(attempts - 1, 0), updated_at = ?
+		WHERE id = ? AND lease_owner = ? AND status = 'running'`, q.now().UnixMilli(), id, owner)
+	return leaseResult(res, err)
+}
+
 func (q *Queue) Cancel(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, `UPDATE jobs SET status = 'canceled', lease_owner = '', updated_at = ?
 		WHERE id = ? AND status IN ('pending','running')`, q.now().UnixMilli(), id)

@@ -288,7 +288,9 @@ pages.overview = view => {
     try { o = await api("overview"); } catch (err) { view.textContent = ""; view.append(h("div", { class: "empty err" }, err.message)); return; }
     const stat = (n, l, href) => h(href ? "a" : "div", { class: "panel stat", href }, h("div", { class: "n" }, n), h("div", { class: "l" }, l));
     view.textContent = "";
-    if (!store.get("startedHidden", false)) {
+    // First-run pointers: gone once the install is in use (the agent has
+    // answered, or there is a schedule or a second channel), or hidden by hand.
+    if (!o.established && !store.get("startedHidden", false)) {
       view.append(h("div", { class: "panel start" },
         h("div", { class: "row" }, h("h2", { class: "grow" }, "Get started"),
           h("button", { type: "button", class: "link small", onclick: () => { store.set("startedHidden", true); view.querySelector(".start")?.remove(); } }, "Hide")),
@@ -1351,11 +1353,56 @@ pages.config = async view => {
       h("ul", { class: "list" }, j.doctor.map(c => h("li", { class: "row" }, badge(c.ok ? "ok" : "problem", c.ok ? "ok" : "bad"),
         h("strong", {}, c.name), h("span", { class: "muted grow" }, c.detail))))));
   }
+  view.append(await channelSettingsPanel());
   const cfg = j.config || {};
   view.append(h("div", { class: "panel" }, h("h2", {}, "Effective config"),
     h("div", { class: "muted small" }, `Secrets are redacted. Home: ${j.home || ""}`),
     Object.keys(cfg).sort().map(k => h("details", {}, h("summary", { class: "mono" }, k), h("pre", {}, JSON.stringify(cfg[k], null, 2))))));
 };
+
+// What each chat shows: two settings per channel, saved to config.yaml and
+// used from the next message with no restart.
+const PROGRESS_LABELS = { plain: "a short status line", detailed: "every step", off: "nothing" };
+const DETAIL_LABELS = { summary: "a plain summary", full: "the exact command" };
+async function channelSettingsPanel() {
+  const panel = h("div", { class: "panel" }, h("h2", {}, "What your chats show"));
+  let j;
+  try { j = await api("channels"); } catch (err) { panel.append(h("div", { class: "empty err" }, err.message)); return panel; }
+  if (!j.channels.length) {
+    panel.append(emptyState("No chat channels yet. Run hk setup channel in a terminal to add WhatsApp, Telegram, Slack and more."));
+    return panel;
+  }
+  panel.append(h("p", { class: "muted small" },
+    "Changes are saved to config.yaml (the previous file is kept as config.yaml.bak) and apply from the next message. No restart is needed."));
+  for (const c of j.channels) {
+    const pick = (label, key, values, labels, current) => {
+      const sel = h("select", { "aria-label": `${label} (${c.account})`, disabled: !j.writable },
+        values.map(v => h("option", { value: v, selected: v === current }, labels[v] || v)));
+      sel.addEventListener("change", async () => {
+        sel.disabled = true;
+        try {
+          const saved = await api("channels/" + encodeURIComponent(c.account), { method: "PUT", body: { [key]: sel.value } });
+          sel.value = saved[key];
+          toast(`Saved for ${c.account}. It applies from the next message.`);
+        } catch (err) {
+          sel.value = current;
+          toast(err.message, true);
+          return;
+        } finally { sel.disabled = !j.writable; }
+        current = sel.value;
+      });
+      return h("label", { class: "field" }, label, sel);
+    };
+    panel.append(h("div", { class: "channel-settings" },
+      h("div", { class: "row" }, h("strong", {}, c.account), h("span", { class: "muted" }, c.type)),
+      pick("While working, show", "progress", j.progress, PROGRESS_LABELS, c.progress),
+      !c.live_progress && h("div", { class: "muted small" },
+        "This platform cannot edit a message, so a long task shows a typing indicator or one short notice instead of a line that changes."),
+      pick("Approval requests show", "approvals_detail", j.approvals_detail, DETAIL_LABELS, c.approvals_detail)));
+  }
+  if (!j.writable) panel.append(h("div", { class: "muted small" }, "These settings cannot be saved from this process."));
+  return panel;
+}
 
 // Start
 

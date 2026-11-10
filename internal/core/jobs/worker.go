@@ -128,12 +128,21 @@ func (p *Pool) run(parent context.Context, j *Job, owner string) {
 	cancel()
 	<-hbDone
 
-	// Shutting down: leave the lease to expire so another process resumes it.
+	// Shutting down: hand the job back, so it resumes as soon as a worker
+	// starts and this run does not count against its attempts. A job that
+	// was canceled or taken over meanwhile is no longer ours to release.
+	bg := context.Background()
 	if parent.Err() != nil {
-		log.Info("shutdown mid-job; will resume after lease expiry")
+		switch rerr := p.Queue.Release(bg, j.ID, owner); {
+		case rerr == nil:
+			log.Info("shutdown mid-job; released to resume on the next start")
+		case errors.Is(rerr, ErrLeaseLost):
+			log.Debug("shutdown mid-job; the job was already stopped or taken over")
+		default:
+			log.Warn("shutdown mid-job; release failed, will resume after lease expiry", "err", rerr)
+		}
 		return
 	}
-	bg := context.Background()
 	if err == nil {
 		if err := p.Queue.Complete(bg, j.ID, owner, result); err != nil {
 			log.Warn("complete failed", "err", err)

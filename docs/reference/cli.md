@@ -26,6 +26,9 @@ habakkuk setup [model|channel [TYPE]|name|service] [-y] [flags]
                                     a one-minute wizard: model, where to talk (WhatsApp agent,
                                     Telegram, web, ...), names; -y runs it from flags (habakkuk setup -h);
                                     on a new home it offers to import another agent (-y -migrate does it)
+habakkuk setup channel NAME [-progress plain|detailed|off] [-approvals-detail summary|full]
+                                    change only what an existing channel shows in its chats while the
+                                    agent works and in approval requests; serve picks it up, no restart
 habakkuk migrate [-from SOURCE] [-source DIR] [-agent NAME] [-dry-run] [-secrets copy|skip]
                  [-files copy|skip] [-files-dir DIR] [-files-max SIZE] [-force] [-y]
                                     bring agents, persona files, profile, memory, skills, schedules
@@ -192,6 +195,8 @@ These work in every chat channel, the web chat and `habakkuk chat`. `/help` list
 | `/fork`, `/rewind [N]` | Carry on in a copy of the conversation, optionally without your last N messages |
 | `/title [text]` | Show or set the conversation's title |
 | `/subagents [stop ID]` (`/tasks`) | List or stop the sub-agent tasks running for this conversation |
+| `/progress [plain\|detailed\|off]` | Show or change what this chat shows while the agent works (owner only; no restart needed) |
+| `/approvals [summary\|full]` | Show or change what approval requests show in this chat (owner only; no restart needed) |
 | `/help` (`/start`) | List the commands |
 
 Plugins can add more commands; see [Plugins](../tools/plugins.md#manifest).

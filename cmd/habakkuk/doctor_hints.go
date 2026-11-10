@@ -22,13 +22,19 @@ func keyFix(home string, keysEnv []string) string {
 	return fmt.Sprintf("add %s to %s, or run habakkuk setup model", env, filepath.Join(home, ".env"))
 }
 
-// doctorAllGood closes a clean doctor run.
+// doctorAllGood closes a clean doctor run with the next step. It never
+// says "Next: habakkuk serve" while a serve process is alive: one that is
+// running, still starting (connecting channels), or alive but quiet.
 func doctorAllGood(w io.Writer, home string, cfg *config.Config) {
-	running := strings.HasPrefix(serveState(home, time.Now()), "running")
+	state := serveState(home, time.Now())
 	needsServe := len(cfg.Channels) > 0 || cfg.HTTP != nil
 	switch {
-	case running:
+	case strings.HasPrefix(state, "running"):
 		fmt.Fprintln(w, "\nAll good, and habakkuk serve is running.")
+	case strings.HasPrefix(state, "starting"):
+		fmt.Fprintln(w, "\nAll good, and habakkuk serve is running: it is still starting up. habakkuk status shows what it waits for.")
+	case strings.HasPrefix(state, "stuck?"):
+		fmt.Fprintln(w, "\nThe checks pass and habakkuk serve is running, but it has not reported for a while. habakkuk status says more; restart it if that does not clear.")
 	case needsServe:
 		fmt.Fprintln(w, "\nAll good. Next: habakkuk serve, so your channels, schedules and dashboard come alive.")
 	default:

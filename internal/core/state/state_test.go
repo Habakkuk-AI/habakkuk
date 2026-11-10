@@ -181,3 +181,33 @@ func TestDraftsAndPrune(t *testing.T) {
 		t.Fatal("agent choice not cleared")
 	}
 }
+
+// The record of an approval prompt waiting in a chat outlives the process
+// that asked: it is what lets the next one explain a late "yes".
+func TestAskedApprovals(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	if _, ok, err := s.Asked(ctx, "tg|1|"); ok || err != nil {
+		t.Fatalf("asked from nowhere: %v %v", ok, err)
+	}
+	if err := s.SaveAsked(ctx, "tg|1|", "aaaa"); err != nil {
+		t.Fatal(err)
+	}
+	s.SaveAsked(ctx, "tg|1|", "bbbb") // a newer prompt replaces the record
+	s.SaveAsked(ctx, "tg|2|", "cccc")
+	if h, ok, _ := s.Asked(ctx, "tg|1|"); !ok || h != "bbbb" {
+		t.Fatalf("asked = %q %v", h, ok)
+	}
+	if err := s.ForgetAsked(ctx, "tg|1|"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Asked(ctx, "tg|1|"); ok {
+		t.Fatal("still on record after it was forgotten")
+	}
+	if n, err := s.Prune(ctx, time.Now().Add(time.Hour)); err != nil || n != 1 {
+		t.Fatalf("pruned %d, %v; want the one old record", n, err)
+	}
+	if _, ok, _ := s.Asked(ctx, "tg|2|"); ok {
+		t.Fatal("an old record survived pruning")
+	}
+}

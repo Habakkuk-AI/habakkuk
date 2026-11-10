@@ -27,19 +27,86 @@ var HookEvents = []string{"turn_start", "turn_end", "tool_before", "tool_after",
 
 // Progress modes for a channel: how a long turn shows that it is working.
 const (
-	ProgressDraft = "draft" // one "working" message, edited with tool progress, replaced by the reply
-	ProgressOff   = "off"   // typing indicator or one late notice only
+	// ProgressPlain (the default) is one short line in everyday words
+	// ("Checking the web"), edited as the work moves on and replaced by the
+	// reply. It never shows tool names, commands, paths or ids.
+	ProgressPlain = "plain"
+	// ProgressDetailed is one "working" message with a line per tool step.
+	ProgressDetailed = "detailed"
+	// ProgressDraft is the old name of ProgressDetailed, still accepted so
+	// configs written before plain existed keep their behaviour.
+	ProgressDraft = "draft"
+	ProgressOff   = "off" // typing indicator or one late notice only
 )
 
-// ProgressMode is the channel's progress setting with its default.
-func (ch *Channel) ProgressMode() string {
-	if ch == nil || ch.Progress == "" {
-		return ProgressDraft
+// ProgressModes are the values progress takes, as documented.
+var ProgressModes = []string{ProgressPlain, ProgressDetailed, ProgressOff}
+
+// NormalizeProgress maps a progress setting to plain, detailed or off: ""
+// is the default (plain) and draft is detailed. ok is false for anything
+// else.
+func NormalizeProgress(v string) (mode string, ok bool) {
+	switch v {
+	case "", ProgressPlain:
+		return ProgressPlain, true
+	case ProgressDetailed, ProgressDraft:
+		return ProgressDetailed, true
+	case ProgressOff:
+		return ProgressOff, true
 	}
-	return ch.Progress
+	return "", false
 }
 
-// validateExtras checks hooks and per-channel progress settings.
+// ProgressMode is the channel's progress setting with its default: plain,
+// detailed or off.
+func (ch *Channel) ProgressMode() string {
+	if ch == nil {
+		return ProgressPlain
+	}
+	if mode, ok := NormalizeProgress(ch.Progress); ok {
+		return mode
+	}
+	return ProgressPlain
+}
+
+// How much an approval prompt in a chat shows of the call it asks about.
+const (
+	// ApprovalsSummary (the default) says what the agent wants to do in
+	// everyday words; the exact call is one "details" reply away.
+	ApprovalsSummary = "summary"
+	// ApprovalsFull also appends the exact call in a code block.
+	ApprovalsFull = "full"
+)
+
+// ApprovalsDetails are the values approvals_detail takes.
+var ApprovalsDetails = []string{ApprovalsSummary, ApprovalsFull}
+
+// NormalizeApprovalsDetail maps an approvals_detail setting to summary or
+// full; "" is the default (summary). ok is false for anything else.
+func NormalizeApprovalsDetail(v string) (mode string, ok bool) {
+	switch v {
+	case "", ApprovalsSummary:
+		return ApprovalsSummary, true
+	case ApprovalsFull:
+		return ApprovalsFull, true
+	}
+	return "", false
+}
+
+// ApprovalsDetailMode is the channel's approvals_detail setting with its
+// default: summary or full.
+func (ch *Channel) ApprovalsDetailMode() string {
+	if ch == nil {
+		return ApprovalsSummary
+	}
+	if mode, ok := NormalizeApprovalsDetail(ch.ApprovalsDetail); ok {
+		return mode
+	}
+	return ApprovalsSummary
+}
+
+// validateExtras checks hooks and the per-channel progress and
+// approvals_detail settings.
 func (c *Config) validateExtras() []error {
 	var errs []error
 	for i, h := range c.Hooks {
@@ -71,10 +138,11 @@ func (c *Config) validateExtras() []error {
 		if ch == nil {
 			continue
 		}
-		switch ch.Progress {
-		case "", ProgressDraft, ProgressOff:
-		default:
-			errs = append(errs, fmt.Errorf("channel %s: progress %q must be draft or off", name, ch.Progress))
+		if _, ok := NormalizeProgress(ch.Progress); !ok {
+			errs = append(errs, fmt.Errorf("channel %s: progress %q must be plain, detailed or off", name, ch.Progress))
+		}
+		if _, ok := NormalizeApprovalsDetail(ch.ApprovalsDetail); !ok {
+			errs = append(errs, fmt.Errorf("channel %s: approvals_detail %q must be summary or full", name, ch.ApprovalsDetail))
 		}
 	}
 	return errs

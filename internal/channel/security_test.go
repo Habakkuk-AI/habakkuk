@@ -69,7 +69,7 @@ func TestGuestCannotAnswerOwnersApproval(t *testing.T) {
 	r := newRig(t, &config.Channel{AllowFrom: []string{"7", "*"}})
 	ctx := context.Background()
 	r.g.Handle(ctx, dm("m1", "please run it"))
-	waitFor(t, "approval prompt", hasText(r.a, "Approval needed"))
+	waitFor(t, "approval prompt", hasText(r.a, "I'd like to run a command on your computer."))
 	yes := dm("m2", "yes")
 	yes.Sender = "9" // someone else in the same chat
 	r.g.Handle(ctx, yes)

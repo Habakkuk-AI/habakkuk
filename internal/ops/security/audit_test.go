@@ -266,3 +266,48 @@ func TestBrokenConfigStillChecksFiles(t *testing.T) {
 		t.Fatalf("%+v", fs)
 	}
 }
+
+// habakkuk security lists an agent's trusted folders, says what they allow,
+// and flags them on an agent that outsiders' content can reach.
+func TestTrustedWritePathsAreListed(t *testing.T) {
+	home := t.TempDir()
+	cfg := parse(t, `agents:
+  habakkuk: {model: anthropic/claude-opus-5-5, trusted_write_paths: ["~/notes"]}
+  quiet: {model: anthropic/claude-opus-5-5}
+channels:
+  tg: {type: telegram, token_env: T, allow_from: ["7"], agent: habakkuk}
+`)
+	cfg.Home = home
+	var mine AgentPolicy
+	for _, p := range Policies(cfg) {
+		if p.Agent == "habakkuk" {
+			mine = p
+		} else if len(p.TrustedWrite) != 0 || strings.Contains(strings.Join(p.Lines(), "\n"), "trusted_write_paths") {
+			t.Errorf("agent %s has no trusted folders but the policy mentions them: %v", p.Agent, p.Lines())
+		}
+	}
+	if len(mine.TrustedWrite) != 1 || !strings.HasSuffix(filepath.ToSlash(mine.TrustedWrite[0]), "/notes") {
+		t.Fatalf("trusted folders: %+v", mine.TrustedWrite)
+	}
+	text := strings.Join(mine.Lines(), "\n")
+	for _, want := range []string{"trusted_write_paths: ", "notes", "without approval", "never commands, scripts, programs or hidden files"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("policy lacks %q:\n%s", want, text)
+		}
+	}
+	fs := Audit(Options{Home: home, Config: cfg, Secret: func(string) string { return "" }, Disk: plenty})
+	if f := find(fs, "agents", "may write notes to"); f == nil || f.Severity != Low || f.Fix == "" {
+		t.Errorf("no low finding for trusted folders on a reachable agent: %+v", f)
+	}
+
+	// An entry inside Habakkuk's own folders is ignored, and said to be.
+	cfg.Agents["habakkuk"].TrustedWritePaths = []string{filepath.Join(home, "skills")}
+	mine = Policies(cfg)[0]
+	if len(mine.TrustedWrite) != 0 || len(mine.TrustedIgnored) != 1 || !strings.Contains(strings.Join(mine.Lines(), "\n"), "trusted_write_paths ignored: ") {
+		t.Fatalf("an entry in the skills folder: %+v\n%v", mine, mine.Lines())
+	}
+	fs = Audit(Options{Home: home, Config: cfg, Secret: func(string) string { return "" }, Disk: plenty})
+	if f := find(fs, "agents", "trusted_write_paths that are ignored"); f == nil {
+		t.Error("no finding for the ignored entry")
+	}
+}

@@ -98,6 +98,8 @@ func (s *Server) dashRoutes(mux *http.ServeMux) {
 	api("GET /api/approvals", s.approvals)
 	api("POST /api/approvals/{id}", s.approve)
 	api("GET /api/config", s.configView)
+	api("GET /api/channels", s.channelSettingsList)
+	api("PUT /api/channels/{account}", s.channelSettingsSave)
 	api("POST /api/realtime/session", s.realtimeSession)
 	api("POST /api/realtime/tool", s.realtimeToolCall)
 	api("POST /api/realtime/transcript", s.realtimeTranscript)
@@ -299,6 +301,21 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	out["errors"] = jobViews(failed)
 	out["approvals"] = len(s.Gateway.Approvals())
+	// An install that is already in use does not need the first-run
+	// pointers: the agent has answered someone, or has a schedule, or more
+	// than one messaging channel is set up (setup leaves at most one).
+	messaging := 0
+	for _, ch := range s.Gateway.Channels {
+		if ch.MessagingChannel() {
+			messaging++
+		}
+	}
+	established := messaging > 1
+	if !established {
+		if had, err := s.Gateway.Runner.Sessions.HasTurns(ctx); err == nil && had {
+			established = true
+		}
+	}
 	if d := s.Dash; d != nil && d.Board != nil {
 		if cards, err := d.Board.List(ctx, board.Filter{Limit: 500}); err == nil {
 			out["open_cards"] = len(cards)
@@ -313,8 +330,10 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			out["schedules"] = map[string]int{"total": len(list), "enabled": on}
+			established = established || len(list) > 0
 		}
 	}
+	out["established"] = established
 	writeJSON(w, http.StatusOK, out)
 }
 
