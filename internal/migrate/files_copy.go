@@ -44,6 +44,7 @@ type SyncStats struct {
 	Blocked                   []string // something else is in the way
 	TooBig                    []string // over the size limit, left out
 	Special                   int      // sockets, pipes and devices, left out
+	Internal                  int      // the agent's own files in the folder, left out
 	// Unreadable could not be copied: the source would not let them be
 	// read, or they are links and this system would not make one.
 	Unreadable []string
@@ -104,6 +105,10 @@ func (p *Plan) syncEntry(ctx context.Context, e *FileEntry, write bool) (SyncSta
 				return filepath.SkipDir
 			}
 		case mode.IsRegular():
+			if innerInternal(p.Found.From, e.base(), filepath.ToSlash(rel)) {
+				st.Internal++
+				return nil
+			}
 			if limit > 0 && info.Size() > limit {
 				st.TooBig = append(st.TooBig, filepath.ToSlash(rel))
 				return nil

@@ -51,6 +51,7 @@ The copy is careful:
 - File modes, modification times and symlinks are kept. A link is copied as a link and never followed, so nothing outside the old folder is pulled in. A link to something that moves points at the copy.
 - A git repository inside your files is copied whole.
 - Sockets, pipes and devices are left out. So is any file over 1 GB, unless you raise the limit with `--files-max`. The plan names what is left out.
+- A file the old agent keeps for itself inside one of your folders is left out too. Hermes Agent's gateway keeps one in `state/`, next to the state files of your scripts.
 - It can be stopped and run again. A file is copied only when it is missing in the copy or newer in the old folder. Nothing in the copy is ever deleted. A file that changed in the copy since is kept, because the new agent works there now.
 - It checks the free space first and refuses to start when there is not enough.
 - Only text files up to 1 MB have their references rewritten. Larger files and binary files are copied byte for byte.

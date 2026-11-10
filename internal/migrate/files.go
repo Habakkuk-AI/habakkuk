@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -177,6 +178,7 @@ type internals struct {
 
 const (
 	whyProgram  = "%s's own program"
+	whyApp      = "%s's own app files"
 	whyCache    = "a cache %s rebuilds"
 	whyLogs     = "%s's logs"
 	whySessions = "%s's sessions and databases"
@@ -187,14 +189,15 @@ const (
 	whyPlugins  = "%s's plugins and hooks, which have no direct equivalent"
 )
 
-// hermesInternals: what a Hermes Agent home keeps for itself.
+// hermesInternals: what a Hermes Agent home keeps for itself. Any entry
+// with "cache" in its name is a cache too (see internalWhy).
 var hermesInternals = []internals{
-	{whyProgram, []string{"hermes-agent", "bin", "node", "node_modules", "venv", ".venv"}},
-	{whyCache, []string{"cache", ".cache", "image_cache", "audio_cache", "document_cache", "browser_screenshots",
-		"models_dev_cache.json", "tmp", ".update_check"}},
-	{whyLogs, []string{"logs", "interrupt_debug.log"}},
+	{whyProgram, []string{"hermes-agent", "hermes-setup", "bin", "node", "node_modules", "venv", ".venv"}},
+	{whyApp, []string{"assets", "desktop", "desktop-plugins", "pets"}},
+	{whyCache, []string{"browser_screenshots", "tmp", ".update_check", ".skills_prompt_snapshot.json"}},
+	{whyLogs, []string{"logs", "interrupt_debug.log", "gateway-starts.log"}},
 	{whySessions, []string{"sessions", "state.db", "kanban.db", "kanban", "response_store.db", "memory_store.db",
-		"checkpoints", "sandboxes", ".hermes_history", "channel_directory.json"}},
+		"projects.db", "pending_messages", "checkpoints", "sandboxes", ".hermes_history", "channel_directory.json"}},
 	{whyRunning, []string{"gateway.pid", "gateway_state.json", "processes.json"}},
 	{whyKeys, []string{".env", "auth.json", "auth.lock", "mcp-tokens", "pairing"}},
 	{whyConfig, []string{"config.yaml", "profile.yaml", "honcho.json", "skins"}},
@@ -211,7 +214,7 @@ var hermesInternals = []internals{
 // agents' workspace folders are handled apart (see classify).
 var openclawInternals = []internals{
 	{whyProgram, []string{"bin", "node_modules"}},
-	{whyCache, []string{"cache", ".cache", "tmp", "media", "browser", "canvas", "completions", "update-check.json"}},
+	{whyCache, []string{"tmp", "media", "browser", "canvas", "completions", "update-check.json"}},
 	{whyLogs, []string{"logs"}},
 	{whySessions, []string{"agents", "state", "sessions", "sandboxes", "memory", "subagents", "delivery-queue",
 		"telegram", "devices", "nodes"}},
@@ -243,6 +246,8 @@ func internalWhy(from, name string) string {
 	low := strings.ToLower(name)
 	switch {
 	case why != "":
+	case strings.Contains(low, "cache"):
+		why = whyCache
 	case from == OpenClaw && strings.HasPrefix(low, "openclaw.json."):
 		why = whyConfig // its own backups of the config
 	case strings.HasSuffix(low, ".sock"), strings.HasSuffix(low, ".pid"), strings.HasSuffix(low, ".lock"):
@@ -254,6 +259,25 @@ func internalWhy(from, name string) string {
 		why = fmt.Sprintf(why, Label(from))
 	}
 	return why
+}
+
+// innerInternals are files the agent keeps inside a folder that is
+// otherwise the user's: entry name -> patterns of the files directly in
+// it. A Hermes Agent home's state folder holds the user's script state
+// next to the gateway's own.
+var innerInternals = map[string]map[string][]string{
+	Hermes: {"state": {"gateway.*", "gateway_*"}},
+}
+
+// innerInternal reports whether the file rel (a slash path inside the
+// entry) belongs to the agent itself.
+func innerInternal(from, entry, rel string) bool {
+	for _, pattern := range innerInternals[from][entry] {
+		if ok, _ := path.Match(pattern, rel); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // planFiles finds the references into the source home, decides what each
@@ -332,7 +356,7 @@ func (p *Plan) planFiles() error {
 			if e.Kind != "folder" && e.Kind != "file" {
 				continue
 			}
-			e.inside = scanInside(e.Source, fp.Max, h)
+			e.inside = scanInside(e.Source, fp.Max, h, func(rel string) bool { return innerInternal(f.From, e.base(), rel) })
 			for _, rel := range sortedKeys(e.inside) {
 				where := e.Name
 				if rel != "." {
@@ -589,28 +613,31 @@ func skillFiles(dir string, fn func(rel string, data []byte)) error {
 // scanInside looks for references in the text files of an entry a copy
 // would take: file (relative to root, "." for root itself) -> entry ->
 // references. What cannot be read is passed over; the copy reports it.
-func scanInside(root string, maxSize int64, h *homeRefs) map[string]map[string]int {
+func scanInside(root string, maxSize int64, h *homeRefs, skip func(rel string) bool) map[string]map[string]int {
 	out := map[string]map[string]int{}
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(file string, d fs.DirEntry, err error) error {
 		if err != nil || !d.Type().IsRegular() {
 			return nil
 		}
+		rel, _ := filepath.Rel(root, file)
 		info, err := d.Info()
-		if err != nil || info.Size() > rewriteCap || maxSize > 0 && info.Size() > maxSize {
+		if err != nil || info.Size() > rewriteCap || maxSize > 0 && info.Size() > maxSize || skip(filepath.ToSlash(rel)) {
 			return nil
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(file)
 		if err != nil || !isText(data) {
 			return nil
 		}
 		if keys := h.count(string(data)); len(keys) > 0 {
-			rel, _ := filepath.Rel(root, path)
 			out[rel] = keys
 		}
 		return nil
 	})
 	return out
 }
+
+// base is the entry's own name, without the nested home it is in.
+func (e *FileEntry) base() string { return e.key[strings.LastIndex(e.key, "/")+1:] }
 
 // rewritten returns a copy of f whose text names the copies.
 func (f *Found) rewritten(rw *rewriter) *Found {
@@ -882,5 +909,8 @@ func (p *Plan) writeEntry(w io.Writer, e *FileEntry) {
 	}
 	if st.Special > 0 {
 		fmt.Fprintf(w, "      leaves out %s\n", plural(st.Special, "socket or device file"))
+	}
+	if st.Internal > 0 {
+		fmt.Fprintf(w, "      leaves out %s that %s keeps there for itself\n", plural(st.Internal, "file"), Label(p.Found.From))
 	}
 }

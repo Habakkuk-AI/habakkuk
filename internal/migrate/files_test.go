@@ -110,6 +110,7 @@ func hermesWorld(t *testing.T) *world {
 	w.write("workspaces/briefs/monday.md", "Brief for Monday.\n", 0o644)
 	w.write("workspaces/reports/q3.md", "Quarterly numbers.\n", 0o644)
 	w.write("state/inbox.json", `{"last_uid": 4411}`+"\n", 0o600)
+	w.write("state/gateway.lifecycle.json", `{"pid": 4242}`+"\n", 0o600) // the agent's own, in the user's folder
 	w.write("notes.txt", "Call the plumber.\n", 0o644)
 	w.write("scripts/inbox_sync.py", `#!/usr/bin/env python3
 import json, os
@@ -299,6 +300,10 @@ func TestFilesCopyRewritesReferences(t *testing.T) {
 	}
 	if res.Files == nil || res.Files.Totals().Copy != 7 {
 		t.Errorf("copied %+v, want 7 files", res.Files)
+	}
+	// The gateway's own file in the state folder stays behind.
+	if _, err := os.Stat(filepath.Join(files, "state", "gateway.lifecycle.json")); err == nil || res.Files.Stats["state"].Internal != 1 {
+		t.Errorf("state: %+v; the agent's own file must not be copied", res.Files.Stats["state"])
 	}
 
 	has := func(what, text string, want []string, not []string) {
@@ -1121,10 +1126,15 @@ func TestParseSize(t *testing.T) {
 
 func TestInternalsAreNeverUserData(t *testing.T) {
 	for from, names := range map[string][]string{
-		Hermes: {".env", "auth.json", "config.yaml", "state.db", "state.db-wal", "sessions", "logs", "hermes-agent", "node_modules",
-			"cache", "platforms", "skills", "memories", "cron", "profiles", "gateway.pid", "agent.sock", "auth.lock", "plugins"},
+		// The Hermes Agent names are the top level of a real home.
+		Hermes: {".env", ".skills_prompt_snapshot.json", ".update_check", "SOUL.md", "assets", "audio_cache", "auth.json", "auth.lock",
+			"bin", "bootstrap-cache", "cache", "config.yaml", "context_length_cache.yaml", "cron", "desktop", "desktop-plugins",
+			"gateway-starts.log", "gateway_state.json", "hermes-agent", "hermes-setup", "hooks", "image_cache", "logs", "memories",
+			"models_dev_cache.etag", "models_dev_cache.json", "node", "ollama_cloud_models_cache.json", "pairing", "pending_messages",
+			"pets", "platforms", "plugins", "profile.yaml", "profiles", "projects.db", "provider_models_cache.json", "sessions",
+			"skills", "state.db", "state.db-wal", "node_modules", "gateway.pid", "agent.sock"},
 		OpenClaw: {".env", "openclaw.json", "openclaw.json.bak", "credentials", "agents", "state", "logs", "skills", "cron",
-			"extensions", "node_modules", "gateway.sock"},
+			"extensions", "node_modules", "gateway.sock", "cache"},
 	} {
 		for _, name := range names {
 			if internalWhy(from, name) == "" {
@@ -1144,5 +1154,9 @@ func TestInternalsAreNeverUserData(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && internalWhy(Hermes, "LOGS") != "" {
 		t.Error("names are matched exactly where the file system is")
+	}
+	if !innerInternal(Hermes, "state", "gateway.lifecycle.json") || innerInternal(Hermes, "state", "inbox.json") ||
+		innerInternal(Hermes, "state", "sub/gateway.json") || innerInternal(Hermes, "scripts", "gateway.py") || innerInternal(OpenClaw, "state", "gateway.x") {
+		t.Error("only the gateway's files directly in a Hermes Agent state folder are the agent's own")
 	}
 }
