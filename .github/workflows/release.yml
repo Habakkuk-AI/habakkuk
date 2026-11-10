@@ -2,9 +2,18 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # A rehearsal, started by hand from the Actions tab or with
+  # `gh workflow run release.yml`: it tests, builds, signs and packages
+  # everything a release does, then keeps the files as workflow artifacts
+  # for a week. It creates no release and pushes no image.
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  # The tag on a real release; a stand-in on a rehearsal.
+  TAG: ${{ github.event_name == 'push' && github.ref_name || 'v0.0.0-rehearsal' }}
 
 jobs:
   test:
@@ -32,8 +41,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -120,6 +127,7 @@ jobs:
           fi
           cat "$RUNNER_TEMP/notes.md"
       - name: Release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -132,6 +140,16 @@ jobs:
           gh release create "$TAG" $files \
             --repo "$GITHUB_REPOSITORY" --verify-tag --title "Habakkuk $TAG" \
             --notes-file "$RUNNER_TEMP/notes.md" --generate-notes $pre
+      - name: Keep the files (rehearsal)
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: habakkuk-rehearsal
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS*
+          retention-days: 7
 
   # Habakkuk Desktop (apps/desktop, Wails v3, a module of its own): a universal
   # Habakkuk.app as .zip and .dmg, a Windows .exe and a Linux tar.gz, attached
@@ -151,8 +169,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
-    env:
-      TAG: ${{ github.ref_name }}
     defaults:
       run:
         shell: bash
@@ -173,9 +189,17 @@ jobs:
       - name: Build
         run: VERSION="$TAG" apps/desktop/scripts/package.sh "${{ matrix.target }}"
       - name: Upload
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" apps/desktop/dist/Habakkuk-Desktop_* --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Keep the files (rehearsal)
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: habakkuk-desktop-rehearsal-${{ matrix.target }}
+          path: apps/desktop/dist/Habakkuk-Desktop_*
+          retention-days: 7
 
   # Multi-arch image on ghcr.io: <version> always, latest for non-prerelease
   # tags. The Go build cross-compiles; QEMU only runs the base image's apt.
@@ -187,13 +211,12 @@ jobs:
     permissions:
       contents: read
       packages: write
-    env:
-      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
+        if: github.event_name == 'push'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -210,13 +233,13 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ env.TAG }}
             COMMIT=${{ github.sha }}
             DATE=${{ steps.tags.outputs.date }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.version=${{ env.TAG }}
             org.opencontainers.image.licenses=Apache-2.0
