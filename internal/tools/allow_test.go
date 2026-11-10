@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 // deciding answers every request with one Decision and counts them.
 type deciding struct {
 	d    Decision
+	by   string
 	asks int
 	last ApprovalRequest
 }
@@ -22,10 +24,10 @@ func (a *deciding) Approve(_ context.Context, req ApprovalRequest) (bool, error)
 	return a.d != DecisionDeny, nil
 }
 
-func (a *deciding) Decide(_ context.Context, req ApprovalRequest) (Decision, error) {
+func (a *deciding) Decide(_ context.Context, req ApprovalRequest) (Answer, error) {
 	a.asks++
 	a.last = req
-	return a.d, nil
+	return Answer{Decision: a.d, By: a.by}, nil
 }
 
 // ruleRig is a workspace-mode env (exec asks) with the given rules from
@@ -89,7 +91,10 @@ func TestMatchWords(t *testing.T) {
 		{"git status", []string{"git", "status"}, true},
 		{"git status", []string{"git", "status", "-s"}, false},
 		{"git status *", []string{"git", "status"}, true},
-		{"git status *", []string{"git", "status", "-s", "x"}, true},
+		{"git status *", []string{"git", "status", "x", "y"}, true},
+		{"git status *", []string{"git", "status", "-s"}, false}, // options are not "any further arguments"
+		{"git log *", []string{"git", "log", "--", "-weird-file"}, true},
+		{"git log -- *", []string{"git", "log", "--", "-x"}, true},
 		{"git status *", []string{"git", "push"}, false},
 		{"git", []string{"/usr/bin/git"}, false},
 	}
@@ -103,7 +108,7 @@ func TestMatchWords(t *testing.T) {
 func TestRuleValidate(t *testing.T) {
 	good := []Rule{
 		{Tool: "exec", Command: "git status"},
-		{Tool: "exec", Command: "npm run *", In: "~/code/shop"},
+		{Tool: "exec", Command: "git log *", In: "~/code/shop"},
 		{Tool: "exec", Exact: "make build && make test"},
 		{Tool: "write_file", Path: "~/notes"},
 		{Tool: "apply_patch", Path: "/srv/site"},
@@ -125,6 +130,12 @@ func TestRuleValidate(t *testing.T) {
 		{Tool: "write_file", Path: "~/"},
 		{Tool: "write_file", Path: "~/notes", In: "/tmp"},
 		{Tool: "send_email", Path: "/tmp/x"},
+		{Tool: "exec", Command: "sh *"},
+		{Tool: "exec", Command: "python3 *"},
+		{Tool: "exec", Command: "/usr/bin/env *"},
+		{Tool: "exec", Command: "npx *"},
+		{Tool: "exec", Command: "./run.sh"},
+		{Tool: "exec", Command: "git status", Here: true},
 	}
 	for _, r := range bad {
 		if err := r.Validate(); err == nil {
@@ -169,7 +180,7 @@ func TestRuleCoversChannelTurns(t *testing.T) {
 	ap := &countingApprover{yes: false}
 	r, env, _ := ruleRig(t, ap, Rule{Tool: "exec", Command: "echo hi"})
 	env.Mode = ModeFull // the chat still asks for exec: the rule answers
-	env.Policy = &Policy{Channel: "telegram"}
+	env.Policy = &Policy{Channel: "telegram", Place: ChatPlace("telegram", "100")}
 	res := r.Execute(context.Background(), env, call("exec", map[string]any{"command": "echo hi"}))
 	if res.IsError || ap.asks != 0 {
 		t.Fatalf("channel turn with a rule: %+v (asks %d)", res, ap.asks)
@@ -181,7 +192,7 @@ func TestRuleCoversChannelTurns(t *testing.T) {
 func TestRulesNeverCoverATaintedTurn(t *testing.T) {
 	ctx := context.Background()
 	exec := call("exec", map[string]any{"command": "echo hi"})
-	for _, policy := range []*Policy{nil, {Channel: "telegram"}, {Channel: "telegram", Allowed: map[Capability]bool{}}} {
+	for _, policy := range []*Policy{nil, {Channel: "telegram", Place: ChatPlace("telegram", "1")}, {Channel: "telegram", Allowed: map[Capability]bool{}, Place: ChatPlace("telegram", "1")}} {
 		ap := &deciding{d: DecisionDeny}
 		r, env, _ := ruleRig(t, ap, Rule{Tool: "exec", Command: "echo hi"}, Rule{Tool: "exec", Command: "echo *"})
 		env.Policy, env.Taint = policy, NewTaint(true)
@@ -226,7 +237,7 @@ func TestRulesNeverCoverAGuest(t *testing.T) {
 	ap := &deciding{d: DecisionAlways}
 	notes := t.TempDir()
 	r, env, rf := ruleRig(t, ap, Rule{Tool: "exec", Command: "echo hi"}, Rule{Tool: "write_file", Path: notes})
-	env.Policy = &Policy{Channel: "whatsapp", Guest: true}
+	env.Policy = &Policy{Channel: "whatsapp", Guest: true, Place: ChatPlace("whatsapp", "1")} // even with a place
 	if res := r.Execute(ctx, env, call("exec", map[string]any{"command": "echo hi"})); !res.IsError {
 		t.Fatalf("guest exec ran on a rule: %+v", res)
 	}
@@ -241,7 +252,7 @@ func TestRulesNeverCoverAGuest(t *testing.T) {
 	}
 	// A guest's call that does go to approval (ask mode) offers no rule
 	// and saves none.
-	env.Mode, env.Policy = ModeAsk, &Policy{Guest: true}
+	env.Mode, env.Policy = ModeAsk, &Policy{Guest: true, Place: PlaceLocal}
 	if _, err := Ask(ctx, env, ApprovalRequest{Tool: "fetch_url", Rule: &Rule{Tool: "exec", Command: "echo x"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +295,7 @@ func TestRulesNeverCoverTheHardline(t *testing.T) {
 
 func TestAlwaysAllowSavesARule(t *testing.T) {
 	ctx := context.Background()
-	ap := &deciding{d: DecisionAlways}
+	ap := &deciding{d: DecisionAlways, by: "7 (Sam)"}
 	r, env, rf := ruleRig(t, ap)
 	c := call("exec", map[string]any{"command": "echo   'hello world'"})
 	res := r.Execute(ctx, env, c)
@@ -295,7 +306,8 @@ func TestAlwaysAllowSavesARule(t *testing.T) {
 		t.Fatalf("offered %+v (agent %q)", ap.last.Rule, ap.last.Agent)
 	}
 	saved, err := rf.Saved()
-	if err != nil || len(saved) != 1 || saved[0].ID == "" || saved[0].Added.IsZero() {
+	if err != nil || len(saved) != 1 || saved[0].ID == "" || saved[0].Added.IsZero() || saved[0].Place != PlaceLocal ||
+		saved[0].SavedBy != "7 (Sam)" || saved[0].Source != "local" || (saved[0].Program == "" && runtime.GOOS != "windows") {
 		t.Fatalf("saved %+v, %v", saved, err)
 	}
 	// The next one runs without asking, and so does the same command
@@ -333,7 +345,7 @@ func TestAlwaysAllowForAComplexCommandSavesItExactly(t *testing.T) {
 		t.Fatal(res.Text)
 	}
 	saved, _ := rf.Saved()
-	if len(saved) != 1 || saved[0].Exact != cmd || saved[0].Command != "" {
+	if len(saved) != 1 || saved[0].Exact != cmd || saved[0].Command != "" || !saved[0].Here {
 		t.Fatalf("saved %+v", saved)
 	}
 }
@@ -344,7 +356,7 @@ func TestWriteRuleCoversItsFolder(t *testing.T) {
 	notes := filepath.Join(t.TempDir(), "reports")
 	os.MkdirAll(notes, 0o755)
 	r, env, _ := ruleRig(t, ap, Rule{Tool: "write_file", Path: notes})
-	env.Policy = &Policy{Channel: "slack"}
+	env.Policy = &Policy{Channel: "slack", Place: ChatPlace("slack", "C1")}
 	write := func(p string) (bool, int) {
 		ap.asks = 0
 		res := r.Execute(ctx, env, call("write_file", map[string]any{"path": p, "content": "x"}))

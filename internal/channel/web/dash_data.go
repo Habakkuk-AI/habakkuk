@@ -875,7 +875,8 @@ func (s *Server) approvals(w http.ResponseWriter, _ *http.Request) {
 type ruleView struct {
 	tools.Rule
 	Agent string `json:"agent"`
-	Text  string `json:"text"` // what it covers, in a few words
+	Text  string `json:"text"`  // what it covers, in a few words
+	Where string `json:"where"` // where it applies
 }
 
 // approvalRules lists every agent's approval rules: agents.<name>.allow
@@ -891,7 +892,7 @@ func (s *Server) approvalRules(w http.ResponseWriter, _ *http.Request) {
 			if r.Source == "" {
 				r.Source = "saved"
 			}
-			out = append(out, ruleView{Rule: r, Agent: name, Text: r.String()})
+			out = append(out, ruleView{Rule: r, Agent: name, Text: r.String(), Where: r.Where()})
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"rules": out})

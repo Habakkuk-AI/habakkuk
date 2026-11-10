@@ -78,6 +78,9 @@ type TurnPayload struct {
 	// Task names that work in one line for home reports.
 	Source string `json:"source,omitempty"`
 	Task   string `json:"task,omitempty"`
+	// Tainted: the work was set up by a turn that had read outside content
+	// (a schedule or board card it created), so this turn starts tainted.
+	Tainted bool `json:"tainted,omitempty"`
 }
 
 // Attachment is a file that came with a user message. The bytes live in the
@@ -138,6 +141,8 @@ type Turn struct {
 	Task    string // a one-line name for it
 	// Background: nobody is waiting on this turn (see TurnPayload).
 	Background bool
+	// Tainted: set up by a turn that had read outside content (TurnPayload).
+	Tainted bool
 }
 
 // Sender is the model call. *llm.Router implements it; tests use fakes.
@@ -258,7 +263,7 @@ func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
 	return r.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: t.ID, Kind: kind, Agent: sess.Agent, SerialKey: t.Session, Priority: 10,
 		Payload: TurnPayload{Session: t.Session, Text: t.Text, Media: t.Media, Origin: t.Origin, Compact: t.Compact, Sub: t.Sub,
-			Source: t.Source, Task: t.Task, Background: t.Background},
+			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted},
 	})
 }
 
@@ -286,9 +291,10 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	ctx = llm.WithCaller(ctx, caller)
 	ctx = withOrigin(ctx, p.Origin)
-	ctx = withSource(ctx, p.Source, p.Task)
+	ctx = WithSource(ctx, p.Source, p.Task)
 	chain, overridden := r.chainFor(ctx, sess.ID, spec)
-	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden}
+	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden,
+		background: p.Background, tainted: p.Tainted || p.Source == SourceA2A}
 	t.useSub(p.Sub)
 	hook := TurnHookPayload{Event: HookTurnStart, Agent: spec.Name, Session: sess.ID, Job: j.ID, Text: p.Text}
 	r.Fire(ctx, HookTurnStart, spec.Name, hook)
@@ -347,8 +353,15 @@ type turn struct {
 	onFast     bool
 	mainChain  []llm.Target
 	sub        *SubturnSpec // a delegated task's options, or nil
-	msgs       []llm.Message
-	final      string
+	// background: nobody sent this turn a fresh message (a schedule, a
+	// notice); tainted: it starts tainted (TurnPayload.Tainted, or an
+	// inbound A2A task, which is outside content).
+	background, tainted bool
+	// untrusted: by the end, outside content may have steered the turn
+	// (tools.Env.Untrusted); a background result it hands back carries it.
+	untrusted func() bool
+	msgs      []llm.Message
+	final     string
 
 	// Compaction state (compact.go). msgs is always the whole transcript;
 	// the model sees summary plus msgs[base:].
@@ -408,7 +421,12 @@ func (t *turn) run(userText string, media []Attachment) error {
 		env.Approver = t.r.Approvers(t.sess.ID)
 	}
 	t.applyPolicy(env)
+	if t.tainted {
+		env.Taint.Mark()
+	}
 	t.restoreTaint(env, recs)
+	t.pauseRules(env, recs)
+	t.untrusted = env.Untrusted
 	var pending []string
 	if t.r.ToolsPending != nil {
 		pending = t.r.ToolsPending(t.ctx, t.toolsets())

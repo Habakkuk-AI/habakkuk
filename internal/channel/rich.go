@@ -40,7 +40,9 @@ func (g *Gateway) offer(labels []Button, tag string, h buttonHandler) ([][]Butto
 	var b [6]byte
 	rand.Read(b[:])
 	nonce := hex.EncodeToString(b[:])
-	g.buttons.Store(nonce, h)
+	if h != nil {
+		g.buttons.Store(nonce, h)
+	}
 	rows := make([][]Button, 0, len(labels))
 	var row []Button
 	for i, l := range labels {
@@ -132,11 +134,11 @@ func (g *Gateway) callback(ctx context.Context, ch *config.Channel, m Message, t
 		g.reply(to, g.t(to, "button.expired_pending"))
 		return
 	}
-	if !p.resolve(d) {
+	if !p.resolve(d, answerer(m)) {
 		g.reply(to, g.t(to, "button.expired")) // a second press on a prompt just answered
 		return
 	}
-	g.reply(to, g.decided(to, p.req, d))
+	g.reply(to, g.decided(to, d))
 }
 
 // buttonDecision reads a press of an approval's button i: Allow once,
@@ -154,36 +156,30 @@ func buttonDecision(i int, always bool) (tools.Decision, bool) {
 }
 
 // decided is the chat's notice for an answer.
-func (g *Gateway) decided(to Address, req tools.ApprovalRequest, d tools.Decision) string {
+func (g *Gateway) decided(to Address, d tools.Decision) string {
 	switch d {
 	case tools.DecisionOnce:
 		return g.t(to, "approval.approved")
 	case tools.DecisionAlways:
-		return g.t(to, "approval.always_saved", g.ruleText(g.lang(to), req))
+		return g.t(to, "approval.always_saved", g.scope(g.lang(to), to))
 	}
 	return g.t(to, "approval.denied")
 }
 
 // approvalButtons are an approval prompt's buttons: Allow once, Always
 // allow and Deny when the call can get a rule, Approve and Deny when it
-// cannot. hash is the call's (callHash).
-func (g *Gateway) approvalButtons(to Address, hash string, always bool) ([][]Button, func()) {
+// cannot. hash is the call's (callHash). A press is answered by callback
+// against the request waiting now, and only when the hash it carries is
+// that request's: a late press can never answer, or save a rule for, the
+// next prompt.
+func (g *Gateway) approvalButtons(to Address, hash string, always bool) [][]Button {
 	buttons := []Button{{Text: g.t(to, "button.approve"), Style: ButtonPrimary}, {Text: g.t(to, "button.deny"), Style: ButtonDanger}}
 	if always {
 		buttons = []Button{{Text: g.t(to, "button.allow_once"), Style: ButtonPrimary}, {Text: g.t(to, "button.always")},
 			{Text: g.t(to, "button.deny"), Style: ButtonDanger}}
 	}
-	return g.offer(buttons, hash, func(i int) string {
-		d, ok := buttonDecision(i, always)
-		if !ok {
-			return g.t(to, "button.expired")
-		}
-		v, found := g.pending.Load(to.key())
-		if !found || !v.(*pendingApproval).resolve(d) {
-			return g.t(to, "button.expired")
-		}
-		return g.decided(to, v.(*pendingApproval).req, d)
-	})
+	rows, _ := g.offer(buttons, hash, nil)
+	return rows
 }
 
 // choiceButtons are buttons for one clarify question's choices; a press

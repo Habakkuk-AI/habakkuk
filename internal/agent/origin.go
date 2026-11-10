@@ -57,9 +57,10 @@ type sourceKey struct{}
 
 type source struct{ source, task string }
 
-// withSource notes what started the running turn (TurnPayload.Source and
-// Task), so an approver can tell a scheduled run from a chat message.
-func withSource(ctx context.Context, src, task string) context.Context {
+// WithSource notes what started the running turn (TurnPayload.Source and
+// Task), so an approver can tell a scheduled run from a chat message. The
+// runner sets it on every turn.
+func WithSource(ctx context.Context, src, task string) context.Context {
 	if src == "" {
 		return ctx
 	}

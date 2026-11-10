@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/habakkuk-ai/habakkuk/internal/core/platform"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 )
@@ -22,19 +25,25 @@ import (
 // yes to:
 //
 //   - a command: a program and its arguments ("git status"), where a final
-//     "*" takes any further arguments ("npm run *"), run in a folder (the
-//     workspace unless the rule names one);
+//     "*" in the config takes any further arguments that are not options
+//     ("git log *"), run in a folder (the workspace unless the rule names
+//     one);
 //   - an exact command line, for commands with pipes, redirects or other
 //     shell syntax a pattern cannot judge;
 //   - a file tool (write_file, edit_file, apply_patch) writing inside a
 //     folder.
 //
-// Rules come from the config (agents.<name>.allow) and from "Always allow"
-// answers, which are saved in the agent's folder. A rule never answers:
+// Rules come from the config (agents.<name>.allow), which apply wherever
+// rules apply, and from "Always allow" answers, which are saved in the
+// agent's folder and apply only where they were given: in that chat, or
+// on this machine (Policy.Place). A rule never answers:
 //
-//   - for a turn that has read outside content (it is tainted): the same
-//     text that steered the agent could have written the command;
-//   - for a guest's turn: only the owner's own requests are covered;
+//   - for a turn that has read outside content (it is tainted), nor for a
+//     turn nobody sent a fresh message after an earlier tainted turn in
+//     its session (Env.RulesPaused): the same text that steered the agent
+//     could have written the command;
+//   - for a turn that is not the owner's: a guest's, an inbound A2A task's
+//     or a webhook's (Policy.Place is "");
 //   - for a call that always needs a person: a ConfirmTool's, or a write
 //     to the agent's instruction files or to its saved rules;
 //   - for a command on the hardline blocklist, which never runs at all.
@@ -45,23 +54,65 @@ type Rule struct {
 	// Tool is exec, or the file tool the rule covers.
 	Tool string `json:"tool"`
 	// Command is a program and its arguments, as you would type them; a
-	// final "*" takes any further arguments. Exact is a command line that
-	// must match character for character. An exec rule has one of the two.
+	// final "*" takes any further arguments that are not options. Exact is
+	// a command line that must match character for character. An exec rule
+	// has one of the two.
 	Command string `json:"command,omitempty"`
 	Exact   string `json:"exact,omitempty"`
 	// In is the folder an exec rule's command must run in, or below; ""
-	// is the agent's workspace.
-	In string `json:"in,omitempty"`
+	// is the agent's workspace. Here makes it that folder exactly: a
+	// command that names files by relative path means other files in
+	// another folder.
+	In   string `json:"in,omitempty"`
+	Here bool   `json:"here,omitempty"`
+	// Program is where the command's program was when the rule was saved
+	// (a resolved, absolute path); a call whose program resolves elsewhere
+	// is not covered. "" compares the program as written.
+	Program string `json:"program,omitempty"`
 	// Path is the folder a file tool's rule lets it write in, or below.
 	Path string `json:"path,omitempty"`
+	// Place is where the rule applies: "" (a config rule) wherever rules
+	// apply, PlaceLocal on this machine, or one ChatPlace.
+	Place string `json:"place,omitempty"`
+	// SavedBy names who answered "Always allow" ("7 (Sam)").
+	SavedBy string `json:"saved_by,omitempty"`
 	// Added is when the rule was saved; Source is where it came from
-	// ("chat", "terminal", "config").
+	// ("chat", "local", "config").
 	Added  time.Time `json:"added,omitzero"`
 	Source string    `json:"source,omitempty"`
 }
 
 // RuleTools are the file tools a rule can cover, besides exec.
 var RuleTools = []string{"write_file", "edit_file", "apply_patch"}
+
+// exactOnly is set where commands run in PowerShell (Windows): patterns
+// split words the way a POSIX shell does, so until there is a PowerShell
+// tokenizer only exact command lines are covered there.
+var exactOnly = runtime.GOOS == "windows"
+
+// maxOffered is the longest command "Always allow" is offered for: longer
+// ones do not fit clearly in a chat prompt.
+const maxOffered = 300
+
+// starRefused are programs a "*" rule may not name: with any arguments they
+// run any code (shells, interpreters, package runners, wrappers).
+var starRefused = []string{"sh", "bash", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "pwsh", "powershell", "cmd",
+	"python", "python2", "python3", "node", "deno", "bun", "ruby", "perl", "php", "osascript", "lua", "tclsh",
+	"npx", "bunx", "pnpx", "uvx", "env", "sudo", "doas", "xargs", "nohup", "nice", "time", "exec", "command",
+	"busybox", "eval", "ssh"}
+
+func refusesStar(program string) bool {
+	base := strings.ToLower(strings.TrimSuffix(filepath.Base(program), ".exe"))
+	if slices.Contains(starRefused, base) {
+		return true
+	}
+	for _, p := range []string{"python", "pwsh", "ruby", "perl", "php", "node"} { // python3.12, perl5.30
+		if strings.HasPrefix(base, p) {
+			return true
+		}
+	}
+	return false
+}
 
 // Validate checks that the rule says one clear thing.
 func (r Rule) Validate() error {
@@ -74,15 +125,28 @@ func (r Rule) Validate() error {
 			return errors.New("path is for file tools; an exec rule takes in")
 		}
 		if r.Command != "" {
-			if _, _, ok := parsePattern(r.Command); !ok {
+			if exactOnly {
+				return errors.New("on Windows only exact command lines can be allowed for now: use exact")
+			}
+			words, any, ok := parsePattern(r.Command)
+			if !ok {
 				return fmt.Errorf("command %q is not a plain program and arguments (no pipes, redirects, variables, wildcards or ~; a final * takes any further arguments)", r.Command)
+			}
+			if any && refusesStar(words[0]) {
+				return fmt.Errorf("command %q: a rule ending in * may not name %s, which would then run anything; allow the exact commands instead", r.Command, filepath.Base(words[0]))
+			}
+			if relativePath(words[0]) && (r.Program == "" || !r.Here) {
+				return fmt.Errorf("command %q: give the program's full path", r.Command)
 			}
 		}
 		if r.In != "" && !absOrHome(r.In) {
 			return fmt.Errorf("in %q must be an absolute path or start with ~/", r.In)
 		}
+		if r.Here && r.In == "" {
+			return errors.New("here needs in")
+		}
 	case slices.Contains(RuleTools, r.Tool):
-		if r.Command != "" || r.Exact != "" || r.In != "" {
+		if r.Command != "" || r.Exact != "" || r.In != "" || r.Here || r.Program != "" {
 			return fmt.Errorf("a %s rule takes only path", r.Tool)
 		}
 		if !absOrHome(r.Path) {
@@ -105,12 +169,23 @@ func (r Rule) String() string {
 	case r.Command != "":
 		cmd, more := r.Pattern()
 		if more {
-			return fmt.Sprintf("exec `%s` with any further arguments, in %s", cmd, r.folder())
+			return fmt.Sprintf("exec `%s` with any further arguments (not options), in %s", cmd, r.folder())
 		}
 		return fmt.Sprintf("exec `%s` in %s", cmd, r.folder())
 	default:
 		return fmt.Sprintf("%s in %s", r.Tool, r.Path)
 	}
+}
+
+// Where says where the rule applies.
+func (r Rule) Where() string {
+	switch {
+	case r.Place == "":
+		return "everywhere rules apply"
+	case r.Place == PlaceLocal:
+		return "on this machine"
+	}
+	return "in chat " + strings.TrimPrefix(r.Place, "chat:")
 }
 
 // Pattern is an exec rule's command as a program and arguments, with more
@@ -124,15 +199,19 @@ func (r Rule) Pattern() (cmd string, more bool) {
 }
 
 func (r Rule) folder() string {
-	if r.In == "" {
+	switch {
+	case r.In == "":
 		return "the workspace"
+	case r.Here:
+		return r.In + " (that folder only)"
 	}
 	return r.In
 }
 
-// same reports whether two rules cover the same calls.
+// same reports whether two rules cover the same calls in the same place.
 func (r Rule) same(o Rule) bool {
-	return r.Tool == o.Tool && r.Command == o.Command && r.Exact == o.Exact &&
+	return r.Tool == o.Tool && r.Command == o.Command && r.Exact == o.Exact && r.Here == o.Here &&
+		r.Program == o.Program && r.Place == o.Place &&
 		filepath.Clean(expandHome(r.In)) == filepath.Clean(expandHome(o.In)) &&
 		filepath.Clean(expandHome(r.Path)) == filepath.Clean(expandHome(o.Path))
 }
@@ -162,16 +241,6 @@ type RuleFile struct {
 	Config []Rule
 }
 
-// ruleLocks serialize changes to each rules file: every turn gets its own
-// RuleFile, and two turns may save at once.
-var ruleLocks sync.Map // path -> *sync.Mutex
-
-func (f *RuleFile) lock() func() {
-	m, _ := ruleLocks.LoadOrStore(filepath.Clean(f.Path), &sync.Mutex{})
-	m.(*sync.Mutex).Lock()
-	return m.(*sync.Mutex).Unlock
-}
-
 // RulesFileName is the file in an agent's folder that holds its saved
 // rules.
 const RulesFileName = "approvals.json"
@@ -181,11 +250,39 @@ type ruleDoc struct {
 	Rules   []Rule `json:"rules"`
 }
 
+// ruleLocks serialize changes to each rules file within this process;
+// lock takes the file lock too, so `hk approvals rm` and a running server
+// never undo each other's change.
+var ruleLocks sync.Map // path -> *sync.Mutex
+
+func (f *RuleFile) lock() (func(), error) {
+	m, _ := ruleLocks.LoadOrStore(filepath.Clean(f.Path), &sync.Mutex{})
+	m.(*sync.Mutex).Lock()
+	if err := os.MkdirAll(filepath.Dir(f.Path), 0o700); err != nil {
+		m.(*sync.Mutex).Unlock()
+		return nil, err
+	}
+	lf, err := os.OpenFile(f.Path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		m.(*sync.Mutex).Unlock()
+		return nil, err
+	}
+	if err := platform.Lock(lf); err != nil {
+		lf.Close()
+		m.(*sync.Mutex).Unlock()
+		return nil, err
+	}
+	return func() {
+		_ = platform.Unlock(lf)
+		lf.Close()
+		m.(*sync.Mutex).Unlock()
+	}, nil
+}
+
 func (f *RuleFile) File() string { return f.Path }
 
 // Saved reads the saved rules.
 func (f *RuleFile) Saved() ([]Rule, error) {
-	defer f.lock()()
 	return f.read()
 }
 
@@ -203,6 +300,9 @@ func (f *RuleFile) read() ([]Rule, error) {
 	}
 	out := doc.Rules[:0]
 	for _, r := range doc.Rules {
+		if r.Place == "" {
+			r.Place = PlaceLocal // only config rules apply everywhere
+		}
 		if r.Validate() == nil { // a hand edit that broke a rule drops it, not the rest
 			out = append(out, r)
 		}
@@ -215,9 +315,6 @@ func (f *RuleFile) write(rules []Rule) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(f.Path), 0o700); err != nil {
-		return err
-	}
 	return store.WriteFileAtomic(f.Path, append(data, '\n'), 0o600)
 }
 
@@ -227,17 +324,24 @@ func (f *RuleFile) Rules() []Rule {
 		if out[i].ID == "" {
 			out[i].ID = fmt.Sprintf("config-%d", i+1)
 		}
-		out[i].Source = "config"
+		out[i].Source, out[i].Place = "config", ""
 	}
 	saved, _ := f.Saved() // an unreadable file covers nothing: people are asked
 	return append(out, saved...)
 }
 
 func (f *RuleFile) Save(r Rule) (Rule, error) {
+	if r.Place == "" {
+		r.Place = PlaceLocal
+	}
 	if err := r.Validate(); err != nil {
 		return Rule{}, err
 	}
-	defer f.lock()()
+	unlock, err := f.lock()
+	if err != nil {
+		return Rule{}, err
+	}
+	defer unlock()
 	rules, err := f.read()
 	if err != nil {
 		return Rule{}, err
@@ -259,7 +363,11 @@ func (f *RuleFile) Save(r Rule) (Rule, error) {
 
 // Remove deletes a saved rule by ID; it reports whether there was one.
 func (f *RuleFile) Remove(id string) (bool, error) {
-	defer f.lock()()
+	unlock, err := f.lock()
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
 	rules, err := f.read()
 	if err != nil {
 		return false, err
@@ -277,22 +385,39 @@ func newRuleID() string {
 	return "r" + hex.EncodeToString(b)
 }
 
+// turnPlace is where the turn stands for rules (Policy.Place).
+func turnPlace(env *Env) string {
+	if env.Policy == nil {
+		return PlaceLocal
+	}
+	return env.Policy.Place
+}
+
 // rulesApply reports whether saved rules may answer for this turn at all:
-// never for a tainted turn or a guest's.
+// never for a tainted turn, one whose rules are paused, or one that is not
+// the owner's.
 func rulesApply(env *Env) bool {
-	if env.Rules == nil || env.Taint.Marked() {
+	if env.Rules == nil || env.Untrusted() || turnPlace(env) == "" {
 		return false
 	}
 	return env.Policy == nil || !env.Policy.Guest
 }
 
-// coveredByRule returns the rule that answers for a call, if one does.
-// Callers have already ruled out calls that always need a person.
+// coveredByRule returns the rule that answers for a call, if one does:
+// one from the config, or one saved where this turn is. Callers have
+// already ruled out calls that always need a person.
 func coveredByRule(env *Env, t Tool, call llm.Block) (Rule, bool) {
 	if !rulesApply(env) {
 		return Rule{}, false
 	}
-	return matchRule(env, t, call, env.Rules.Rules())
+	place := turnPlace(env)
+	var here []Rule
+	for _, r := range env.Rules.Rules() {
+		if r.Place == "" || r.Place == place {
+			here = append(here, r)
+		}
+	}
+	return matchRule(env, t, call, here)
 }
 
 // matchRule returns the first of rules that covers the call.
@@ -306,16 +431,19 @@ func matchRule(env *Env, t Tool, call llm.Block, rules []Rule) (Rule, bool) {
 		if err != nil || strings.TrimSpace(in.Command) == "" || mentionsGuarded(in.Command) {
 			return Rule{}, false
 		}
-		cwd := env.Resolve(in.Cwd)
+		cwd, ok := realPath(env.Resolve(in.Cwd))
+		if !ok {
+			return Rule{}, false
+		}
 		words, simple := shellWords(in.Command)
 		for _, r := range rules {
-			if r.Tool != "exec" || !runsIn(env, r.In, cwd) {
+			if r.Tool != "exec" || !runsIn(env, r, cwd) {
 				continue
 			}
 			if r.Exact != "" && strings.TrimSpace(r.Exact) == strings.TrimSpace(in.Command) {
 				return r, true
 			}
-			if r.Command != "" && simple && matchWords(r.Command, words) {
+			if r.Command != "" && simple && !exactOnly && matchWords(r.Command, words) && sameProgram(env, r, words[0], cwd) {
 				return r, true
 			}
 		}
@@ -351,7 +479,7 @@ func allUnder(env *Env, targets, roots, protected []string) bool {
 	for _, target := range targets {
 		abs := env.Resolve(target)
 		real, ok := realPath(abs)
-		if !ok || guardedPath(env, abs) != "" || guardedPath(env, real) != "" ||
+		if !ok || guardedTarget(env, abs) != "" ||
 			underAny(protected, real) || underAny(protected, abs) || !inTrusted(roots, real) {
 			return false
 		}
@@ -359,18 +487,101 @@ func allUnder(env *Env, targets, roots, protected []string) bool {
 	return len(targets) > 0
 }
 
-// runsIn reports whether a command run in cwd is in the rule's folder.
-func runsIn(env *Env, in, cwd string) bool {
-	real, ok := realPath(cwd)
+// runsIn reports whether a command run in cwd (resolved) is in the rule's
+// folder.
+func runsIn(env *Env, r Rule, cwd string) bool {
+	dir := env.Workspace
+	if r.In != "" {
+		dir = expandHome(r.In)
+	}
+	root, ok := realPath(dir)
 	if !ok {
 		return false
 	}
-	if in == "" {
-		ws, ok := realPath(env.Workspace)
-		return ok && underAny([]string{ws}, real)
+	if r.Here {
+		return root == cwd
 	}
-	root, ok := realPath(expandHome(in))
-	return ok && underAny([]string{root}, real)
+	return underAny([]string{root}, cwd)
+}
+
+// sameProgram reports whether a command's program is the one the rule was
+// saved for: the same resolved file, when the rule recorded it.
+func sameProgram(env *Env, r Rule, program, cwd string) bool {
+	if r.Program == "" {
+		return !relativePath(program)
+	}
+	got := resolveProgram(env, program, cwd)
+	return got != "" && got == r.Program
+}
+
+// resolveProgram is where a program runs from: a path is resolved against
+// cwd, a bare name is looked up in PATH. "" when it cannot be said (not
+// found, or the command runs on another host).
+func resolveProgram(env *Env, program, cwd string) string {
+	if env.remote() {
+		return ""
+	}
+	p := program
+	if strings.ContainsAny(program, `/\`) {
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(cwd, p)
+		}
+	} else {
+		found, err := exec.LookPath(program)
+		if err != nil {
+			return ""
+		}
+		p = found
+	}
+	if !filepath.IsAbs(p) {
+		var err error
+		if p, err = filepath.Abs(p); err != nil {
+			return ""
+		}
+	}
+	real, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return ""
+	}
+	return real
+}
+
+// relativePath reports whether a word names a path relative to where the
+// command runs ("./run.sh", "src/x", "..").
+func relativePath(w string) bool {
+	if w == "" || filepath.IsAbs(w) || strings.HasPrefix(w, "~") {
+		return false
+	}
+	return strings.ContainsAny(w, `/\`) || w == "." || w == ".." || strings.HasPrefix(w, "./") || strings.HasPrefix(w, "../")
+}
+
+// namesRelative reports whether a command names something relative to the
+// folder it runs in: a program by path, or an argument that is a relative
+// path or a file there. Such a command means other files elsewhere, so its
+// rule is pinned to the folder.
+func namesRelative(words []string, cwd string) bool {
+	for i, w := range words {
+		v := w
+		if i > 0 && strings.HasPrefix(w, "-") {
+			_, val, ok := strings.Cut(w, "=")
+			if !ok {
+				continue
+			}
+			v = val
+		}
+		if v == "" || filepath.IsAbs(v) {
+			continue
+		}
+		if relativePath(v) || strings.HasPrefix(v, ".") {
+			return true
+		}
+		if i > 0 {
+			if _, err := os.Lstat(filepath.Join(cwd, v)); err == nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // fileTargets lists the paths a file tool's call writes.
@@ -387,8 +598,10 @@ func fileTargets(t Tool, input json.RawMessage) ([]string, bool) {
 }
 
 // ProposeRule is the rule "Always allow" would save for a call, or nil
-// when none should be offered: the turn is tainted or a guest's, the call
-// is not one a rule can cover, or the rule would not cover this very call.
+// when none should be offered: the turn is tainted or not the owner's,
+// the call is not one a rule can cover, its command is too long or holds a
+// backquote or a line break (it would not show plainly in a chat), or the
+// rule would not cover this very call. The caller sets where it applies.
 func ProposeRule(env *Env, t Tool, call llm.Block) *Rule {
 	if !rulesApply(env) {
 		return nil
@@ -398,24 +611,35 @@ func ProposeRule(env *Env, t Tool, call llm.Block) *Rule {
 	case "exec":
 		in, err := decode[execInput](call.Input)
 		cmd := strings.TrimSpace(in.Command)
-		if err != nil || cmd == "" || mentionsGuarded(cmd) || Hardline(cmd) != nil {
+		if err != nil || cmd == "" || len(cmd) > maxOffered || strings.ContainsAny(cmd, "`\n\r") ||
+			mentionsGuarded(cmd) || Hardline(cmd) != nil {
 			return nil
 		}
-		r = Rule{Tool: "exec"}
-		if words, ok := shellWords(cmd); ok && !strings.Contains(words[0], "=") {
-			r.Command = joinWords(words)
-		} else {
-			r.Exact = cmd
+		cwd, ok := realPath(env.Resolve(in.Cwd))
+		if !ok {
+			return nil
 		}
-		if in.Cwd != "" {
-			cwd, ok := realPath(env.Resolve(in.Cwd))
-			ws, wok := realPath(env.Workspace)
-			if !ok {
+		ws, wok := realPath(env.Workspace)
+		r = Rule{Tool: "exec"}
+		words, plain := shellWords(cmd)
+		switch {
+		case plain && !exactOnly:
+			r.Command = joinWords(words)
+			if prog := resolveProgram(env, words[0], cwd); prog != "" {
+				r.Program = prog
+			} else if relativePath(words[0]) {
 				return nil
 			}
-			if !wok || !underAny([]string{ws}, cwd) {
-				r.In = cwd
+			if namesRelative(words, cwd) {
+				r.In, r.Here = cwd, true
 			}
+		default:
+			// An exact line may name files by relative path in ways no
+			// parser here can see: it stays in the folder it ran in.
+			r.Exact, r.In, r.Here = cmd, cwd, true
+		}
+		if r.In == "" && (!wok || !underAny([]string{ws}, cwd)) {
+			r.In = cwd
 		}
 	case "write_file", "edit_file", "apply_patch":
 		targets, ok := fileTargets(t, call.Input)
@@ -490,10 +714,32 @@ func expandHome(p string) string {
 // Guarded files: the agent's instruction files, and its saved approval
 // rules. A write to one always needs a person, in every mode, and no rule
 // covers it: a page the agent read must not be able to rewrite who the
-// agent is or what it may do unasked.
+// agent is or what it may do unasked. Names are compared without regard to
+// case (macOS and Windows disks ignore it), and a file with more than one
+// name (a hard link) is guarded too, since one of its names may be one of
+// these.
 
 // InstructionFiles are the files that make up an agent's instructions.
 var InstructionFiles = []string{"SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md"}
+
+const rulesGuard = "the saved approval rules"
+
+// guardedTarget names what a path is when a write to it is guarded, or "".
+// It looks at the path as written and where it really lands.
+func guardedTarget(env *Env, abs string) string {
+	if name := guardedPath(env, abs); name != "" {
+		return name
+	}
+	if real, ok := realPath(abs); ok {
+		if name := guardedPath(env, real); name != "" {
+			return name
+		}
+	}
+	if fi, err := os.Stat(abs); err == nil && fi.Mode().IsRegular() && platform.Links(fi) > 1 {
+		return "a file with more than one name (a hard link)"
+	}
+	return ""
+}
 
 // guardedPath names what a path is when it is guarded, or "".
 func guardedPath(env *Env, p string) string {
@@ -503,13 +749,21 @@ func guardedPath(env *Env, p string) string {
 			return name
 		}
 	}
-	if env.Rules != nil && env.Rules.File() != "" {
-		f := filepath.Clean(env.Rules.File())
-		if filepath.Clean(p) == f {
-			return "the saved approval rules"
+	if env.Rules == nil || env.Rules.File() == "" {
+		return ""
+	}
+	f := filepath.Clean(env.Rules.File())
+	for _, rf := range []string{f, f + ".lock"} {
+		if strings.EqualFold(filepath.Clean(p), rf) {
+			return rulesGuard
 		}
-		if real, ok := realPath(f); ok && filepath.Clean(p) == real {
-			return "the saved approval rules"
+		if real, ok := realPath(rf); ok && strings.EqualFold(filepath.Clean(p), real) {
+			return rulesGuard
+		}
+		a, aerr := os.Stat(p)
+		b, berr := os.Stat(rf)
+		if aerr == nil && berr == nil && os.SameFile(a, b) {
+			return rulesGuard
 		}
 	}
 	return ""
@@ -525,34 +779,41 @@ func guardedWrite(env *Env, t Tool, call llm.Block) string {
 	}
 	targets, _ := fileTargets(t, call.Input)
 	for _, target := range targets {
-		abs := env.Resolve(target)
-		name := guardedPath(env, abs)
-		if name == "" {
-			if real, ok := realPath(abs); ok {
-				name = guardedPath(env, real)
-			}
-		}
-		if name == "" {
+		switch name := guardedTarget(env, env.Resolve(target)); {
+		case name == "":
 			continue
-		}
-		if name == "the saved approval rules" {
+		case name == rulesGuard:
 			return "it changes the agent's saved approval rules, which always needs your approval"
+		case strings.HasPrefix(name, "a file"):
+			return "it changes " + name + ", which always needs your approval"
+		default:
+			return "it changes " + name + ", one of the agent's instruction files, which always needs your approval"
 		}
-		return "it changes " + name + ", one of the agent's instruction files, which always needs your approval"
 	}
 	return ""
 }
 
-// mentionsGuarded reports whether a command names an instruction file; no
-// rule covers such a command.
+// mentionsGuarded reports whether a command names an instruction file or
+// the rules file, however it is quoted or cased; no rule covers such a
+// command.
 func mentionsGuarded(cmd string) bool {
-	low := strings.ToLower(cmd)
-	for _, name := range InstructionFiles {
-		if strings.Contains(low, strings.ToLower(name)) {
+	plain := strings.ToLower(strings.NewReplacer(`'`, "", `"`, "", `\`, "").Replace(cmd))
+	names := append(slices.Clone(InstructionFiles), RulesFileName)
+	for _, name := range names {
+		if strings.Contains(plain, strings.ToLower(name)) {
 			return true
 		}
 	}
-	return strings.Contains(low, RulesFileName)
+	if words, ok := shellWords(cmd); ok {
+		for _, w := range words {
+			for _, name := range names {
+				if strings.EqualFold(filepath.Base(w), name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // Shell words. Patterns judge only plain commands: a program and its
@@ -647,13 +908,27 @@ func parsePattern(p string) (words []string, any bool, ok bool) {
 	return words, any, ok
 }
 
-// matchWords reports whether a command's words fit a rule's pattern.
+// matchWords reports whether a command's words fit a rule's pattern. The
+// words a final "*" takes may not be options (start with "-"), unless
+// they come after "--".
 func matchWords(pattern string, words []string) bool {
 	want, any, ok := parsePattern(pattern)
 	if !ok || len(words) < len(want) || (!any && len(words) != len(want)) {
 		return false
 	}
-	return slices.Equal(words[:len(want)], want)
+	if !slices.Equal(words[:len(want)], want) {
+		return false
+	}
+	endOfOptions := slices.Contains(want, "--")
+	for _, w := range words[len(want):] {
+		switch {
+		case w == "--" && !endOfOptions:
+			endOfOptions = true
+		case strings.HasPrefix(w, "-") && !endOfOptions:
+			return false
+		}
+	}
+	return true
 }
 
 // joinWords writes words back as a command, quoting any word a shell

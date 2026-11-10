@@ -127,7 +127,13 @@ const (
 // as allow once and deny (chats). Approvers that do not are asked with
 // Approve, and a yes allows the call once.
 type Decider interface {
-	Decide(ctx context.Context, req ApprovalRequest) (Decision, error)
+	Decide(ctx context.Context, req ApprovalRequest) (Answer, error)
+}
+
+// Answer is a person's decision and who gave it ("7 (Sam)").
+type Answer struct {
+	Decision Decision
+	By       string
 }
 
 // Cause is why a call needs a human's approval.
@@ -213,7 +219,17 @@ type Env struct {
 	// Rules are the agent's approval rules ("always allow", allow.go);
 	// nil means none, and "Always allow" is not offered.
 	Rules RuleSet
+	// RulesPaused stops the rules for this turn: an earlier turn of the
+	// session read outside content and nobody has sent a fresh message
+	// since (agent.pauseRules).
+	RulesPaused bool
 }
+
+// Untrusted reports whether outside content may be steering this turn: it
+// is tainted, or an earlier turn of its session was and nobody has sent a
+// fresh message since. Work it sets up for later (a schedule, a board
+// card) carries the taint into those runs.
+func (e *Env) Untrusted() bool { return e.Taint.Marked() || e.RulesPaused }
 
 // Files reads and writes text files through a client. Paths are absolute.
 type Files interface {
@@ -495,42 +511,49 @@ func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
 	if env.Approver == nil {
 		return "", unattended
 	}
-	d, err := decide(ctx, env.Approver, req)
+	a, err := decide(ctx, env.Approver, req)
 	if errors.Is(err, ErrNoApprover) {
 		return "", unattended
 	}
 	if err != nil {
 		return "", err
 	}
-	switch d {
+	switch a.Decision {
 	case DecisionDeny:
 		return "", fmt.Errorf("%w: the user declined %s", ErrDenied, req.Tool)
 	case DecisionAlways:
-		return saveRule(env, req), nil
+		return saveRule(env, req, a.By), nil
 	}
 	return "", nil
 }
 
 // decide asks an approver, with "Always allow" when it offers it.
-func decide(ctx context.Context, a Approver, req ApprovalRequest) (Decision, error) {
-	if d, ok := a.(Decider); ok {
+func decide(ctx context.Context, a Approver, req ApprovalRequest) (Answer, error) {
+	if d, ok := a.(Decider); ok && req.Rule != nil {
 		return d.Decide(ctx, req)
 	}
+	req.Rule = nil
 	ok, err := a.Approve(ctx, req)
 	if ok {
-		return DecisionOnce, err
+		return Answer{Decision: DecisionOnce}, err
 	}
-	return DecisionDeny, err
+	return Answer{Decision: DecisionDeny}, err
 }
 
 // saveRule keeps the rule a person chose "Always allow" for, and returns
 // the note for the call's result. The rule is checked again here: a
-// tainted or guest turn never saves one, whatever the approver said.
-func saveRule(env *Env, req ApprovalRequest) string {
+// tainted or guest turn never saves one, whatever the approver said. It
+// applies where it was saved: in this chat, or on this machine.
+func saveRule(env *Env, req ApprovalRequest, by string) string {
 	if req.Rule == nil || !rulesApply(env) {
 		return ""
 	}
-	saved, err := env.Rules.Save(*req.Rule)
+	r := *req.Rule
+	r.Place, r.SavedBy, r.Source = turnPlace(env), by, "chat"
+	if r.Place == PlaceLocal {
+		r.Source = "local"
+	}
+	saved, err := env.Rules.Save(r)
 	if err != nil {
 		return "[approved once; saving the always-allow rule failed: " + err.Error() + "]"
 	}

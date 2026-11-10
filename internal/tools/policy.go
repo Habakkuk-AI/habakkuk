@@ -73,6 +73,20 @@ type Policy struct {
 	// scheduled scripts run from.
 	TrustedWrite []string
 	Protected    []string
+	// Place is where the turn stands for approval rules (allow.go):
+	// PlaceLocal for this machine (the CLI, the TUI, the dashboard), a
+	// ChatPlace for the owner's chat or a schedule that delivers there,
+	// and "" for anything else (a guest, an inbound A2A task, a webhook),
+	// where no rule answers. A nil Policy is PlaceLocal.
+	Place string
+}
+
+// PlaceLocal is the Place of a turn started on this machine.
+const PlaceLocal = "local"
+
+// ChatPlace is the Place of a turn from the owner in one chat.
+func ChatPlace(account, conversation string) string {
+	return "chat:" + account + ":" + conversation
 }
 
 // capability is the Capability a call uses, or "".

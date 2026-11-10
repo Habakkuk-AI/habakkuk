@@ -42,7 +42,7 @@ There's one exception. A `whatsappagent` channel only ever hears from the person
 
 ## Outside content taints a turn
 
-A turn is tainted once it has read outside content. Outside content is a web page, a search result, an MCP or other network tool, an email, a webhook or Home Assistant payload, or a device's output. From then on, `exec`, `process` and writes outside the workspace need a human's approval. This holds even in `full` mode and even with `approvals: reviewer`. A model isn't asked, because the same text could steer it. When nobody is attending, these calls are denied.
+A turn is tainted once it has read outside content. Outside content is a web page, a search result, an MCP or other network tool, an email, a webhook or Home Assistant payload, a task another agent sent over A2A, or a device's output. From then on, `exec`, `process` and writes outside the workspace need a human's approval. This holds even in `full` mode and even with `approvals: reviewer`. A model isn't asked, because the same text could steer it. When nobody is attending, these calls are denied.
 
 A tainted turn also can't write trusted memory, change the user profile or set the agent's identity. Its `message_home` sends only a short status. A delegated task inherits its parent's taint and origin.
 
@@ -80,12 +80,20 @@ Use this setting for folders that hold only notes. `hk security` lists each agen
 A rule is a standing yes, so it's held to the same promises as everything else here:
 
 - **Never in a tainted turn.** Once a turn has read outside content, a rule doesn't answer. A person does.
-- **Never for a guest.** A guest's turn gets no risky capability, rule or not.
+- **Never for what a tainted turn set up.** A schedule or board card that a tainted turn created, or wrote to, runs tainted every time. A sub-agent's result from a tainted task arrives tainted.
+- **Never right after one.** Once a turn in a conversation has read outside content, rules stay off for the conversation's background turns until you send a new message. The injected text is still in the conversation's history.
+- **Only for your own turns.** A rule saved in a chat applies in that chat. A guest's turn, an inbound A2A task and a webhook get no rules.
 - **Never past the hardline.** Commands on the blocklist never run, whatever a rule says.
-- **Never for the agent's instructions.** Writes to `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `USER.md` and the saved rules file always ask, in every mode.
+- **Never for the agent's instructions.** Writes to `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `USER.md` and the saved rules file always ask, in every mode. Names are compared without regard to case, and a file with a second name (a hard link) asks too.
 - **Never Habakkuk's own folders.** A file rule doesn't cover agent homes, skills, plugins, hooks, channel credentials, backups or the folders scheduled scripts run from. Hidden files and folders still ask.
 
-Command patterns only match a program and its arguments. Anything a shell would expand or chain is left to a person. That covers `;`, `&&`, pipes, redirects, `$`, backquotes, wildcards and `~`. A broad pattern such as `python *` still covers a lot, so keep patterns narrow. `hk approvals list` shows every rule, and `hk approvals rm ID` removes a saved one.
+Command patterns only match a program and its arguments. Anything a shell would expand or chain is left to a person. That covers `;`, `&&`, pipes, redirects, `$`, backquotes, wildcards and `~`. A `*` never takes options, and it's refused on shells and interpreters. A command that names files by relative path gets a rule for that one folder. Keep rules narrow all the same: `git log *` is fine, a rule on a build script is a rule on whatever that script says. `hk approvals list` shows every rule, where it applies and who saved it, and `hk approvals rm ID` removes a saved one.
+
+These limits are known:
+
+- **Files a tainted turn wrote.** A tainted turn can still write files in the workspace without asking. If a later, clean run then executes one of them under a rule, such as a script, a `Makefile` or a `package.json` that a rule's command reads, the rule has run what the page wrote. Rules on commands that run workspace files carry that risk. Keep such rules off agents that read the web, or allow those commands once.
+- **Commands in `full` mode.** `full` mode runs commands without asking and doesn't parse them, so a command can write an instruction file there. The file tools always ask.
+- **Hard links on Windows.** Windows doesn't report a file's other names, so the hard-link check runs on macOS and Linux only.
 
 ## Skills and plugins from outside
 

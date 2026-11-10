@@ -67,6 +67,14 @@ func FileOwner(info os.FileInfo) int {
 	return -1
 }
 
+// Links returns how many names (hard links) a file has, or 1 when unknown.
+func Links(info os.FileInfo) uint64 {
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		return uint64(st.Nlink) //nolint:unconvert // uint16 on some platforms
+	}
+	return 1
+}
+
 // DiskUsage reports the bytes available to unprivileged users and the total
 // size of the file system holding path.
 func DiskUsage(path string) (free, total uint64, err error) {

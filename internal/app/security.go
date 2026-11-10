@@ -28,6 +28,7 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 		p.Protected = append(p.Protected, cfg.AgentDir(name))
 	}
 	if len(origin) == 0 {
+		p.Place = tools.PlaceLocal
 		return p, false
 	}
 	var addr channel.Address
@@ -39,7 +40,10 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 	external = addr.Trust == channel.TrustExternal
 	ch := cfg.Channels[addr.Account]
 	if !ch.MessagingChannel() {
-		return p, external // the local web chat and dashboard
+		if !external {
+			p.Place = tools.PlaceLocal // the local web chat and dashboard
+		}
+		return p, external
 	}
 	p.Channel = addr.Account
 	switch addr.Trust {
@@ -49,6 +53,11 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 		// A turn with no sender behind it (a schedule, /retry): on an
 		// account anyone can talk to, assume a guest asked for it.
 		p.Guest = ch.OpenToAll()
+	}
+	if !p.Guest && !external {
+		// The owner's chat, or a schedule delivering there: rules saved in
+		// this chat apply, and those from the config.
+		p.Place = tools.ChatPlace(addr.Account, addr.Conversation)
 	}
 	if ac != nil {
 		p.Allowed = map[tools.Capability]bool{}
@@ -63,6 +72,11 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 func (a *App) applyPolicy(ctx context.Context, spec *agent.Spec, origin json.RawMessage, env *tools.Env) {
 	p, external := TurnPolicy(a.Cfg, spec.Name, origin)
 	p.Protected = append(p.Protected, a.scheduledScriptDirs(ctx)...)
+	if agent.SourceFrom(ctx) == agent.SourceA2A {
+		// Another agent's task is outside content: no rule answers for
+		// it (the runner taints the turn too).
+		p.Place = ""
+	}
 	env.Policy = p
 	if external {
 		env.Taint.Mark()

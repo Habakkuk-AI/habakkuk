@@ -42,3 +42,29 @@ func (t *turn) restoreTaint(env *tools.Env, recs []session.Record) {
 		}
 	}
 }
+
+// pauseRules stops approval rules (tools.Env.RulesPaused) for a turn that
+// nobody sent a fresh message, in a session where an earlier turn read
+// outside content: that text is still in the context, and only the
+// owner's next message re-arms the rules. A delegated task whose parent
+// had them paused has them paused too.
+func (t *turn) pauseRules(env *tools.Env, recs []session.Record) {
+	if t.sub != nil && t.sub.RulesPaused {
+		env.RulesPaused = true
+		return
+	}
+	if !t.background && t.sub == nil {
+		return
+	}
+	for _, rec := range recs {
+		if rec.JobID == t.job.ID || rec.Message.Role != llm.Assistant {
+			continue
+		}
+		for _, b := range rec.Message.Blocks {
+			if b.Type == llm.Opaque || (b.Type == llm.ToolUse && t.r.Tools != nil && t.r.Tools.MayTaint(b.ToolName)) {
+				env.RulesPaused = true
+				return
+			}
+		}
+	}
+}

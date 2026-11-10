@@ -229,13 +229,13 @@ func (d *Dispatcher) Handle(ctx context.Context, j *jobs.Job, owner string) (str
 			return "", err
 		}
 	}
-	text, err := d.prompt(ctx, c)
+	text, tainted, err := d.prompt(ctx, c)
 	if err != nil {
 		return "", err
 	}
 	turn := *j
 	if turn.Payload, err = json.Marshal(agent.TurnPayload{Session: c.Session, Text: text,
-		Source: agent.SourceBoard, Task: fmt.Sprintf("card %s %q", c.ID, c.Title)}); err != nil {
+		Source: agent.SourceBoard, Task: fmt.Sprintf("card %s %q", c.ID, c.Title), Tainted: tainted}); err != nil {
 		return "", jobs.Permanent{Err: err}
 	}
 	final, err := d.Runner.HandleTurn(ctx, &turn, owner)
@@ -279,7 +279,8 @@ func (d *Dispatcher) end(ctx context.Context, card, job, actor, why string) erro
 
 // prompt is the assignee's first message for an attempt: the card, the
 // results of what it depended on, and the discussion so far.
-func (d *Dispatcher) prompt(ctx context.Context, c *Card) (string, error) {
+func (d *Dispatcher) prompt(ctx context.Context, c *Card) (text string, tainted bool, err error) {
+	tainted = c.Tainted
 	var b strings.Builder
 	fmt.Fprintf(&b, "[Board card %s, assigned to you by %s. Do the work now; nobody is watching live. "+
 		"When it is finished, call board_complete with the result and proof (file paths, links, command output). "+
@@ -302,8 +303,9 @@ func (d *Dispatcher) prompt(ctx context.Context, c *Card) (string, error) {
 		for _, id := range c.DependsOn {
 			dep, err := d.Store.Get(ctx, id)
 			if err != nil {
-				return "", err
+				return "", false, err
 			}
+			tainted = tainted || dep.Tainted
 			fmt.Fprintf(&b, "\n## %s %q (by %s)\n%s\n", dep.ID, dep.Title, orNone(dep.Assignee), dep.Result)
 		}
 	}
@@ -313,7 +315,7 @@ func (d *Dispatcher) prompt(ctx context.Context, c *Card) (string, error) {
 			fmt.Fprintf(&b, "- %s, %s: %s\n", cm.Author, cm.At.Format("2006-01-02 15:04"), cm.Text)
 		}
 	}
-	return strings.TrimSpace(b.String()), nil
+	return strings.TrimSpace(b.String()), tainted, nil
 }
 
 // notifyAll sends every notification the board owes.
@@ -359,7 +361,7 @@ func (d *Dispatcher) notify(ctx context.Context, c *Card) error {
 				text += "Decide what to do: answer with board_comment and reopen it with board_update (status todo), reassign it, or cancel it. Tell the user if it matters to them."
 			}
 			if _, err := d.Runner.SubmitTurn(ctx, agent.Turn{ID: "turn_" + id, Session: c.CreatorSession, Text: text, Origin: c.ReplyTo,
-				Background: true}); err != nil {
+				Background: true, Tainted: c.Tainted}); err != nil {
 				return err
 			}
 			if d.Runner.Wake != nil {

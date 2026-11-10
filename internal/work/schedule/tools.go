@@ -18,9 +18,12 @@ type Here func(ctx context.Context, sessionID string) json.RawMessage
 
 // RegisterTools adds the "schedule" toolset. Creating a schedule grants no
 // new power: a call that needs approval in a scheduled run asks the owner
-// in the chat the schedule delivers to (or is covered by a rule the owner
-// saved), and is denied when there is no such chat. The tools therefore
-// carry network risk (allowed in workspace mode, denied in read-only mode).
+// in the chat the schedule delivers to, or is denied when there is no such
+// chat. An approval rule can answer only for a schedule made by a turn
+// outside content did not steer: a schedule created by such a turn
+// (tools.Env.Untrusted) is marked tainted, and so is every one of its runs.
+// The tools therefore carry network risk (allowed in workspace mode,
+// denied in read-only mode).
 func RegisterTools(r *tools.Registry, st *Store, here Here) {
 	r.Register("schedule", createTool{st, here})
 	r.Register("schedule", listTool{st})
@@ -73,7 +76,7 @@ func (t createTool) Run(ctx context.Context, env *tools.Env, input json.RawMessa
 	}
 	// Script schedules run shell commands unattended, so this tool must never
 	// set Command, Workdir or the other script fields.
-	sc := Schedule{Agent: env.Agent, Name: in.Name, Spec: in.When, Prompt: in.Prompt}
+	sc := Schedule{Agent: env.Agent, Name: in.Name, Spec: in.When, Prompt: in.Prompt, Tainted: env.Untrusted()}
 	if (in.Deliver == nil || *in.Deliver) && t.here != nil {
 		sc.DeliverTo = t.here(ctx, env.Session)
 	}

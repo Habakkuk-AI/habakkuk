@@ -398,8 +398,12 @@ func TestCallHashIsStable(t *testing.T) {
 	}
 	// Button data must fit Telegram's 64 bytes.
 	g := &Gateway{}
-	rows, _ := g.approvalButtons(Address{Account: "tg", Conversation: "100"}, a, false)
+	rows := g.approvalButtons(Address{Account: "tg", Conversation: "100"}, a, false)
 	if d := rows[0][1].Data; len(d) > 64 || !strings.HasSuffix(d, "|1|"+a) {
+		t.Fatalf("button data %q (%d bytes)", d, len(d))
+	}
+	rows = g.approvalButtons(Address{Account: "tg", Conversation: "100"}, a+"a", true)
+	if d := rows[0][2].Data; len(d) > 64 || !strings.HasSuffix(d, "|2|"+a+"a") {
 		t.Fatalf("button data %q (%d bytes)", d, len(d))
 	}
 }

@@ -78,7 +78,7 @@ func (r *Runner) StopSubturn(ctx context.Context, parent, id string) (Subturn, e
 		if err == nil {
 			var p TurnPayload
 			if j.Decode(&p) == nil && p.Sub != nil {
-				err = r.notifyParent(ctx, s.ID, s.Agent, p.Sub, "", nil)
+				err = r.notifyParent(ctx, s.ID, s.Agent, p.Sub, "", nil, p.Sub.Tainted || p.Sub.RulesPaused)
 			}
 		}
 		if err != nil {

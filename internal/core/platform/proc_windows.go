@@ -105,6 +105,10 @@ func Alive(pid int) bool {
 // FileOwner returns -1: Windows files are owned by a SID, not a uid.
 func FileOwner(os.FileInfo) int { return -1 }
 
+// Links returns how many names (hard links) a file has; os.FileInfo does
+// not say on Windows, so it is 1.
+func Links(os.FileInfo) uint64 { return 1 }
+
 // DiskUsage reports the bytes available to this user and the total size of
 // the volume holding path.
 func DiskUsage(path string) (free, total uint64, err error) {

@@ -66,6 +66,8 @@ CREATE TABLE card_events (
 	at     INTEGER NOT NULL
 );
 CREATE INDEX card_events_card ON card_events (card, id);
+`}, {Version: 7, SQL: `
+ALTER TABLE cards ADD COLUMN tainted INTEGER NOT NULL DEFAULT 0;
 `}}
 
 // Status is where a card is in its life.
@@ -102,8 +104,12 @@ type Card struct {
 	Job            string          // the job of the latest attempt
 	Session        string          // the assignee's session for the latest attempt
 	Rev            int             // bumped on every status change
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// Tainted: a turn that had read outside content created the card or
+	// wrote to it (a comment, a result, an update), so its runs, and the
+	// runs of cards waiting on it, start tainted (tools.Env.Untrusted).
+	Tainted   bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 
 	Comments []Comment // filled by Get
 	Events   []Event   // filled by Get
@@ -143,7 +149,7 @@ func NewStore(db *sql.DB, q *jobs.Queue) *Store {
 }
 
 const columns = `id, title, body, assignee, created_by, creator_session, status, priority, result, parent,
-	reply_to, attempt, job, session, rev, notify, created_at, updated_at`
+	reply_to, attempt, job, session, rev, notify, created_at, updated_at, tainted`
 
 type scanner interface{ Scan(...any) error }
 
@@ -153,7 +159,7 @@ func scan(r scanner) (*Card, error) {
 	var created, updated int64
 	if err := r.Scan(&c.ID, &c.Title, &c.Body, &c.Assignee, &c.CreatedBy, &c.CreatorSession, &c.Status,
 		&c.Priority, &c.Result, &c.Parent, &to, &c.Attempt, &c.Job, &c.Session, &c.Rev, &c.notify,
-		&created, &updated); err != nil {
+		&created, &updated, &c.Tainted); err != nil {
 		return nil, err
 	}
 	if to != "" {
@@ -259,9 +265,9 @@ func (s *Store) Create(ctx context.Context, c Card) (*Card, error) {
 	}
 	c.DependsOn = ds
 	if _, err := tx.ExecContext(ctx, `INSERT INTO cards (id, title, body, assignee, created_by, creator_session,
-		status, priority, parent, reply_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		status, priority, parent, reply_to, created_at, updated_at, tainted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Title, c.Body, c.Assignee, c.CreatedBy, c.CreatorSession, c.Status, c.Priority, c.Parent,
-		string(c.ReplyTo), now.UnixMilli(), now.UnixMilli()); err != nil {
+		string(c.ReplyTo), now.UnixMilli(), now.UnixMilli(), c.Tainted); err != nil {
 		return nil, err
 	}
 	for _, d := range ds {
@@ -600,4 +606,11 @@ func firstLine(s string) string {
 		s = s[:120] + "..."
 	}
 	return s
+}
+
+// MarkTainted records that a turn steered by outside content wrote to the
+// card (Card.Tainted). It never clears.
+func (s *Store) MarkTainted(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE cards SET tainted = 1 WHERE id = ?`, id)
+	return err
 }

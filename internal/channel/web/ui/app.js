@@ -1342,12 +1342,13 @@ pages.approvals = view => {
     try { j = await api("approval-rules"); } catch (err) { rules.textContent = ""; rules.append(h("div", { class: "empty err" }, err.message)); return; }
     rules.textContent = "";
     rules.append(h("h3", {}, "Always allowed"),
-      h("p", { class: "small muted" }, "Calls an agent makes without asking, saved by Always allow or set in agents.<name>.allow. They never apply after a turn has read a web page, an email or other outside content, or to a guest."));
+      h("p", { class: "small muted" }, "Calls an agent makes without asking, saved by Always allow or set in agents.<name>.allow. A rule saved in a chat applies in that chat only. Rules never apply after a turn has read a web page, an email or other outside content, to a guest, or to another agent's task."));
     if (!j.rules.length) { rules.append(h("div", { class: "empty" }, "No rules yet.")); return; }
     rules.append(table(["Agent", "Covers", "From", ""], j.rules.map(r => h("tr", {},
       h("td", {}, r.agent),
       h("td", { class: "mono small" }, r.text),
-      h("td", { class: "small muted" }, r.source + (r.added ? " · " + r.added.slice(0, 10) : "")),
+      h("td", { class: "small muted" }, r.source + (r.added ? " · " + r.added.slice(0, 10) : ""),
+        h("div", {}, "applies " + r.where + (r.saved_by ? ", saved by " + r.saved_by : ""))),
       h("td", {}, r.source === "config" ? h("span", { class: "small muted" }, "edit config.yaml") :
         h("button", { type: "button", class: "danger small", onclick: async () => {
           if (!confirm("Remove this rule? The agent asks again next time.")) return;

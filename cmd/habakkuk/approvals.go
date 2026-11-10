@@ -83,13 +83,18 @@ func listApprovals(w io.Writer, cfg *config.Config, names []string) error {
 				source = "saved"
 			}
 			fmt.Fprintf(w, "  %-11s %-7s %-10s %s\n", r.ID, source, added, r)
+			where := "applies " + r.Where()
+			if r.SavedBy != "" {
+				where += ", saved by " + r.SavedBy
+			}
+			fmt.Fprintf(w, "  %-11s %s\n", "", where)
 		}
 	}
 	if !any {
 		fmt.Fprintln(w, `No approval rules. Answer "Always allow" in a chat, or add agents.<name>.allow to config.yaml.`)
 		return nil
 	}
-	fmt.Fprintln(w, "\nRules never cover a turn that read outside content, a guest's turn, a write to an agent's\ninstruction files, or a command on the hardline blocklist.")
+	fmt.Fprintln(w, "\nRules never cover a turn that read outside content (or that followed one with no new message\nfrom you), a guest's turn, an inbound A2A task, a write to an agent's instruction files, or a\ncommand on the hardline blocklist. A rule saved in a chat applies in that chat only.")
 	return nil
 }
 

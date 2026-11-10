@@ -36,6 +36,7 @@ type SubturnSpec struct {
 	Background   bool            `json:"background,omitempty"`    // the parent gets a turn with the result
 	Turn         string          `json:"turn,omitempty"`          // the delegating turn, whose budget it spends from
 	Tainted      bool            `json:"tainted,omitempty"`       // the parent had read outside content
+	RulesPaused  bool            `json:"rules_paused,omitempty"`  // the parent's approval rules were paused (taint.go)
 }
 
 // RegisterDelegate adds the "delegate" toolset.
@@ -93,7 +94,7 @@ func (t delegateTool) Run(ctx context.Context, env *tools.Env, input json.RawMes
 		return "", fmt.Errorf("unknown agent %q; configured: %s", name, strings.Join(r.agentNames(), ", "))
 	}
 	sub := &SubturnSpec{Parent: env.Session, ParentOrigin: originFrom(ctx), Task: in.Task, Background: in.Background,
-		Turn: llm.CallerFrom(ctx).Turn, Tainted: env.Taint.Marked()}
+		Turn: llm.CallerFrom(ctx).Turn, Tainted: env.Taint.Marked(), RulesPaused: env.RulesPaused}
 	if err := r.checkSubturn(env, child, in, sub); err != nil {
 		return "", err
 	}
@@ -327,7 +328,8 @@ func (t *turn) finishSubturn(p TurnPayload, err error) error {
 			return err
 		}
 	}
-	if nerr := t.r.notifyParent(t.ctx, t.job.ID, t.spec.Name, sub, t.final, err); nerr != nil {
+	untrusted := sub.Tainted || sub.RulesPaused || (t.untrusted != nil && t.untrusted())
+	if nerr := t.r.notifyParent(t.ctx, t.job.ID, t.spec.Name, sub, t.final, err, untrusted); nerr != nil {
 		t.r.Log.Warn("background result not handed back", "job", t.job.ID, "err", nerr)
 		if err == nil {
 			return nerr // retry: the turn is finished, so the rerun only notifies
@@ -341,7 +343,7 @@ const BackgroundPrefix = "[Background task "
 
 // notifyParent queues a turn in the parent session with a background
 // sub-turn's result. Its ID derives from the sub-turn, so it is queued once.
-func (r *Runner) notifyParent(ctx context.Context, jobID, agentName string, sub *SubturnSpec, final string, failed error) error {
+func (r *Runner) notifyParent(ctx context.Context, jobID, agentName string, sub *SubturnSpec, final string, failed error, untrusted bool) error {
 	var text string
 	switch {
 	case failed != nil:
@@ -355,7 +357,7 @@ func (r *Runner) notifyParent(ctx context.Context, jobID, agentName string, sub 
 			BackgroundPrefix, jobID, agentName, preview(sub.Task), final)
 	}
 	if _, err := r.SubmitTurn(ctx, Turn{ID: "bg_" + strings.TrimPrefix(jobID, "sub_"), Session: sub.Parent, Text: text,
-		Origin: sub.ParentOrigin, Background: true}); err != nil {
+		Origin: sub.ParentOrigin, Background: true, Tainted: untrusted}); err != nil {
 		return err
 	}
 	if r.Wake != nil {

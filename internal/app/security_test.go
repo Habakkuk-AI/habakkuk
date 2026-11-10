@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/habakkuk-ai/habakkuk/internal/agent"
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
@@ -118,5 +119,47 @@ func TestScheduledScriptFoldersAreProtected(t *testing.T) {
 	a.applyPolicy(ctx, a.Runner.Agents["habakkuk"], nil, env)
 	if len(env.Policy.TrustedWrite) != 1 || !slices.Contains(env.Policy.Protected, jobs) {
 		t.Fatalf("policy: trusted %q, protected %q; want %s protected", env.Policy.TrustedWrite, env.Policy.Protected, jobs)
+	}
+}
+
+// Where a turn stands for approval rules: this machine, the owner's chat
+// (or a schedule delivering there), or nowhere (guests, webhooks, A2A).
+func TestTurnPlaceForRules(t *testing.T) {
+	cfg := &config.Config{
+		Agents: map[string]*config.Agent{"main": {}},
+		Channels: map[string]*config.Channel{
+			"tg":   {Type: "telegram", AllowFrom: []string{"42"}},
+			"open": {Type: "whatsapp", AllowFrom: []string{"*"}},
+			"web":  {Type: "web", AllowFrom: []string{"*"}},
+		},
+	}
+	origin := func(acct, trust string) json.RawMessage {
+		b, _ := json.Marshal(channel.Address{Account: acct, Conversation: "c", Trust: trust})
+		return b
+	}
+	for name, c := range map[string]struct {
+		origin json.RawMessage
+		want   string
+	}{
+		"local":                     {nil, tools.PlaceLocal},
+		"web chat":                  {origin("web", ""), tools.PlaceLocal},
+		"owner on telegram":         {origin("tg", channel.TrustOwner), tools.ChatPlace("tg", "c")},
+		"schedule to a closed chat": {origin("tg", ""), tools.ChatPlace("tg", "c")},
+		"schedule to an open chat":  {origin("open", ""), ""},
+		"guest":                     {origin("open", channel.TrustGuest), ""},
+		"webhook":                   {origin("web", channel.TrustExternal), ""},
+		"trigger to a channel":      {origin("tg", channel.TrustExternal), ""},
+		"garbage":                   {json.RawMessage(`"x"`), ""},
+	} {
+		if p, _ := TurnPolicy(cfg, "main", c.origin); p.Place != c.want {
+			t.Errorf("%s: place %q, want %q", name, p.Place, c.want)
+		}
+	}
+	// An inbound A2A task has no origin, but it is not the owner's.
+	a := &App{Cfg: cfg}
+	env := &tools.Env{Taint: tools.NewTaint(false)}
+	a.applyPolicy(agent.WithSource(context.Background(), agent.SourceA2A, ""), &agent.Spec{Name: "main"}, nil, env)
+	if env.Policy.Place != "" {
+		t.Fatalf("A2A place %q", env.Policy.Place)
 	}
 }

@@ -32,7 +32,8 @@ func (p probeTool) Run(context.Context, *tools.Env, json.RawMessage) (string, er
 // turn to be stopped instead: the process is shut down right there.
 type twoStep struct {
 	first, second string
-	hosted        bool // the first step is the provider's hosted search, not a tool
+	secondInput   json.RawMessage // default {}
+	hosted        bool            // the first step is the provider's hosted search, not a tool
 	hold          bool
 	mu            sync.Mutex
 	held          chan struct{}
@@ -84,24 +85,43 @@ func (m *twoStep) Send(ctx context.Context, _ []llm.Target, req llm.Request, _ f
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	return asst(use("second", m.second))
+	second := use("second", m.second)
+	if len(m.secondInput) > 0 {
+		second.Input = m.secondInput
+	}
+	return asst(second)
+}
+
+// resumeOpts changes interruptAndResume's second step and the turn's Env.
+type resumeOpts struct {
+	second string
+	input  json.RawMessage
+	env    func(*tools.Env)
 }
 
 // interruptAndResume runs a turn until the model is about to ask for its
 // second step, stops it the way a planned shutdown does, and resumes it as
 // a new process would: a fresh Env, nothing kept in memory. It returns the
 // result of the second tool call.
-func interruptAndResume(t *testing.T, first string, hosted bool) (result llm.Block, shellRuns int32) {
+func interruptAndResume(t *testing.T, first string, hosted bool, opts ...resumeOpts) (result llm.Block, shellRuns int32) {
 	t.Helper()
 	ctx := context.Background()
 	held := make(chan struct{})
-	h := newHarness(t, &twoStep{first: first, second: "shell", hosted: hosted, hold: true, held: held})
+	o := resumeOpts{second: "shell"}
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	h := newHarness(t, &twoStep{first: first, second: o.second, secondInput: o.input, hosted: hosted, hold: true, held: held})
 	var fetched, shelled atomic.Int32
 	h.runner.Tools.Register("core", probeTool{"fetch_page", tools.RiskNetwork, &fetched})
 	h.runner.Tools.Register("core", probeTool{"shell", tools.RiskExec, &shelled})
 	h.runner.Agents["habakkuk"].Mode = tools.ModeFull
 	h.runner.Env = func(s *Spec, _ string) *tools.Env {
-		return &tools.Env{Workspace: s.Workspace, Mode: s.Mode, Taint: tools.NewTaint(false)}
+		env := &tools.Env{Workspace: s.Workspace, Mode: s.Mode, Taint: tools.NewTaint(false)}
+		if o.env != nil {
+			o.env(env)
+		}
+		return env
 	}
 	s, _ := h.runner.NewSession(ctx, "habakkuk")
 	jobID, _ := h.runner.Submit(ctx, s.ID, "read the page, then tidy up")
@@ -124,7 +144,7 @@ func interruptAndResume(t *testing.T, first string, hosted bool) (result llm.Blo
 	}
 
 	// The next start: same databases, a model that carries on.
-	h.runner.Models = &twoStep{first: first, second: "shell", hosted: hosted}
+	h.runner.Models = &twoStep{first: first, second: o.second, secondInput: o.input, hosted: hosted}
 	j2, _ := h.queue.Claim(ctx, "after", time.Minute, KindTurn)
 	if j2 == nil || j2.ID != jobID {
 		t.Fatal("the interrupted turn was not resumed")
@@ -139,7 +159,7 @@ func interruptAndResume(t *testing.T, first string, hosted bool) (result llm.Blo
 			}
 		}
 	}
-	t.Fatal("the resumed turn never called the shell")
+	t.Fatal("the resumed turn never made its second call")
 	return llm.Block{}, 0
 }
 
