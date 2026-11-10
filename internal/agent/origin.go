@@ -51,9 +51,9 @@ type ChatNotes interface {
 	// NotesSeen records that the job's user message, notes and all, is in
 	// the transcript, so no later turn shows them again.
 	NotesSeen(ctx context.Context, jobID string)
-	// NotesTainted reports whether a note the job took came from a turn
-	// that outside content may have steered (Runner.Untrusted).
-	NotesTainted(ctx context.Context, jobID string) bool
+	// NotesTaken reports whether the job took any note: text that reached
+	// the chat from elsewhere, which approval rules never act on.
+	NotesTaken(ctx context.Context, jobID string) bool
 }
 
 type turnInfoKey struct{}
@@ -66,6 +66,9 @@ type TurnInfo struct {
 	// Local: the owner started it on this machine (the CLI, the TUI, hk
 	// talk); TurnPayload.Local.
 	Local bool
+	// Typed: the owner sent the turn's message just now, in a direct chat
+	// or on this machine (TurnPayload.Typed or Local).
+	Typed bool
 	// Background: nobody sent it a fresh message (TurnPayload.Background);
 	// Delegated: a sub-agent's task; Tainted: it starts tainted.
 	Background, Delegated, Tainted bool

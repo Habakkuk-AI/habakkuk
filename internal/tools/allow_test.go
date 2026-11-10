@@ -48,6 +48,7 @@ func TestShellWords(t *testing.T) {
 		`echo "say \"hi\""`:            {"echo", `say "hi"`},
 		`printf '%s' 'it'\''s'`:        {"printf", "%s", "it's"},
 		"npm run build -- --prod=true": {"npm", "run", "build", "--", "--prod=true"},
+		"ls ~/x":                       {"ls", "~/x"},
 	}
 	for in, want := range plain {
 		got, ok := shellWords(in)
@@ -57,7 +58,7 @@ func TestShellWords(t *testing.T) {
 	}
 	for _, in := range []string{
 		"git status; rm -rf x", "a && b", "a || b", "a | b", "a > f", "a < f", "a &",
-		"echo $(id)", "echo `id`", `echo "$HOME"`, "echo $HOME", "ls *.go", "ls ~/x",
+		"echo $(id)", "echo `id`", `echo "$HOME"`, "echo $HOME", "ls *.go", "ls ~root", "ls x~", "ls ~+/x",
 		"echo {a,b}", "echo 'unclosed", `echo "unclosed`, "echo \\", "FOO=1 make", "LD_PRELOAD=x ls",
 		"a\nb", "echo # comment", "", "   ", `echo "a\$b"`, "echo !!",
 	} {
@@ -92,7 +93,7 @@ func TestRuleValidate(t *testing.T) {
 	good := []Rule{
 		{Tool: "exec", Exact: "git status"},
 		{Tool: "exec", Exact: "git log -1", In: "~/code/shop"},
-		{Tool: "exec", Exact: "make build && make test"},
+		{Tool: "exec", Exact: "make test"},
 		{Tool: "write_file", Path: "~/notes"},
 		{Tool: "apply_patch", Path: "/srv/site"},
 	}
@@ -104,6 +105,8 @@ func TestRuleValidate(t *testing.T) {
 	bad := []Rule{
 		{Tool: "exec"},
 		{Tool: "exec", Exact: "   "},
+		{Tool: "exec", Exact: "make build && make test"},
+		{Tool: "exec", Exact: "cd sub"},
 		{Tool: "exec", Exact: "git status", In: "relative"},
 		{Tool: "exec", Exact: "git status", Path: "/tmp"},
 		{Tool: "write_file", Path: "relative/notes"},
@@ -123,7 +126,7 @@ func TestRuleValidate(t *testing.T) {
 // folder, and nothing else.
 func TestRuleCoversItsCommandOnly(t *testing.T) {
 	ap := &countingApprover{yes: false}
-	other := t.TempDir()
+	other, _ := realPath(t.TempDir()) // a rule's folder is its real path
 	r, env, _ := ruleRig(t, ap,
 		Rule{Tool: "exec", Exact: "echo covered"},
 		Rule{Tool: "exec", Exact: "echo 'two words'"},
@@ -280,7 +283,8 @@ func TestAlwaysAllowSavesARule(t *testing.T) {
 	if res.IsError || !strings.Contains(res.Text, "saved an always-allow rule") {
 		t.Fatalf("first call: %+v", res)
 	}
-	if ap.last.Rule == nil || ap.last.Rule.Exact != "echo   'hello world'" || ap.last.Rule.In != "" || ap.last.Agent != "corner-bakery" {
+	ws, _ := realPath(env.Workspace)
+	if ap.last.Rule == nil || ap.last.Rule.Exact != "echo   'hello world'" || ap.last.Rule.In != ws || ap.last.Agent != "corner-bakery" {
 		t.Fatalf("offered %+v (agent %q)", ap.last.Rule, ap.last.Agent)
 	}
 	saved, err := rf.Saved()
@@ -315,17 +319,21 @@ func TestAlwaysAllowSavesARule(t *testing.T) {
 	}
 }
 
-func TestAlwaysAllowForAComplexCommandSavesItExactly(t *testing.T) {
-	ap := &deciding{d: DecisionAlways}
-	r, env, rf := ruleRig(t, ap)
-	cmd := byOS("echo a && echo b", "echo a; echo b")
-	if res := r.Execute(context.Background(), env, call("exec", map[string]any{"command": cmd})); res.IsError {
-		t.Fatal(res.Text)
+// Always allow is offered only for a simple command: a program and plain
+// words. Anything the shell would join, expand or move gets none.
+func TestNoAlwaysForCommandsThatAreNotSimple(t *testing.T) {
+	_, env, _ := ruleRig(t, nil)
+	for _, cmd := range []string{"echo a && echo b", "echo a; echo b", "echo a | sort", "echo a > f", "cat < f",
+		"echo $HOME", "echo `id`", "echo {a,b}", "ls *.go", "ls n?tes", "ls [a]b", "ls x~", "ls ~root", "(ls)", "ls &",
+		"cd sub", "pushd sub", "popd", "ls\nrm x"} {
+		if p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": cmd})); p != nil {
+			t.Errorf("%q: proposed %+v", cmd, p)
+		}
 	}
-	saved, _ := rf.Saved()
-	ws, _ := realPath(env.Workspace)
-	if len(saved) != 1 || saved[0].Exact != cmd || saved[0].Program != "" || (saved[0].In != "" && saved[0].In != ws) {
-		t.Fatalf("saved %+v", saved)
+	for _, cmd := range []string{"git status", "ls ~/notes", `grep -n "a b" notes.md`} {
+		if p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": cmd})); p == nil {
+			t.Errorf("%q: no rule offered", cmd)
+		}
 	}
 }
 

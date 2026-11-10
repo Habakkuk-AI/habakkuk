@@ -38,7 +38,7 @@ func TestApprovalsCLI(t *testing.T) {
 	}
 	for _, want := range []string{"habakkuk:", "config-1", "exec exactly `git status` in the workspace", saved.ID, "chat",
 		"exec exactly `git log -1`", "applies in chat telegram:100, saved by 7 (Sam)",
-		"applies everywhere rules apply", "Rules answer only for your own messages"} {
+		"applies everywhere rules apply", "Rules answer only for a message you typed just now"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("list lacks %q:\n%s", want, out.String())
 		}

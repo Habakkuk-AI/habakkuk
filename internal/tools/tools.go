@@ -220,8 +220,8 @@ type Env struct {
 	// nil means none, and "Always allow" is not offered.
 	Rules RuleSet
 	// RulesOff: approval rules never answer for this kind of turn: it is
-	// not the owner's own message nor the run of a schedule the owner made
-	// (agent.limitRules).
+	// not a message the owner typed just now, one to one or on this
+	// machine, or it is tainted (agent.limitRules).
 	RulesOff bool
 	// RulesPaused: outside content entered this turn another way than a
 	// tool (a chat note from a tainted turn, a paused parent), so rules

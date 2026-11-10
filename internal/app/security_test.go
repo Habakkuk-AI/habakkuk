@@ -150,20 +150,22 @@ func TestTurnPlaceForRules(t *testing.T) {
 		"webhook":                   {origin("web", channel.TrustExternal), ""},
 		"trigger to a channel":      {origin("tg", channel.TrustExternal), ""},
 		"garbage":                   {json.RawMessage(`"x"`), ""},
+		"an account no longer here": {json.RawMessage(`{"account":"gone","conversation":"5","trust":"owner"}`), ""},
+		"a guest there":             {json.RawMessage(`{"account":"gone","conversation":"5","trust":"guest"}`), ""},
 	} {
 		if p, _ := TurnPolicy(cfg, "main", c.origin); p.Place != c.want {
 			t.Errorf("%s: place %q, want %q", name, p.Place, c.want)
 		}
 	}
-	// With no reply address, only a turn the owner typed here, or a
-	// schedule with no chat, is local; the API, MCP and A2A are not.
+	// With no reply address, only a turn the owner typed here is local;
+	// schedules, the API, MCP and A2A are not.
 	a := &App{Cfg: cfg}
 	for name, c := range map[string]struct {
 		info agent.TurnInfo
 		want string
 	}{
 		"typed here":         {agent.TurnInfo{Local: true}, tools.PlaceLocal},
-		"schedule, no chat":  {agent.TurnInfo{Source: agent.SourceSchedule, Background: true}, tools.PlaceLocal},
+		"schedule, no chat":  {agent.TurnInfo{Source: agent.SourceSchedule, Background: true}, ""},
 		"API or MCP request": {agent.TurnInfo{}, ""},
 		"A2A task":           {agent.TurnInfo{Source: agent.SourceA2A}, ""},
 	} {

@@ -9,7 +9,7 @@ func TestAllowRules(t *testing.T) {
 	agent := func(allow string) string {
 		return strings.Replace(mediaBase, "{model: p/m}", "{model: p/m, allow: "+allow+"}", 1)
 	}
-	good := `[{exact: git status}, {exact: "git log -1", in: ~/code/shop}, {exact: "make build && make test"}, {tool: write_file, path: ~/reports}]`
+	good := `[{exact: git status}, {exact: "git log -1", in: ~/code/shop}, {exact: "make test"}, {tool: write_file, path: ~/reports}]`
 	cfg, err := Parse([]byte(agent(good)))
 	if err != nil {
 		t.Fatal(err)
@@ -18,11 +18,11 @@ func TestAllowRules(t *testing.T) {
 		t.Fatalf("rules %+v", rules)
 	}
 	for _, bad := range []string{
-		`[{command: "python3 *"}]`, `[{command: "bash *"}]`, `[{command: "npx *"}]`, // * on something that runs anything
-		`[{command: "./run.sh"}]`,                      // a program by relative path
-		`[{command: "git status | sh"}]`,               // shell syntax in a pattern
-		`[{tool: write_file, path: "~/"}]`,             // too broad
-		`[{command: git status, exact: "git status"}]`, // two things at once
+		`[{command: "git log *"}]`, `[{command: git status}]`, // patterns are not supported
+		`[{exact: git status, in: relative}]`,
+		`[{exact: "make build && make test"}]`, `[{exact: "cat $HOME/x"}]`, `[{exact: "cd sub"}]`, `[{exact: "ls {a,b}"}]`, // not simple
+		`[{tool: write_file, path: "~/"}]`, // too broad
+		`[{tool: write_file, path: ~/x, exact: "git status"}]`,
 		`[{}]`,
 	} {
 		if _, err := Parse([]byte(agent(bad))); err == nil || !strings.Contains(err.Error(), "allow entry") {

@@ -89,10 +89,9 @@ func (s *Store) ChatNotesSeen(ctx context.Context, turn string) error {
 	return err
 }
 
-// ChatNotesTainted reports whether a note the turn claimed, seen or not,
-// is tainted.
-func (s *Store) ChatNotesTainted(ctx context.Context, turn string) (bool, error) {
+// ChatNotesTaken reports whether the turn claimed any note, seen or not.
+func (s *Store) ChatNotesTaken(ctx context.Context, turn string) (bool, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM chat_notes WHERE turn = ? AND tainted = 1`, turn).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM chat_notes WHERE turn = ?`, turn).Scan(&n)
 	return n > 0, err
 }

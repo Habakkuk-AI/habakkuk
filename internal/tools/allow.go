@@ -24,28 +24,31 @@ import (
 // Approval rules ("always allow"). A rule answers yes in place of a
 // person, for one call the person has already said yes to:
 //
-//   - an exec rule: one command line, exactly, run in one folder exactly
-//     (the workspace unless the rule names another). Quoting may differ
-//     ("echo 'a b'" is "echo "a b""), nothing else may. Wildcard rules may
-//     come later, with a reviewed list of programs they are safe for;
+//   - an exec rule: one simple command (a program and plain words: no
+//     shell syntax, nothing the shell would expand, no cd), exactly, run
+//     in one folder exactly (the workspace unless the rule names another).
+//     Quoting may differ ("echo 'a b'" is "echo "a b""), nothing else may.
+//     Wildcard rules may come later, with a reviewed list of programs;
 //   - a file tool (write_file, edit_file, apply_patch) writing inside a
 //     folder.
 //
 // Rules come from the config (agents.<name>.allow), which apply wherever
 // rules apply, and from "Always allow" answers, saved in the agent's folder,
 // which apply only where they were given: in that chat, or on this machine
-// (Policy.Place). They answer only for the owner's own turns: a message the
-// owner sent in a chat or typed here, and the run of a schedule the owner
-// made (agent.limitRules). A rule never answers:
+// (Policy.Place). They answer only for a turn the owner typed just now, in
+// a direct chat or on this machine, untainted, with no chat notes in its
+// message, in a session nothing tainted entered since the owner's previous
+// message (agent.limitRules). A rule never answers:
 //
-//   - for any other turn: a board card's run, a sub-agent's task, a
-//     background result or notice, an API, MCP or A2A request, a guest's or
-//     a webhook's turn (Env.RulesOff, or Policy.Place "");
-//   - for a turn that has read outside content (it is tainted), or that
-//     took in a chat note from such a turn (Env.RulesPaused);
+//   - for any other turn: a schedule's run, a /goal follow-up, a board
+//     card's run, a sub-agent's task, a background result or notice, an
+//     API, MCP, editor or A2A request, a group's, a guest's or a webhook's
+//     turn (Env.RulesOff, or Policy.Place "");
+//   - for a turn that has read outside content (it is tainted), or whose
+//     session or message took some in (Env.RulesPaused);
 //   - for a call that always needs a person: a ConfirmTool's, or a write
 //     to the agent's instruction files or to its saved rules, by name or
-//     through a link;
+//     through a link, or a command in or into Habakkuk's own folders;
 //   - for a command on the hardline blocklist, which never runs at all.
 
 // Rule is one "always allow".
@@ -55,8 +58,8 @@ type Rule struct {
 	Tool string `json:"tool"`
 	// Exact is the command line an exec rule allows.
 	Exact string `json:"exact,omitempty"`
-	// In is the folder an exec rule's command must run in, exactly; ""
-	// is the agent's workspace.
+	// In is the folder an exec rule's command must run in, exactly, as its
+	// real path (it is compared as stored); "" is the agent's workspace.
 	In string `json:"in,omitempty"`
 	// Program is where the command's program was when the rule was saved
 	// (a resolved, absolute path); a call whose program resolves elsewhere
@@ -93,6 +96,9 @@ func (r Rule) Validate() error {
 	case r.Tool == "exec":
 		if strings.TrimSpace(r.Exact) == "" {
 			return errors.New("an exec rule needs exact: the whole command line")
+		}
+		if _, ok := simpleCommand(r.Exact); !ok {
+			return fmt.Errorf("exact %q must be one simple command: a program and plain words, with no ; & | < > ( ) $ ` { } * ? [ ], no ~ except a leading ~/, and no cd", r.Exact)
 		}
 		if r.Path != "" {
 			return errors.New("path is for file tools; an exec rule takes in")
@@ -364,8 +370,9 @@ func matchRule(env *Env, t Tool, call llm.Block, rules []Rule) (Rule, bool) {
 		if err != nil || strings.TrimSpace(in.Command) == "" || mentionsGuarded(in.Command) {
 			return Rule{}, false
 		}
+		words, simple := simpleCommand(in.Command)
 		cwd, ok := realPath(env.Resolve(in.Cwd))
-		if !ok || namesGuarded(env, in.Command, cwd) {
+		if !simple || !ok || inProtected(env, cwd) || namesGuarded(env, words, cwd) {
 			return Rule{}, false
 		}
 		for _, r := range rules {
@@ -414,14 +421,15 @@ func allUnder(env *Env, targets, roots, protected []string) bool {
 }
 
 // runsIn reports whether a command runs (in cwd, resolved) in the rule's
-// folder exactly: the same words in another folder mean other files.
+// folder exactly: the same words in another folder mean other files. A
+// rule's folder is compared as stored (its real path when it was saved),
+// so a link made there later does not move it.
 func runsIn(env *Env, r Rule, cwd string) bool {
-	dir := env.Workspace
 	if r.In != "" {
-		dir = expandHome(r.In)
+		return filepath.Clean(expandHome(r.In)) == cwd
 	}
-	root, ok := realPath(dir)
-	return ok && root == cwd
+	ws, ok := realPath(env.Workspace)
+	return ok && ws == cwd
 }
 
 // sameLine reports whether a command is the rule's line: the same words,
@@ -446,7 +454,7 @@ func sameProgram(env *Env, r Rule, cmd, cwd string) bool {
 	if r.Program == "" {
 		return true
 	}
-	words, ok := shellWords(cmd)
+	words, ok := simpleCommand(cmd)
 	if !ok {
 		return false
 	}
@@ -486,55 +494,75 @@ func resolveProgram(env *Env, program, cwd string) string {
 	return real
 }
 
-// namesGuarded reports whether a command line names, by any path that
-// exists now, a guarded file (an instruction file, the rules file or its
-// lock, a file with a second name) or something in a protected folder:
-// a symlink "notes.md" to SOUL.md counts. Words are taken loosely, quotes
-// dropped, at every pipe, ;, && and substitution, after = and after a
-// redirect; a word with a wildcard is expanded in cwd. A command that
-// writes through a name made later is beyond this; that is why exec rules
-// are exact lines in one folder.
-func namesGuarded(env *Env, cmd, cwd string) bool {
-	var protected []string
-	if env.Policy != nil {
-		protected = realPaths(env.Policy.Protected)
+// simpleCommand splits a command into its words when it is a simple one:
+// a program and plain words, nothing a shell would expand or join, and no
+// cd, pushd or popd, which would change the folder the words name paths
+// in. Only such commands get rules.
+func simpleCommand(cmd string) ([]string, bool) {
+	words, ok := shellWords(cmd)
+	if !ok {
+		return nil, false
 	}
+	switch strings.ToLower(filepath.Base(words[0])) {
+	case "cd", "pushd", "popd":
+		return nil, false
+	}
+	return words, true
+}
+
+// inProtected reports whether a real path is in one of Habakkuk's own
+// folders (Policy.Protected).
+func inProtected(env *Env, p string) bool {
+	if env.Policy == nil {
+		return false
+	}
+	return underAny(realPaths(env.Policy.Protected), p) || underAny(env.Policy.Protected, p)
+}
+
+// namesGuarded reports whether a simple command's words name a guarded
+// file (an instruction file, the rules file or its lock, a file with a
+// second name, followed through symlinks) or anything in Habakkuk's own
+// folders. Each word is read as a path, and so is what follows "=" and
+// what follows a short option ("-onotes.md"). A path that does not exist
+// yet is judged by its nearest existing folder. A program that picks its
+// own files is beyond this; that is why exec rules are exact lines.
+func namesGuarded(env *Env, words []string, cwd string) bool {
 	check := func(p string) bool {
-		if _, err := os.Lstat(p); err != nil {
-			return false
-		}
-		if guardedTarget(env, p) != "" {
-			return true
-		}
-		real, ok := realPath(p)
-		return !ok || underAny(protected, real) || underAny(protected, p)
-	}
-	for _, seg := range segments(strings.NewReplacer(">", " ", "<", " ").Replace(cmd)) {
-		for _, w := range seg {
-			cands := []string{w}
-			if _, after, ok := strings.Cut(w, "="); ok {
-				cands = append(cands, after)
+		if _, err := os.Lstat(p); err == nil {
+			if guardedTarget(env, p) != "" {
+				return true
 			}
-			for _, c := range cands {
-				c = strings.TrimLeft(c, "0123456789&")
-				if c == "" || strings.HasPrefix(c, "-") && !strings.Contains(c, "=") {
-					continue
-				}
-				c = expandHome(c)
-				if !filepath.IsAbs(c) {
-					c = filepath.Join(cwd, c)
-				}
-				paths := []string{c}
-				if strings.ContainsAny(c, "*?[") {
-					if m, err := filepath.Glob(c); err == nil {
-						paths = m
-					}
-				}
-				for _, p := range paths {
-					if check(p) {
-						return true
-					}
-				}
+			real, ok := realPath(p)
+			return !ok || inProtected(env, real) || inProtected(env, p)
+		}
+		for dir := filepath.Dir(p); ; dir = filepath.Dir(dir) {
+			if _, err := os.Lstat(dir); err == nil {
+				real, ok := realPath(dir)
+				return !ok || inProtected(env, real)
+			}
+			if filepath.Dir(dir) == dir {
+				return false
+			}
+		}
+	}
+	for _, w := range words {
+		cands := []string{w}
+		if _, after, ok := strings.Cut(w, "="); ok {
+			cands = append(cands, after)
+		}
+		if len(w) > 2 && w[0] == '-' && w[1] != '-' {
+			cands = append(cands, w[2:]) // -onotes.md
+		}
+		for _, c := range cands {
+			if c == "" || c == "-" || strings.HasPrefix(c, "-") && c == w {
+				continue
+			}
+			c = expandHome(c)
+			if !filepath.IsAbs(c) {
+				c = filepath.Join(cwd, c)
+			}
+			if check(filepath.Clean(c)) {
+				return true
 			}
 		}
 	}
@@ -571,15 +599,13 @@ func ProposeRule(env *Env, t Tool, call llm.Block) *Rule {
 		if err != nil || !showsPlainly(cmd) || mentionsGuarded(cmd) || Hardline(cmd) != nil {
 			return nil
 		}
+		words, simple := simpleCommand(cmd)
 		cwd, ok := realPath(env.Resolve(in.Cwd))
-		if !ok {
+		if !simple || !ok || !showsPlainly(cwd) || inProtected(env, cwd) {
 			return nil
 		}
-		r = Rule{Tool: "exec", Exact: cmd}
-		if ws, ok := realPath(env.Workspace); !ok || ws != cwd {
-			r.In = cwd
-		}
-		if words, plain := shellWords(cmd); plain && !exactOnly {
+		r = Rule{Tool: "exec", Exact: cmd, In: cwd}
+		if !exactOnly {
 			r.Program = resolveProgram(env, words[0], cwd)
 		}
 	case "write_file", "edit_file", "apply_patch":
@@ -824,6 +850,9 @@ func shellWords(s string) ([]string, bool) {
 			if !closed {
 				return nil, false
 			}
+		case c == '~' && !inWord && i+1 < len(s) && s[i+1] == '/':
+			cur.WriteByte(c) // a leading ~/ is the home folder
+			inWord = true
 		case c == '\\':
 			if i+1 >= len(s) || s[i+1] == '\n' || s[i+1] == '\r' {
 				return nil, false

@@ -86,6 +86,10 @@ type TurnPayload struct {
 	// talk). A turn with no reply address is not local without it: the
 	// API, MCP clients and editors send none either.
 	Local bool `json:"local,omitempty"`
+	// Typed: the owner sent this message just now, in a direct chat (the
+	// gateway sets it); Local implies it. Approval rules answer only for
+	// such a turn (taint.go).
+	Typed bool `json:"typed,omitempty"`
 }
 
 // Attachment is a file that came with a user message. The bytes live in the
@@ -150,6 +154,8 @@ type Turn struct {
 	Tainted bool
 	// Local: the owner typed it on this machine (TurnPayload.Local).
 	Local bool
+	// Typed: the owner sent it just now in a direct chat (TurnPayload.Typed).
+	Typed bool
 }
 
 // Sender is the model call. *llm.Router implements it; tests use fakes.
@@ -274,7 +280,7 @@ func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
 	return r.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: t.ID, Kind: kind, Agent: sess.Agent, SerialKey: t.Session, Priority: 10,
 		Payload: TurnPayload{Session: t.Session, Text: t.Text, Media: t.Media, Origin: t.Origin, Compact: t.Compact, Sub: t.Sub,
-			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted, Local: t.Local},
+			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted, Local: t.Local, Typed: t.Typed},
 	})
 }
 
@@ -302,7 +308,7 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	ctx = llm.WithCaller(ctx, caller)
 	ctx = withOrigin(ctx, p.Origin)
-	info := TurnInfo{Source: p.Source, Task: p.Task, Local: p.Local, Background: p.Background || p.Compact,
+	info := TurnInfo{Source: p.Source, Task: p.Task, Local: p.Local, Typed: p.Typed || p.Local, Background: p.Background || p.Compact,
 		Delegated: p.Sub != nil, Tainted: p.Tainted || p.Source == SourceA2A}
 	ctx = WithTurnInfo(ctx, info)
 	chain, overridden := r.chainFor(ctx, sess.ID, spec)
@@ -434,7 +440,7 @@ func (t *turn) run(userText string, media []Attachment) error {
 		env.Taint.Mark()
 	}
 	t.restoreTaint(env, recs)
-	t.limitRules(env)
+	t.limitRules(env, recs)
 	t.r.trackTrust(t.job.ID, env)
 	var pending []string
 	if t.r.ToolsPending != nil {

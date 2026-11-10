@@ -30,7 +30,7 @@ agents:
 - **In a chat**, Habakkuk says in everyday words what it wants to do and why it's asking. Then it waits for the owner to answer. Platforms with buttons show **Allow once**, **Always allow** and **Deny**. Elsewhere you reply **yes**, **always** or **no**. Reply **details** to see the exact command. The request keeps waiting. If there's no answer after 15 minutes, Habakkuk skips the step. See [what the request looks like](../channels/settings.md#approval-requests-in-plain-words) and [Always allow](#always-allow).
 - **In the terminal UI**, a prompt lets you allow the call once, allow it for the session, or deny it.
 - **In the dashboard and desktop app**, the Approvals page lets you answer approvals that are waiting in any chat. It also lists each agent's saved rules, and you can remove one there.
-- **Scheduled runs** ask you in the chat the schedule delivers to, and wait as a chat does. See [Approvals in scheduled runs](#approvals-in-scheduled-runs).
+- **Scheduled runs** ask you in the chat the schedule delivers to, and wait as a chat does. Saved rules never answer for them. See [Approvals in scheduled runs](#approvals-in-scheduled-runs).
 - **Other unattended runs** have nobody to ask. These are sub-agents, board cards, webhooks, tasks from other agents (A2A), MCP clients and the OpenAI-compatible API. Calls that need approval are denied there, unless a reviewer decides. [Saved rules](#always-allow) never answer for them.
 
 ### Approvals and restarts
@@ -69,7 +69,7 @@ Habakkuk logs every decision and sends the reason back to the agent, so the agen
 
 ## Always allow
 
-Answering the same request every day gets old. When you pick **Always allow** (or reply **always**), Habakkuk saves a rule and stops asking about this call. Before you answer, the request shows the rule in full, exactly as it will be saved:
+Answering the same request every day gets old. When you pick **Always allow** (or reply **always**), Habakkuk saves a rule and stops asking about this call when you ask for it again. Before you answer, the request shows the rule in full, exactly as it will be saved:
 
 ````text
 Always allow saves a rule for this chat. I won't ask again before running exactly this command in your workspace:
@@ -80,37 +80,43 @@ git status
 
 A rule covers one of these:
 
-- **One command line, in one folder.** The rule allows that exact line, run in the folder it ran in, and nowhere else. A subfolder is another folder: `ls`, `make` or `npm test` there read other files. Quoting may differ (`echo 'a b'` is `echo "a b"`), nothing else may: `git status -s` isn't `git status`. Habakkuk also notes where the program was found, and a program found somewhere else isn't covered. Rules that take any arguments (wildcards) may come later, with a reviewed list of programs they're safe for.
+- **One simple command, in one folder.** A program followed by plain words, such as `git status` or `ls ~/notes`. The rule allows that exact line, run in the folder it ran in, and nowhere else. A subfolder is another folder: `ls`, `make` or `npm test` there read other files. Quoting may differ (`echo 'a b'` is `echo "a b"`), nothing else may: `git status -s` isn't `git status`. Habakkuk also notes where the program was found, and a program found somewhere else, or swapped for a link, isn't covered. Rules that take any arguments (wildcards) may come later, with a reviewed list of programs they're safe for.
 - **A file tool in a folder.** `write_file`, `edit_file` or `apply_patch` writing inside the folder of the file you approved, or below it. Hidden files and folders still ask.
+
+A command isn't simple, and gets no **Always allow**, if it has an unquoted `$`, a backquote, `{` or `}`, `*`, `?` or `[`, a `~` other than a leading `~/`, any of `;`, `&`, `|`, `<`, `>`, `(` or `)`, a line break, or runs `cd`, `pushd` or `popd`. You can still allow it once.
 
 ### Which turns rules answer for
 
-Rules answer for your own turns only:
+A rule answers only when all of these hold:
 
-- **A message you sent.** In a chat, or typed on this computer: the terminal, the TUI, the dashboard's chat and `hk talk`.
-- **The run of a schedule you made.** In the CLI, the dashboard, or by asking in a turn of yours that hadn't read outside content.
+- **You typed the message just now.** In a one-to-one chat with the agent, or on this computer: the terminal, the TUI, `hk talk`, or the dashboard's chat. The dashboard's chat includes `/api/chat`, which is the same chat behind the dashboard's token.
+- **The conversation is yours alone.** Not a group, room or channel you share with others.
+- **The turn is untainted.** It hasn't read outside content.
+- **Your message carries no chat notes.** Nothing reached the chat from elsewhere since your last message there: no schedule's result, script output, meeting notes or `hk send` message.
+- **The conversation isn't paused.** Nothing tainted has entered it since your previous message. See [When rules pause](#when-rules-pause).
 
-They never answer for anything else, and those calls ask a person as before:
+Rules never answer for anything else, and those calls ask a person as before:
 
-- board card runs, sub-agent tasks and their results;
-- notices: a finished process, a meeting, a message from elsewhere in the chat;
-- the OpenAI-compatible API, MCP clients, editors (`hk acp`) and tasks from other agents (A2A);
-- webhooks and guests' turns;
-- a schedule that a turn of any other kind created, or one that read outside content.
+- schedules of any kind, prompt or script;
+- `/goal` continuations and other follow-ups Habakkuk queues for itself;
+- notices, board cards and sub-agents;
+- tasks from other agents (A2A), the OpenAI-compatible API, MCP clients and editors (`hk acp`);
+- webhooks, guests' turns, and turns from a chat account the config no longer has.
 
-**Where a rule applies.** A rule you save in a chat applies in that chat, and to schedules that deliver there. It doesn't apply in your other chats or to anyone else's. A rule you save on this computer (the dashboard's chat) applies to turns started here. Rules in the config apply everywhere rules apply. Each saved rule records who answered.
+**Where a rule applies.** A rule you save in a chat applies in that chat only. A rule you save on this computer (the dashboard's chat) applies to messages you type on this computer. Rules in the config apply wherever rules apply. Each saved rule records who answered.
 
 ### When rules pause
 
-Anything tainted that enters a conversation pauses its rules until your next message there. That covers a turn that read outside content, a result or run that arrives tainted (a sub-agent's result, a schedule's run, an A2A task), and a message a tainted run delivered to the chat. That last one arrives with your next message, so the turn that reads it gets no rules either. Your message after that gets them back.
+When anything tainted enters a conversation, your next message there gets no rules. That covers a turn that read outside content (your previous one included), a result or run that arrived tainted (a sub-agent's result, a schedule's run, an A2A task), and messages that reached the chat from elsewhere after your previous message. Once a message of yours has gone through with nothing tainted after it, the next one gets its rules back.
 
 ### What a rule won't match
 
 - A command that names an instruction file or the rules file, however it's quoted, escaped or cased. See [Instruction files](#instruction-files).
-- A command whose arguments lead to one of those files through a symlink or a hard link, as they are when it runs. Words with wildcards are expanded first.
+- A command whose words lead to one of those files through a symlink or a hard link, as they are when it runs. Short options such as `-onotes.md` and values after `=` are read as paths too.
+- A command run in one of Habakkuk's own folders, or one that names a path there, even a file that doesn't exist yet.
 - A command on the hardline blocklist.
 
-**Always allow** isn't offered for a command with a backquote or a line break, or one longer than about 300 characters, nor for a folder name like that. It isn't offered in an email conversation either, from a chat or from a schedule. You can still allow the call once. On Windows, commands run in PowerShell, so there the line must match character for character, quoting included.
+**Always allow** isn't offered for a command or folder with a backquote or a line break, or one longer than about 300 characters. It isn't offered in an email conversation either. On Windows, commands run in PowerShell, so there the line must match character for character, quoting included.
 
 ### Rules in the config
 
@@ -118,14 +124,14 @@ Anything tainted that enters a conversation pauses its rules until your next mes
 agents:
   habakkuk:
     allow:
-      - exact: git status                # this command line
-      - exact: make build && make test   # pipes and && are fine: the whole line must match
-        in: ~/code/shop                  # the folder it runs in (default: the workspace)
+      - exact: git status                # this command line, in the workspace
+      - exact: make test                 # one simple command
+        in: ~/code/shop                  # the folder it runs in, exactly
       - tool: write_file                 # a file tool...
         path: ~/Documents/reports        # ...writing inside this folder
 ```
 
-A `command:` pattern is refused when the config loads, for now.
+An `exact` line must be a simple command, and the config doesn't load otherwise. A `command:` pattern is refused for now.
 
 Saved rules live in `approvals.json` in the agent's folder and apply across restarts. Run `hk approvals list` to see every rule, where it applies and who saved it, and `hk approvals rm ID` to remove a saved one. Remove a config rule by editing the config.
 
@@ -140,21 +146,21 @@ The known limits are listed under [Security](../deploy/security.md#saved-approva
 
 ## Approvals in scheduled runs
 
-A scheduled run has no chat of its own. When one of its calls needs approval, Habakkuk asks you in the chat the schedule delivers to, says which scheduled task it's for, and waits up to the same 15 minutes. Your answer works the same way as in any chat, **Always allow** included. For a schedule you made, the rule applies in that chat, so the next run goes ahead without asking.
+A scheduled run has no chat of its own. When one of its calls needs approval, Habakkuk asks you in the chat the schedule delivers to, says which scheduled task it's for, and waits up to the same 15 minutes. You answer yes or no as in any chat. Saved rules never answer for a scheduled run, and **Always allow** isn't offered there, so each run asks.
 
 While a run is still going, perhaps waiting for your answer, the schedule's next slot is skipped. A chat shows one request at a time. A request that can't get its turn within the approval timeout is denied, so a busy chat never holds up a worker for good.
 
-Some runs still can't get a yes:
+Some runs can't get a yes:
 
-- A schedule with no delivery chat has nobody to ask, so the call is denied, unless a rule you saved on this computer covers it.
+- A schedule with no delivery chat has nobody to ask, so the call is denied.
 - A run on an account that's open to everyone (`allow_from: ["*"]`) counts as a guest's turn, so risky calls are refused.
-- A run that has read outside content asks you every time. So does every run of a schedule that wasn't made by you: one created by a board card, a sub-agent, a notice or a turn that read outside content. No rule covers them.
+- A run that has read outside content asks you every time, as does every run of a schedule that wasn't made by a clean message you typed, and every turn that reads a script's output.
 
 ## Instruction files
 
 `SOUL.md`, `AGENTS.md`, `IDENTITY.md` and `USER.md` tell the agent who it is and how to behave. A write to a file with one of those names, through `write_file`, `edit_file` or `apply_patch`, always needs your approval. Names are compared without regard to case, since macOS and Windows disks ignore it. That holds in `full` mode, in a trusted notes folder, under a rule, and with a reviewer. The same goes for the agent's saved rules file, whatever case its name is written in, and for any file that has more than one name (a hard link) on macOS and Linux. **Always allow** isn't offered for these.
 
-No rule covers a command that names one of these files, however it's quoted, escaped or cased: `SOU''L.md`, `"AGENTS".md` and `ſOUL.md` count, and so does a path argument that leads to one through a symlink or a hard link. In `full` mode, though, commands run without asking, and Habakkuk doesn't parse them, so a command can still write these files there. Below `full`, such a command asks you.
+No rule covers a command that names one of these files, however it's quoted, escaped or cased: `SOU''L.md`, `"AGENTS".md` and `ſOUL.md` count, and so does a word that leads to one through a symlink or a hard link. In `full` mode, though, commands run without asking, and Habakkuk doesn't parse them, so a command can still write these files there. Below `full`, such a command asks you.
 
 The tools that keep the user profile and the agent's identity have their own limits and aren't changed by this. A turn that has read outside content still can't use them.
 

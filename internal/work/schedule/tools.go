@@ -19,10 +19,10 @@ type Here func(ctx context.Context, sessionID string) json.RawMessage
 // RegisterTools adds the "schedule" toolset. Creating a schedule grants no
 // new power: a call that needs approval in a scheduled run asks the owner
 // in the chat the schedule delivers to, or is denied when there is no such
-// chat. An approval rule can answer only for a schedule the owner made: in
-// the CLI, the dashboard, or a clean turn of the owner's own. A schedule
-// created by any other turn (tools.Env.Untrusted, or one rules are off
-// for) is marked tainted, and so is every one of its runs.
+// chat. Approval rules never answer for a scheduled run. A schedule
+// created by a turn that isn't a clean one the owner typed
+// (tools.Env.Untrusted, or one rules are off for) is marked tainted, and so
+// is every one of its runs, so their risky calls need a person.
 // The tools therefore carry network risk (allowed in workspace mode,
 // denied in read-only mode).
 func RegisterTools(r *tools.Registry, st *Store, here Here) {

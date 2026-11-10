@@ -75,9 +75,10 @@ type Policy struct {
 	Protected    []string
 	// Place is where the turn stands for approval rules (allow.go):
 	// PlaceLocal for this machine (the CLI, the TUI, the dashboard), a
-	// ChatPlace for the owner's chat or a schedule that delivers there,
-	// and "" for anything else (a guest, an inbound A2A task, a webhook),
-	// where no rule answers. A nil Policy is PlaceLocal.
+	// ChatPlace for the owner's chat, and "" for anything else (a guest, an
+	// account the config no longer has, an inbound A2A task, a webhook),
+	// where no rule answers. A nil Policy is PlaceLocal. Which turns may use
+	// rules at all is agent.limitRules's to say.
 	Place string
 }
 

@@ -167,7 +167,7 @@ func TestRuleIsForItsFolderOnly(t *testing.T) {
 	}
 	saved, _ := rf.Saved()
 	ws, _ := realPath(env.Workspace)
-	if len(saved) != 2 || saved[0].In != "" || saved[0].Program != filepath.Join(ws, "run.sh") {
+	if len(saved) != 2 || saved[0].In != ws || saved[0].Program != filepath.Join(ws, "run.sh") {
 		t.Fatalf("saved %+v", saved)
 	}
 	sub := filepath.Join(env.Workspace, "vendor", "x")
@@ -231,7 +231,7 @@ func TestRuleSeesThroughLinks(t *testing.T) {
 	}
 	// A plain file is fine.
 	os.WriteFile(filepath.Join(env.Workspace, "plain.md"), []byte("p"), 0o644)
-	if namesGuarded(env, "cat plain.md", env.Workspace) {
+	if namesGuarded(env, []string{"cat", "plain.md"}, env.Workspace) {
 		t.Fatal("a plain file counted as guarded")
 	}
 }
@@ -319,5 +319,112 @@ func TestRuleFileChangesDoNotUndoEachOther(t *testing.T) {
 	}
 	if len(saved) != 21 || !ids[keep.ID] || ids[gone.ID] {
 		t.Fatalf("%d rules, keep=%v gone=%v", len(saved), ids[keep.ID], ids[gone.ID])
+	}
+}
+
+// linkRig: a workspace with x, notes.md and sub/today.md linking to the
+// agent's SOUL.md, and cfgdir linking to the agent's folder (protected).
+func linkRig(t *testing.T, rules ...Rule) (*Registry, *Env, *countingApprover, string) {
+	t.Helper()
+	ap := &countingApprover{yes: false}
+	r, env, rf := ruleRig(t, ap, rules...)
+	agentDir := filepath.Dir(rf.Path)
+	os.MkdirAll(agentDir, 0o700)
+	soul := filepath.Join(agentDir, "SOUL.md")
+	os.WriteFile(soul, []byte("good soul"), 0o644)
+	os.WriteFile(filepath.Join(env.Workspace, "x"), []byte("EVIL SOUL"), 0o644)
+	os.Symlink(soul, filepath.Join(env.Workspace, "notes.md"))
+	os.MkdirAll(filepath.Join(env.Workspace, "sub"), 0o755)
+	os.Symlink(soul, filepath.Join(env.Workspace, "sub", "today.md"))
+	os.Symlink(agentDir, filepath.Join(env.Workspace, "cfgdir"))
+	env.Policy = &Policy{Place: PlaceLocal, Protected: []string{agentDir}}
+	return r, env, ap, soul
+}
+
+// A rule never answers for a line the shell would expand, join or move,
+// nor for one whose words reach a guarded file or Habakkuk's own folders,
+// however the path is spelled.
+func TestNoRuleThroughShellExpansionOrLinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell")
+	}
+	for _, cmd := range []string{
+		"cp x {notes.md,}", "cp x no{tes.md,}", "cp x $PWD/notes.md", `cp x "$PWD"/notes.md`, "cp x ~+/notes.md",
+		"cd sub && cp ../x today.md", "sort x -onotes.md", "cp x [!_]otes.md", "cp x n?tes.md", "cp x n*s.md",
+		"cp x notes.md", "cp x ./notes.md", "cat x > notes.md", "tee notes.md < x", "cp x cfgdir/",
+		"cp x --target-directory=cfgdir", "cp x cfgdir/new.md",
+	} {
+		r, env, ap, soul := linkRig(t, Rule{Tool: "exec", Exact: cmd})
+		res := r.Execute(context.Background(), env, call("exec", map[string]any{"command": cmd}))
+		if b, _ := os.ReadFile(soul); ap.asks != 1 || strings.Contains(res.Text, "saved approval rule") || string(b) != "good soul" {
+			t.Errorf("%q: ran under a rule (asks %d, SOUL.md %q)", cmd, ap.asks, b)
+		}
+		if p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": cmd})); p != nil {
+			t.Errorf("%q: offered %+v", cmd, p)
+		}
+	}
+}
+
+// An exec rule never covers Habakkuk's own folders: not run there, and not
+// naming a new file there.
+func TestNoExecRuleInProtectedFolders(t *testing.T) {
+	ap := &deciding{d: DecisionAlways}
+	r, env, rf := ruleRig(t, ap)
+	agentDir, _ := realPath(filepath.Dir(rf.Path))
+	os.MkdirAll(filepath.Join(agentDir, "skills"), 0o700)
+	env.Policy = &Policy{Place: PlaceLocal, Protected: []string{agentDir}}
+	c := call("exec", map[string]any{"command": "touch skills/new.md", "cwd": agentDir})
+	if p := ProposeRule(env, execTool{}, c); p != nil {
+		t.Fatalf("offered a rule in the agent's folder: %+v", p)
+	}
+	if _, ok := matchRule(env, execTool{}, c, []Rule{{Tool: "exec", Exact: "touch skills/new.md", In: agentDir}}); ok {
+		t.Fatal("a rule matched in the agent's folder")
+	}
+	line := "touch " + filepath.Join(agentDir, "planted.md")
+	r.Execute(context.Background(), env, call("exec", map[string]any{"command": line}))
+	if saved, _ := rf.Saved(); len(saved) != 0 {
+		t.Fatalf("offered and saved a rule for a new file in the agent's folder: %+v", saved)
+	}
+	if _, ok := matchRule(env, execTool{}, call("exec", map[string]any{"command": line}), []Rule{{Tool: "exec", Exact: line}}); ok {
+		t.Fatal("a rule matched a new file in the agent's folder")
+	}
+}
+
+// A folder that would not show plainly in a chat gets no Always allow, for
+// a command or a file.
+func TestNoAlwaysForOddFolders(t *testing.T) {
+	_, env, _ := ruleRig(t, nil)
+	for _, name := range []string{"a\nb", "a`b", "a\rb", strings.Repeat("d", 250) + "/" + strings.Repeat("e", 60)} {
+		dir := filepath.Join(env.Workspace, "out", name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			continue
+		}
+		if p := ProposeRule(env, writeFile{}, call("write_file", map[string]any{"path": filepath.Join(dir, "f.txt"), "content": "x"})); p != nil {
+			t.Errorf("file rule offered for %q", name)
+		}
+		if p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": "ls", "cwd": dir})); p != nil {
+			t.Errorf("exec rule offered for %q", name)
+		}
+	}
+}
+
+// A program swapped for a symlink to another file is not the program the
+// rule was saved for.
+func TestSwappedProgramAsks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell scripts")
+	}
+	ap := &deciding{d: DecisionAlways}
+	r, env, _ := ruleRig(t, ap)
+	run := filepath.Join(env.Workspace, "run.sh")
+	os.WriteFile(run, []byte("#!/bin/sh\necho good\n"), 0o755)
+	r.Execute(context.Background(), env, call("exec", map[string]any{"command": "./run.sh"}))
+	other := filepath.Join(t.TempDir(), "run.sh")
+	os.WriteFile(other, []byte("#!/bin/sh\necho EVIL\n"), 0o755)
+	os.Remove(run)
+	os.Symlink(other, run)
+	ap.d, ap.asks = DecisionDeny, 0
+	if res := r.Execute(context.Background(), env, call("exec", map[string]any{"command": "./run.sh"})); ap.asks != 1 || strings.Contains(res.Text, "EVIL") {
+		t.Fatalf("swapped program ran under the rule (asks %d): %s", ap.asks, res.Text)
 	}
 }

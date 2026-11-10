@@ -200,8 +200,11 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 		from.Trust = TrustOwner
 	}
 	origin, _ := json.Marshal(from)
+	// Typed: the owner wrote this just now, one to one. Only such a turn
+	// may use approval rules; a group's turns, and every follow-up the
+	// gateway queues itself (/goal, /retry, /btw), never do.
 	if _, err := g.Runner.SubmitTurn(ctx, agent.Turn{
-		ID: TurnID(m), Session: conv.SessionID, Text: text, Media: media, Origin: origin,
+		ID: TurnID(m), Session: conv.SessionID, Text: text, Media: media, Origin: origin, Typed: owner && m.Direct,
 	}); err != nil {
 		log.Error("queue turn failed", "err", err)
 		g.reply(to, g.t(to, "turn.queue_failed"))

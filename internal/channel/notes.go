@@ -95,17 +95,17 @@ func (g *Gateway) TakeNotes(ctx context.Context, sessionID, jobID string) string
 	return renderNotes(notes, conv.Agent, g.now(), g.location())
 }
 
-// NotesTainted implements agent.ChatNotes.
-func (g *Gateway) NotesTainted(ctx context.Context, jobID string) bool {
+// NotesTaken implements agent.ChatNotes.
+func (g *Gateway) NotesTaken(ctx context.Context, jobID string) bool {
 	if g.State == nil {
 		return false
 	}
-	tainted, err := g.State.ChatNotesTainted(ctx, jobID)
+	taken, err := g.State.ChatNotesTaken(ctx, jobID)
 	if err != nil {
 		g.Log.Warn("read chat notes failed", "job", jobID, "err", err)
 		return true // unknown: no rules for this turn
 	}
-	return tainted
+	return taken
 }
 
 // NotesSeen implements agent.ChatNotes.

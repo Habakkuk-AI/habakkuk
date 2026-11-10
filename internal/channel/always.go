@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"path/filepath"
 	"slices"
 
 	"github.com/habakkuk-ai/habakkuk/internal/ops/i18n"
@@ -35,11 +36,15 @@ func (g *Gateway) ruleText(lang string, to Address, req tools.ApprovalRequest) s
 		return ""
 	}
 	where := func(dir string) string {
-		if dir == "" {
-			dir = req.Workspace
+		ws := req.Workspace
+		if real, err := filepath.EvalSymlinks(ws); err == nil {
+			ws = real
 		}
-		if p := g.place(lang, dir, req.Workspace); p != "" && dir == req.Workspace {
-			return p
+		if dir == "" || dir == ws {
+			if p := g.place(lang, req.Workspace, req.Workspace); p != "" {
+				return p
+			}
+			dir = req.Workspace
 		}
 		return "`" + tildePath(dir) + "`"
 	}

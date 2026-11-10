@@ -29,8 +29,8 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 	}
 	if len(origin) == 0 {
 		// No reply address: the CLI and TUI, but also the API, MCP
-		// clients, editors and A2A. applyPolicy makes it local only for a
-		// turn the owner typed here, or a schedule with no chat.
+		// clients, editors, A2A and schedules with no chat. applyPolicy
+		// makes it local only for a turn the owner typed here.
 		return p, false
 	}
 	var addr channel.Address
@@ -41,6 +41,12 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 	}
 	external = addr.Trust == channel.TrustExternal
 	ch := cfg.Channels[addr.Account]
+	if ch == nil {
+		// An account the config no longer has: not this machine, and no
+		// chat whose rules could apply.
+		p.Channel, p.Guest = addr.Account, addr.Trust != channel.TrustOwner
+		return p, external
+	}
 	if !ch.MessagingChannel() {
 		if !external {
 			p.Place = tools.PlaceLocal // the local web chat and dashboard
@@ -75,7 +81,7 @@ func (a *App) applyPolicy(ctx context.Context, spec *agent.Spec, origin json.Raw
 	p, external := TurnPolicy(a.Cfg, spec.Name, origin)
 	p.Protected = append(p.Protected, a.scheduledScriptDirs(ctx)...)
 	info := agent.TurnInfoFrom(ctx)
-	if len(origin) == 0 && (info.Local || info.Source == agent.SourceSchedule) {
+	if len(origin) == 0 && info.Local {
 		p.Place = tools.PlaceLocal
 	}
 	if info.Source == agent.SourceA2A {

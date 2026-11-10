@@ -62,6 +62,9 @@ type AllowRule struct {
 func (r AllowRule) Rule() tools.Rule {
 	out := tools.Rule{Tool: r.Tool, Exact: strings.TrimSpace(r.Exact),
 		In: expandHome(strings.TrimSpace(r.In)), Path: expandHome(strings.TrimSpace(r.Path)), Source: "config"}
+	if real, err := filepath.EvalSymlinks(out.In); out.In != "" && err == nil {
+		out.In = real // a rule's folder is compared as its real path
+	}
 	if out.Tool == "" && out.Exact != "" {
 		out.Tool = "exec"
 	}

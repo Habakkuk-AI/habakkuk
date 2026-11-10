@@ -89,7 +89,7 @@ Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded
 | `home`, `report_home` | | The agent's home chat (`CHANNEL:CONVERSATION[:THREAD]`) and what is reported there: `results` (default with a home), `all` or `off` ([multi-agent](../agents/multi-agent.md#teams-and-home-chats)) |
 | `budget` | | This agent's spending caps: `daily`, `monthly`, `per_turn` ([limits](../models/usage-and-limits.md#spending-limits)) |
 | `trust`, `channel_allow`, `allow_tainted_exec` | | Lift the extra checks on chat-driven and tainted turns ([security](../deploy/security.md)) |
-| `allow` | none | Approval rules: exact command lines (`exact`, run in the workspace or exactly in `in`) and file tools in a folder (`tool`, `path`) that run without asking, for your own turns only; never in a tainted turn ([approvals](../agents/approvals.md#always-allow)) |
+| `allow` | none | Approval rules: simple command lines (`exact`, run in the workspace or exactly in `in`) and file tools in a folder (`tool`, `path`) that run without asking, only for a message you typed just now, one to one or on this computer; never in a tainted turn ([approvals](../agents/approvals.md#always-allow)) |
 | `trusted_write_paths` | none | Folders outside the workspace where the file tools may save notes without approval; never commands, scripts or hidden files ([approvals](../agents/approvals.md#trusted-folders-for-notes)) |
 
 ## Channels

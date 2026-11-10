@@ -560,7 +560,7 @@ func (s *Scheduler) Handle(ctx context.Context, j *jobs.Job, _ string) (string, 
 	}
 	text := fmt.Sprintf("[Scheduled task %q (%s). Do it now and report the result; the user is not watching live.]\n%s",
 		sc.Name, sc.Spec, sc.Prompt)
-	return s.submit(ctx, j, sc, text)
+	return s.submit(ctx, j, sc, text, sc.Tainted)
 }
 
 // skipForBudget skips a run whose agent has used up a spending limit,
@@ -580,7 +580,7 @@ func (s *Scheduler) skipForBudget(ctx context.Context, j *jobs.Job, sc *Schedule
 // submit runs text as a fresh session's first turn, replying to the
 // schedule's address. The turn ID derives from the job, so a rerun after a
 // crash finds the turn it already queued.
-func (s *Scheduler) submit(ctx context.Context, j *jobs.Job, sc *Schedule, text string) (string, error) {
+func (s *Scheduler) submit(ctx context.Context, j *jobs.Job, sc *Schedule, text string, tainted bool) (string, error) {
 	turnID := "turn_" + j.ID
 	if existing, err := s.Queue.Get(ctx, turnID); err == nil && existing != nil {
 		return turnID, nil // already queued before a crash
@@ -590,7 +590,7 @@ func (s *Scheduler) submit(ctx context.Context, j *jobs.Job, sc *Schedule, text 
 		return "", err
 	}
 	if _, err := s.Runner.SubmitTurn(ctx, agent.Turn{ID: turnID, Session: sess.ID, Text: text, Origin: sc.DeliverTo,
-		Background: true, Source: agent.SourceSchedule, Task: fmt.Sprintf("scheduled task %q", sc.Name), Tainted: sc.Tainted}); err != nil {
+		Background: true, Source: agent.SourceSchedule, Task: fmt.Sprintf("scheduled task %q", sc.Name), Tainted: tainted || sc.Tainted}); err != nil {
 		return "", err
 	}
 	if s.Wake != nil {
