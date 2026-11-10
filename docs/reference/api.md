@@ -182,7 +182,7 @@ An agent's [retrospectives](../agents/retros.md), read only. Approve or reject p
 | `GET /api/retros/{agent}?limit=` | | Retros, newest first, `{"retros": [...]}`, without their evidence. |
 | `GET /api/retros/{agent}/{id}` | | One retro with its `evidence`. `id` may be `latest`. |
 
-A retro is `{"id", "agent", "from", "to", "quiet", "plan", "evidence", "actions", "report", "delivered", "done", "summary", "created_at"}`. `plan` holds `summary`, `went_well`, `went_badly` (each `{"what", "cause", "evidence"}`), `follow_up` and `dropped` (what validation threw out). Each action is `{"n", "kind", "target", "description", "find", "change", "why", "expected", "risk", "evidence", "status", "result", "updated_at"}`; `status` is `proposed`, `applied`, `approved`, `rejected` or `failed`. `report` is the Markdown report's path under `$HABAKKUK_HOME`.
+A retro is `{"id", "agent", "from", "to", "on_demand", "plan", "evidence", "actions", "report", "delivered", "done", "summary", "created_at"}`. `plan` holds `summary`, `went_well`, `went_badly` (each `{"what", "cause", "evidence"}`), `follow_up` and `dropped` (what validation threw out). Each action is `{"n", "kind", "target", "description", "find", "change", "why", "expected", "risk", "evidence", "status", "result", "updated_at"}`; `status` is `proposed`, `applied`, `approved`, `rejected` or `failed`. `report` is the Markdown report's path under `$HABAKKUK_HOME`.
 
 ## Skills
 

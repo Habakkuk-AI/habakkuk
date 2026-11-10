@@ -106,7 +106,7 @@ CREATE TABLE retros (
 	agent       TEXT NOT NULL,
 	period_from INTEGER NOT NULL, -- unix milliseconds
 	period_to   INTEGER NOT NULL,
-	quiet       INTEGER NOT NULL DEFAULT 0, -- asked for on demand: no delivery
+	on_demand   INTEGER NOT NULL DEFAULT 0, -- asked for now: not delivered
 	plan        TEXT NOT NULL,     -- JSON
 	evidence    TEXT NOT NULL,     -- JSON
 	next        INTEGER NOT NULL DEFAULT 0, -- actions looked at so far

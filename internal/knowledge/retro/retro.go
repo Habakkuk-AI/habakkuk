@@ -133,14 +133,15 @@ func Recent(days int, now time.Time) (from, to time.Time) {
 }
 
 type payload struct {
-	From  int64 `json:"from"` // unix ms
-	To    int64 `json:"to"`
-	Quiet bool  `json:"quiet,omitempty"` // asked for on demand: the asker gets the summary
+	From     int64 `json:"from"` // unix ms
+	To       int64 `json:"to"`
+	OnDemand bool  `json:"on_demand,omitempty"` // the asker gets the summary; nothing is delivered
 }
 
-// Enqueue queues a retro of an agent's work from from to to. A quiet retro
-// is not delivered anywhere: whoever asked for it reads the result.
-func (r *Runner) Enqueue(ctx context.Context, agent string, from, to time.Time, quiet bool) (string, error) {
+// Enqueue queues a retro of an agent's work from from to to. One asked for
+// on demand is not delivered anywhere: whoever asked for it reads the
+// result.
+func (r *Runner) Enqueue(ctx context.Context, agent string, from, to time.Time, onDemand bool) (string, error) {
 	if _, ok := r.Agents[agent]; !ok {
 		return "", fmt.Errorf("unknown agent %q", agent)
 	}
@@ -150,7 +151,7 @@ func (r *Runner) Enqueue(ctx context.Context, agent string, from, to time.Time, 
 	id := JobID(agent, from, to)
 	if _, err := r.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: id, Kind: Kind, Agent: agent, SerialKey: consolidate.SerialKey(agent), Priority: -1,
-		Payload: payload{From: from.UnixMilli(), To: to.UnixMilli(), Quiet: quiet},
+		Payload: payload{From: from.UnixMilli(), To: to.UnixMilli(), OnDemand: onDemand},
 	}); err != nil {
 		return "", err
 	}
@@ -260,7 +261,7 @@ func (r *Runner) Handle(ctx context.Context, j *jobs.Job, owner string) (string,
 		if err := r.Queue.Owns(ctx, j.ID, owner); err != nil {
 			return "", err
 		}
-		if err := r.insert(ctx, &Retro{ID: j.ID, Agent: j.Agent, From: from, To: to, Quiet: p.Quiet, Plan: *plan, Evidence: ev}); err != nil {
+		if err := r.insert(ctx, &Retro{ID: j.ID, Agent: j.Agent, From: from, To: to, OnDemand: p.OnDemand, Plan: *plan, Evidence: ev}); err != nil {
 			return "", err
 		}
 		if ret, err = r.Get(ctx, j.ID); err != nil {
@@ -302,7 +303,7 @@ func (r *Runner) Handle(ctx context.Context, j *jobs.Job, owner string) (string,
 	if err := r.writeReport(ctx, ret); err != nil {
 		return "", err
 	}
-	if !ret.Delivered && !ret.Quiet && !ret.Plan.Quiet() && ag.Deliver != "" && r.Deliver != nil {
+	if !ret.Delivered && !ret.OnDemand && !ret.Plan.Quiet() && ag.Deliver != "" && r.Deliver != nil {
 		if err := r.Deliver(ctx, "retro_dlv_"+ret.ID, ag.Deliver, ChatSummary(ret)); err != nil {
 			// The report is written; a chat that cannot be reached will
 			// not become reachable on a retry.
@@ -374,7 +375,7 @@ type Retro struct {
 	Agent     string        `json:"agent"`
 	From      time.Time     `json:"from"`
 	To        time.Time     `json:"to"`
-	Quiet     bool          `json:"quiet"`
+	OnDemand  bool          `json:"on_demand"`
 	Plan      Plan          `json:"plan"`
 	Evidence  *Evidence     `json:"evidence,omitempty"`
 	Actions   []ActionState `json:"actions"`
@@ -431,9 +432,9 @@ func (r *Runner) insert(ctx context.Context, ret *Retro) error {
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `INSERT INTO retros (id, agent, period_from, period_to, quiet, plan, evidence, created_at, updated_at)
+	res, err := tx.ExecContext(ctx, `INSERT INTO retros (id, agent, period_from, period_to, on_demand, plan, evidence, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`,
-		ret.ID, ret.Agent, ret.From.UnixMilli(), ret.To.UnixMilli(), ret.Quiet, string(plan), string(ev), now, now)
+		ret.ID, ret.Agent, ret.From.UnixMilli(), ret.To.UnixMilli(), ret.OnDemand, string(plan), string(ev), now, now)
 	if err != nil {
 		return err
 	}
@@ -458,8 +459,8 @@ func (r *Runner) Get(ctx context.Context, id string) (*Retro, error) {
 	ret := &Retro{}
 	var from, to, created int64
 	var plan, ev string
-	err := r.db().QueryRowContext(ctx, `SELECT id, agent, period_from, period_to, quiet, plan, evidence, next, report,
-		delivered, done, summary, created_at FROM retros WHERE id = ?`, id).Scan(&ret.ID, &ret.Agent, &from, &to, &ret.Quiet,
+	err := r.db().QueryRowContext(ctx, `SELECT id, agent, period_from, period_to, on_demand, plan, evidence, next, report,
+		delivered, done, summary, created_at FROM retros WHERE id = ?`, id).Scan(&ret.ID, &ret.Agent, &from, &to, &ret.OnDemand,
 		&plan, &ev, &ret.Next, &ret.Report, &ret.Delivered, &ret.Done, &ret.Summary, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w %q", ErrNotFound, id)
