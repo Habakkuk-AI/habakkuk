@@ -155,6 +155,8 @@ if ! mkdir -p "$dir" 2>/dev/null || [ ! -w "$dir" ]; then
 		use_sudo=1
 		say "Installing to $dir needs sudo."
 		as_owner mkdir -p "$dir"
+	elif [ "$system" = 1 ]; then
+		fail "cannot write to $dir and there is no sudo; run this as root, or pass --dir"
 	else
 		fail "cannot write to $dir; pass --dir, or --system to use sudo"
 	fi
@@ -200,9 +202,22 @@ fi
 case ":${PATH:-}:" in
 *":$dir:"*) ;;
 *)
+	# Name the file this user's shell reads when it starts: zsh (the macOS
+	# default) never reads ~/.profile.
+	shell=${SHELL:-}
+	case "${shell##*/}" in
+	zsh) rc=.zshrc ;;
+	bash) if [ "$os" = darwin ]; then rc=.bash_profile; else rc=.bashrc; fi ;;
+	fish) rc= ;;
+	*) rc=.profile ;;
+	esac
 	say ""
 	say "$dir is not on your PATH. Add it, for example:"
-	say "  echo 'export PATH=\"$dir:\$PATH\"' >> ~/.profile && . ~/.profile"
+	if [ -n "$rc" ]; then
+		say "  echo 'export PATH=\"$dir:\$PATH\"' >> ~/$rc && . ~/$rc"
+	else
+		say "  fish_add_path $dir"
+	fi
 	;;
 esac
 say ""
