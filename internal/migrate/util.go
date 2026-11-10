@@ -208,36 +208,69 @@ func skipCopy(name string) bool {
 }
 
 // findSkills lists the folders under root that hold a SKILL.md, at any
-// depth (categories), skipping hidden folders. A symlink right under root
-// that leads to a skill folder is followed: the folder it leads to is
-// listed.
-func findSkills(root string) ([]string, error) {
+// depth (categories), skipping hidden folders. A symlink is followed when
+// it leads to a skill folder, or to a category folder holding skills; one
+// that leads nowhere, or to something else, is listed as left out.
+func (f *Found) findSkills(root string) ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	seen := map[string]bool{} // folders already walked, against link loops
+	var walk func(dir string, depth int) error
+	walk = func(dir string, depth int) error {
+		real, err := filepath.EvalSymlinks(dir)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) && p == root {
-				return fs.SkipAll
-			}
 			return err
 		}
-		if d.Type()&fs.ModeSymlink != 0 && filepath.Dir(p) == root && !strings.HasPrefix(d.Name(), ".") {
-			if target, err := filepath.EvalSymlinks(p); err == nil && exists(filepath.Join(target, skills.FileName)) {
-				out = append(out, target)
-			}
+		if seen[real] || depth > 8 {
 			return nil
 		}
-		if d.IsDir() && p != root && (strings.HasPrefix(d.Name(), ".") || skipCopy(d.Name())) {
-			return filepath.SkipDir
-		}
-		if !d.IsDir() && d.Name() == skills.FileName && filepath.Dir(p) != root {
-			out = append(out, filepath.Dir(p))
-		}
-		return nil
-	})
+		seen[real] = true
+		return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) && p == dir {
+					return fs.SkipAll
+				}
+				return err
+			}
+			if d.Type()&fs.ModeSymlink != 0 && !strings.HasPrefix(d.Name(), ".") {
+				target, err := filepath.EvalSymlinks(p)
+				info, serr := os.Stat(target)
+				inSkill := d.Name() != skills.FileName && exists(filepath.Join(filepath.Dir(p), skills.FileName))
+				switch {
+				case inSkill:
+					// A link among a skill's own files: the copy handles it.
+				case err != nil || serr != nil:
+					f.skip("skill link %s: it leads nowhere", p)
+				case !info.IsDir():
+					if d.Name() != skills.FileName {
+						f.skip("skill link %s: it leads to a file, not a skill folder", p)
+					} else if filepath.Dir(p) != root {
+						out = append(out, filepath.Dir(p))
+					}
+				case exists(filepath.Join(target, skills.FileName)):
+					out = append(out, target)
+				default:
+					return walk(target, depth+1) // a category folder kept elsewhere
+				}
+				return nil
+			}
+			if d.IsDir() && p != dir && (strings.HasPrefix(d.Name(), ".") || skipCopy(d.Name())) {
+				return filepath.SkipDir
+			}
+			if !d.IsDir() && d.Name() == skills.FileName && filepath.Dir(p) != root {
+				out = append(out, filepath.Dir(p))
+			}
+			return nil
+		})
+	}
+	if _, err := os.Lstat(root); errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	err := walk(root, 0)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	slices.Sort(out)
+	out = slices.Compact(out)
 	// A skill's own subfolders may hold more SKILL.md files: keep the outer one.
 	var keep []string
 	for _, d := range out {

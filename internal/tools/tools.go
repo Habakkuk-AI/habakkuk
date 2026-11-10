@@ -350,10 +350,14 @@ func (r *Registry) Execute(ctx context.Context, env *Env, call llm.Block) llm.Bl
 		return res
 	}
 	env.checkpoint(ctx, t, call.Input)
+	before := env.Taint.Marked()
 	out, err := t.Run(ctx, env, call.Input)
 	if taints(t) {
 		env.Taint.Mark()
 	}
+	// A tool that marked the turn itself (session_search reading imported
+	// history) is recorded on its result, for restoreTaint.
+	res.Tainted = taints(t) || !before && env.Taint.Marked()
 	if err != nil {
 		res.IsError = true
 		if out != "" {

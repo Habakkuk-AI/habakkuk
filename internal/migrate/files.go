@@ -244,10 +244,12 @@ var claudeCodeInternals = []internals{
 
 // codexInternals: what a Codex folder (~/.codex) keeps for itself.
 var codexInternals = []internals{
-	{whyProgram, []string{"bin", "node_modules", "vendor_imports"}},
+	{whyProgram, []string{"bin", "node_modules", "vendor_imports", "computer-use", "node_repl", "process_manager"}},
+	{whyRunning, []string{"ipc"}},
+	{whyPlugins, []string{"plugins"}},
 	{whyCache, []string{"tmp", ".tmp", "shell_snapshots"}},
 	{whyLogs, []string{"log", "logs"}},
-	{whySessions, []string{"sessions", "archived_sessions", "history.jsonl", "session_index.jsonl", "state.sqlite", "worktrees", "sqlite"}},
+	{whySessions, []string{"sessions", "archived_sessions", "history.jsonl", "session_index.jsonl", "state.sqlite", "worktrees", "sqlite", "state"}},
 	{whyKeys, []string{"auth.json", ".credentials.json", "installation_id", "browser"}},
 	{whyConfig, []string{"config.toml", "version.json", "rules"}},
 	{"already imported as the agent's AGENTS.md", []string{"AGENTS.md", "AGENTS.override.md"}},
@@ -289,9 +291,11 @@ func internalWhy(from, name string) string {
 		why = whyRunning
 	case strings.HasSuffix(low, "-wal"), strings.HasSuffix(low, "-shm"), strings.HasSuffix(low, "-journal"):
 		why = whySessions
-	case strings.HasSuffix(low, ".sqlite"), strings.HasSuffix(low, ".sqlite3"), strings.Contains(low, "browser"):
-		// A database or a browser profile the import does not know may
-		// hold sign-ins and cookies.
+	case IsCodingTool(from) && (strings.HasSuffix(low, ".sqlite") || strings.HasSuffix(low, ".sqlite3") || strings.HasSuffix(low, ".db") ||
+		strings.Contains(low, "browser")):
+		// In a coding tool's folder, a database or a browser profile the
+		// import does not know may hold sign-ins and cookies. (In an
+		// agent's home, the user's own scripts keep databases too.)
 		why = whyKeys
 	}
 	if strings.Contains(why, "%s") {

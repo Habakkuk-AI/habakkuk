@@ -44,12 +44,14 @@ The import looks for each source folder where that agent's own tools look. That'
 
 Each conversation you had with the old agent comes over as a session of the agent it belonged to. It keeps its title. It starts at its first message and ends at its last. Where the old agent noted the chat, such as a Telegram chat or a Discord thread, the session records that chat under the matching Habakkuk channel.
 
-Only what you and the agent said comes over. Tool calls, tool results, reasoning and the old agent's summaries stay behind. So do messages the old agent never showed as part of the chat: group messages it only watched, answers that were rewound or never sent, and text meant for the model alone. Context the old gateway added in front of your messages, such as sender details, forwarded and replied-to messages, or the group's chat since the last reply, is taken out too. A conversation with no words in it, only tool calls, is left out.
+Only what you and the agent said comes over, each message once. Tool calls, tool results and reasoning stay behind. So do the rows the old agent never showed as part of the chat: the summaries it wrote when it compacted a long chat, notices such as a model switch, group messages it only watched, answers that were rewound or never sent, and text meant for the model alone. When the old agent compacted a chat, it kept a copy of each turn it carried on with, and the import reads that turn once. Context the old gateway added to your messages, such as sender details, forwarded and replied-to messages, or the group's chat since the last reply, is taken out too, before or after your words. A message that was only activity the agent watched in a room is left out. A conversation with no words in it, only tool calls, is left out.
+
+The import only reads the old agent's databases. It opens them so that nothing is written beside them, not even the `-wal` and `-shm` files SQLite makes. When the old agent has changes in a `-wal` file still, the import reads a copy in a temporary folder and removes it after.
 
 The imported sessions are history:
 
-- Your agent can search them with `session_search`. Results from them are marked as imported, and the agent is told they're reference material, not instructions. A turn that reads them counts as having read outside content, so its shell commands and writes outside the workspace ask you first.
-- The background memory review never reads them, so nothing in them becomes a memory note or changes your profile on its own.
+- Your agent can search them with `session_search`. Results from them are marked as imported, and the agent is told they're reference material, not instructions. A turn whose search results include imported text counts as having read outside content, so its shell commands and writes outside the workspace ask you first. That stays true if the turn is picked up again after a restart. A search that finds only the agent's own chats doesn't count.
+- The background memory review never reads them, so nothing in them becomes a memory note or changes your profile on its own. Retros leave them out too: an old user's "no, that's wrong" isn't a correction of your agent.
 - A conversation from a group chat, an inbox or a webhook is marked untrusted.
 - They show in `hk sessions`, marked `(imported, read-only)`, and on the dashboard's Sessions page. `hk show ID` and `hk sessions export ID` work on them.
 - No new message is ever added to them. To pick up an old topic, start a new session and ask the agent about it.
@@ -65,7 +67,7 @@ The plan shows how many conversations and messages each agent gets, and how many
 |---|---|---|---|
 | Instructions | `CLAUDE.md` | `AGENTS.md` (or `AGENTS.override.md`) | the main agent's `AGENTS.md` |
 | MCP servers | `mcpServers` in `~/.claude.json`, and Claude Desktop's `claude_desktop_config.json` | `[mcp_servers]` in `config.toml` | `mcp_servers`, plus an `mcp:<name>` toolset on the agent |
-| Skills | `skills/`, following a linked skill folder | `skills/`, and `~/.agents/skills` | shared skills |
+| Skills | `skills/`, following linked skill and category folders | `skills/`, and `~/.agents/skills` | shared skills |
 | Slash commands | `commands/` (`commands/git/commit.md` is `/git:commit`) | `prompts/` | a shared skill each (`git-commit`), saying what it was and how to use `$ARGUMENTS` |
 | Memory | each file in `projects/<project>/memory/` | each file in `memories/` | one note each |
 | Model | `model` in `settings.json`, when it's a full model id | `model` and `model_provider` in `config.toml` | the agent's `model` |
@@ -74,7 +76,7 @@ Keys and sign-ins never move from a coding tool, not even with `--secrets copy`.
 
 A few MCP servers need a closer look:
 
-- A server whose command line or URL holds a key, such as `--access-token ...`, a password in a database URL or `?api_key=...`, is left out, from any source. Habakkuk keeps keys in `.env`, so add that server to `mcp_servers` in `config.yaml` yourself.
+- A server whose values might be keys is handled the same way from every source (see [MCP servers and keys](#mcp-servers-and-keys)). From a coding tool such a server is always left out, because no key moves from it.
 - A server that uses the older SSE transport is left out. If it also offers Streamable HTTP, often at `/mcp`, add that URL.
 - A remote server Claude Code signed in to gets `auth: oauth`. Run `hk mcp login NAME` for it. The plan names any other remote server that sends no key, in case it needs a sign-in too.
 - Codex's `enabled_tools` become the server's `allow` list. Habakkuk can't hide single tools, so its `disabled_tools` always ask for approval instead.
@@ -84,8 +86,8 @@ If `settings.json` names a model by a short name such as `opus`, the import sets
 
 A project folder is read only when you name it with `--project DIR`. Running the import inside one doesn't add it. Here's what a project adds:
 
-- Its instruction files (`CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, or Codex's `AGENTS.md`) become a memory note about that project. They don't go into the agent's own `AGENTS.md`, which applies everywhere.
-- From its `.mcp.json`, only the servers you told Claude Code to trust for that folder come along. Claude Code records that as `enableAllProjectMcpServers`, `enabledMcpjsonServers` and `disabledMcpjsonServers`. The plan shows each project server's full command, so you can read what it runs before you say yes. Servers you added for the folder in Claude Code itself come along too.
+- Its instruction files (`CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, or Codex's `AGENTS.md`) become a memory note about that project, marked untrusted because they come from a repository. They don't go into the agent's own `AGENTS.md`, which applies everywhere.
+- From its `.mcp.json`, only the servers you approved for that folder in Claude Code come along. The import reads that from your own `~/.claude.json`: you accepted the folder's trust prompt there, and then turned on all its servers or that one server, and didn't turn it off. Settings files inside the project don't count, because whoever wrote the repository wrote those. A repository you never opened in Claude Code brings no servers. The plan shows each project server's full command, so you can read what it runs before you say yes. Servers you added for the folder in Claude Code itself come along too.
 - Its skills (`.claude/skills` and `.claude/commands`, or `.codex/skills` and `.agents/skills`).
 
 The project doesn't become the agent's workspace.
@@ -93,6 +95,19 @@ The project doesn't become the agent's workspace.
 A few things stay behind: past coding sessions, subagents, hooks, plugins, output styles, Codex's command rules and its `notify` command. The plan lists the ones it finds.
 
 When an agent's home and a coding tool are both on your computer, `hk migrate` imports the agent and names the coding tool, so you can run it again with `--from`.
+
+## MCP servers and keys
+
+A key can hide anywhere in a server's setup: a short flag's value, a token in the URL's path, an ID in the query. So the import doesn't guess which values are keys. It copies a server as it is only when everything in it is plainly not a key:
+
+- its command is a program name or a path;
+- each argument is a flag with no value (`-y`, `--stdio`), the package a runner starts (the name after `npx`, `uvx`, `bunx`, `pipx run` and the like) or a path;
+- its URL has no user, password, query or fragment, and its path is short plain words such as `/v1/mcp`;
+- each header is a variable, written as `${NAME}`, or `Bearer ${NAME}`, `Basic ${NAME}` or `Token ${NAME}`, with nothing else in it.
+
+Any other server is left out by default, and the plan says how to add it with `hk mcp add NAME`. Its values are never printed. With `--secrets copy` (or a yes when you're asked about the keys), the server comes along: each value that might be a key goes into `$HABAKKUK_HOME/.env` as a variable of its own, such as `MCP_SEARCH_ARG2`, `MCP_SEARCH_URL` or `MCP_SEARCH_HEADER_1`, and `config.yaml` names the variable. A literal value in a server's `env` was always kept as a variable, and moves into `.env` with the other keys. Literal values never land in `config.yaml` or the plan.
+
+From Claude Code and Codex, no key moves, so these servers are always left out.
 
 ## Your files in the old folder
 
@@ -168,7 +183,7 @@ hk migrate [--from hermes|openclaw|claude-code|codex] [--source DIR]
 If you leave out `--secrets`, an interactive run asks once whether to copy the keys. If you leave out `--files`, it asks once whether to copy your files. With `-y` and no `--files`, your files stay where they are. The report tells you how to bring them over later, which is to run `hk migrate --files copy`. That later run also fixes what was imported before. It rewrites in place any text that still names the old folder, and each schedule keeps its ID and stays on or paused. Text you changed since the import is covered too. Your wording is kept, and only the paths into the copied folders change.
 
 > [!NOTE]
-> You only ever see keys by name. Their values go straight into `.env`. They don't appear in `config.yaml`, the plan, the report or the logs. A memory entry that looks like it holds a key or password isn't imported. Neither is an MCP server with a key in its command line or URL, and the plan shows URLs without their query. From Claude Code and Codex no key is copied at all.
+> You only ever see keys by name. Their values go straight into `.env`. They don't appear in `config.yaml`, the plan, the report or the logs. A memory entry that looks like it holds a key or password isn't imported. An MCP server whose values might be keys comes along only with the keys, as variables in `.env` (see [MCP servers and keys](#mcp-servers-and-keys)), and the plan shows URLs without their query. From Claude Code and Codex no key is copied at all.
 
 ## A worked example
 
@@ -317,9 +332,9 @@ Once the Files section lists nothing under "Not moved" and every folder shows `=
 
 **"Found Claude Code too"** (or Codex): the import picked the agent's home. Run `hk migrate --from claude-code` (or `--from codex`) after it to bring the coding tool's setup into the same agent.
 
-**An MCP server shows "keys never move in a command line or URL"**: its config passes a key as an argument or in its URL. Add it to `mcp_servers` in `config.yaml` with the key in `$HABAKKUK_HOME/.env`, passed through `env` or `headers`. If the server only takes the key on its command line, a small wrapper script that reads it from the environment works.
+**An MCP server shows "values in its command line, URL or headers may be keys"**: the import couldn't tell its values from keys. Run the import again with `--secrets copy` to bring it with those values in `.env`. Or add it yourself with `hk mcp add NAME`, or in `mcp_servers` in `config.yaml`, where an argument or the URL can name a variable as `${NAME}`.
 
-**A project's MCP server shows "Claude Code was never told to trust it"**: you never approved it in Claude Code for that folder. Read its command in `.mcp.json`. If you trust it, approve it in Claude Code and run the import again, or add it to `config.yaml` yourself.
+**A project's MCP server shows "you never approved it for this folder in Claude Code"**: your `~/.claude.json` doesn't say you trusted it. Read its command in `.mcp.json`. If you trust it, open the folder in Claude Code, approve it, and run the import again, or add it to `config.yaml` yourself.
 
 **"this conversation was imported from another agent and is read-only"**: you sent a message to an imported session. Start a new session instead. The agent can still find the old conversation with `session_search`.
 

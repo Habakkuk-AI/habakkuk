@@ -79,7 +79,10 @@ func (r *codingReader) projectInstructions(path string) error {
 	title := "Instructions for " + filepath.Base(r.o.Project) + " (" + filepath.Base(path) + ")"
 	body := "The instructions in " + tilde(path, r.o.userHome()) + ", for work in the project " +
 		tilde(r.o.Project, r.o.userHome()) + ":\n\n" + text
-	r.agent.Notes = append(r.agent.Notes, chunkNote(title, body, []string{"imported", "project", r.from})...)
+	for _, n := range chunkNote(title, body, []string{"imported", "project", r.from}) {
+		n.Untrusted = true // it comes from a repository, which anyone may have written
+		r.agent.Notes = append(r.agent.Notes, n)
+	}
 	return nil
 }
 
@@ -92,7 +95,7 @@ func (r *codingReader) mcpServers(servers map[string]any, where, project string)
 			continue
 		}
 		if cmd, _ := m["command"].(string); strings.Contains(cmd, ".app/Contents/") {
-			r.f.skip("MCP server %s (%s): it runs a program inside a desktop app (%s), which only that app can use", raw, where, cmd)
+			r.f.skip("MCP server %s (%s): it runs a program inside a desktop app, which only that app can use", raw, where)
 			continue
 		}
 		if on, ok := m["enabled"].(bool); ok && !on {
@@ -131,7 +134,7 @@ func (r *codingReader) mcpServers(servers map[string]any, where, project string)
 
 // skillsIn adds the skills under root.
 func (r *codingReader) skillsIn(root string) error {
-	dirs, err := findSkills(root)
+	dirs, err := r.f.findSkills(root)
 	if err != nil {
 		return err
 	}
@@ -390,13 +393,10 @@ func readClaudeCode(dir string, o Options) (*Found, error) {
 			return nil, err
 		}
 		servers, _ := mcp["mcpServers"].(map[string]any)
-		approved, err := claudeApprovedServers(p, settings, pm)
-		if err != nil {
-			return nil, err
-		}
+		approved := claudeApprovedServers(pm)
 		for _, name := range sortedKeys(servers) {
 			if !approved(name) {
-				r.f.skip("MCP server %s in %s: Claude Code was never told to trust it for this project", name, filepath.Join(p, ".mcp.json"))
+				r.f.skip("MCP server %s in %s: you never approved it for this folder in Claude Code", name, filepath.Join(p, ".mcp.json"))
 				delete(servers, name)
 			}
 		}
@@ -425,34 +425,26 @@ func readClaudeCode(dir string, o Options) (*Found, error) {
 	return r.f, nil
 }
 
-// claudeApprovedServers reads which of a project's .mcp.json servers
-// Claude Code was told to trust: enableAllProjectMcpServers, or a name in
-// enabledMcpjsonServers, and not in disabledMcpjsonServers. The choices
-// live in the project's entry in .claude.json and in the settings files.
-func claudeApprovedServers(project string, user, state map[string]any) (func(string) bool, error) {
-	all := false
+// claudeApprovedServers reads which of a project's .mcp.json servers the
+// user told Claude Code to trust for that folder. Only the user's own
+// record counts, in .claude.json: the folder's trust prompt accepted
+// (hasTrustDialogAccepted), and then enableAllProjectMcpServers or the name
+// in enabledMcpjsonServers, and not in disabledMcpjsonServers. Settings
+// files inside the project are left aside: whoever wrote the repository
+// wrote those.
+func claudeApprovedServers(state map[string]any) func(string) bool {
+	if trusted, _ := state["hasTrustDialogAccepted"].(bool); !trusted {
+		return func(string) bool { return false }
+	}
+	all, _ := state["enableAllProjectMcpServers"].(bool)
 	on, off := map[string]bool{}, map[string]bool{}
-	read := func(m map[string]any) {
-		if v, _ := m["enableAllProjectMcpServers"].(bool); v {
-			all = true
-		}
-		for _, n := range asList(m["enabledMcpjsonServers"]) {
-			on[n] = true
-		}
-		for _, n := range asList(m["disabledMcpjsonServers"]) {
-			off[n] = true
-		}
+	for _, n := range asList(state["enabledMcpjsonServers"]) {
+		on[n] = true
 	}
-	read(user)
-	read(state)
-	for _, name := range []string{"settings.json", "settings.local.json"} {
-		m, err := readJSONFile(filepath.Join(project, ".claude", name))
-		if err != nil {
-			return nil, err
-		}
-		read(m)
+	for _, n := range asList(state["disabledMcpjsonServers"]) {
+		off[n] = true
 	}
-	return func(name string) bool { return !off[name] && (all || on[name]) }, nil
+	return func(name string) bool { return !off[name] && (all || on[name]) }
 }
 
 // claudeOAuthServers lists the MCP servers Claude Code holds a sign-in

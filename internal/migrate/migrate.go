@@ -18,7 +18,6 @@
 package migrate
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -112,6 +111,11 @@ type Options struct {
 	// Project is a project folder whose own instructions, MCP servers and
 	// skills a coding tool's import adds; "" is none.
 	Project string
+	// Secrets says whether keys will be copied: "copy", or "skip". An MCP
+	// server with a key in its command line, URL or headers is imported
+	// only with "copy" (and never from a coding tool). The caller that asks
+	// plans with "copy" and plans again with "skip" on a no.
+	Secrets string
 }
 
 func (o *Options) getenv(k string) string {
@@ -242,7 +246,7 @@ type Found struct {
 	workspaces map[string]string
 	// dbs are the read-only connections to source databases (and to the
 	// Habakkuk home's transcripts while planning); Close closes them.
-	dbs map[string]*sql.DB
+	dbs map[string]*sourceDB
 }
 
 // Close closes the connections reading the source opened.
@@ -260,7 +264,7 @@ func (f *Found) closeDB(path string) error {
 	if db == nil {
 		return nil
 	}
-	return db.Close()
+	return db.close()
 }
 
 // otherEnv offers the variables of one source .env that this home's import
@@ -302,6 +306,9 @@ type Note struct {
 	Title string
 	Body  string
 	Tags  []string
+	// Untrusted marks a note whose text came from outside the user's own
+	// setup, such as a project's instruction file from a repository.
+	Untrusted bool
 }
 
 // Skill is one SKILL.md folder to copy, or one SKILL.md made from a slash
@@ -339,6 +346,10 @@ type MCPServer struct {
 	// Project is the project folder it came from, for servers a project
 	// defines; the plan shows those in full.
 	Project string
+	// Keyed lists the variables holding values from its command line, URL
+	// or headers that may be keys. A keyed server is imported only when the
+	// keys are copied.
+	Keyed []string
 }
 
 // Channel is one channel account for config.yaml.

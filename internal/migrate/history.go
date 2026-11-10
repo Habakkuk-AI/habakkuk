@@ -29,11 +29,17 @@ import (
 //     main home and in each profile. A session records the platform it ran
 //     on (source), its chat_type and, for a chat, its chat_id and
 //     thread_id. Structured message content is stored as "\x00json:"
-//     followed by JSON. Rows the agent itself never showed as part of the
-//     conversation are marked: observed group chatter (observed = 1),
-//     rewound or undelivered turns (active = 0 and compacted = 0), summaries
-//     (_compressed_summary = 1) and rows meant for the model only
-//     ("model_only" in display_metadata).
+//     followed by JSON. What the agent shows as the conversation is the
+//     rows that are active or were compacted (active = 1 or compacted = 1:
+//     a rewound or undelivered turn has neither), whose display_kind is
+//     empty or "steer" ("hidden" marks a compaction summary, others mark
+//     notices such as a model switch), that are not observed group chatter
+//     (observed = 1) and not for the model only ("model_only" or
+//     "_compressed_summary" in display_metadata). Compaction keeps the
+//     originals (active = 0, compacted = 1) and inserts active copies of the
+//     turns it keeps, with the same display_order and message_uid: one of
+//     each is read. Older summaries are user rows that start with
+//     "[CONTEXT COMPACTION" or "[CONTEXT SUMMARY]".
 //   - OpenClaw: per agent, agents/<id>/sessions/<session>.jsonl (one JSON
 //     event per line, messages as {"type":"message","message":{...}}) with
 //     sessions.json mapping session keys such as
@@ -137,25 +143,27 @@ func (f *Found) conversation(a *Agent, c *Conversation) {
 	f.History = append(f.History, c)
 }
 
-// roDB is one read-only connection to a source database for the whole
-// import; Found.Close closes it.
+// roDB is one connection to a source database for the whole import,
+// opened so that nothing is written beside it (openSourceDB); Found.Close
+// closes it.
 func (f *Found) roDB(path string) (*sql.DB, error) {
 	if db := f.dbs[path]; db != nil {
-		return db, nil
+		return db.db, nil
 	}
-	q := url.Values{}
-	q.Add("mode", "ro")
-	q.Add("_pragma", "busy_timeout(5000)")
-	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	db, closeFn, err := openSourceDB(path)
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
 	if f.dbs == nil {
-		f.dbs = map[string]*sql.DB{}
+		f.dbs = map[string]*sourceDB{}
 	}
-	f.dbs[path] = db
+	f.dbs[path] = &sourceDB{db, closeFn}
 	return db, nil
+}
+
+type sourceDB struct {
+	db    *sql.DB
+	close func() error
 }
 
 // columns lists a table's columns; nil when the table is missing.
@@ -231,22 +239,43 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 	}
 	// The rows that were part of the conversation as its people saw it.
 	shown := `role IN ('user', 'assistant') AND content IS NOT NULL AND trim(content) != ''`
-	if mc["_compressed_summary"] {
-		shown += ` AND COALESCE(_compressed_summary, 0) = 0`
+	switch {
+	case mc["active"] && mc["compacted"]:
+		shown += ` AND (COALESCE(active, 1) = 1 OR COALESCE(compacted, 0) = 1)`
+	case mc["active"]:
+		shown += ` AND COALESCE(active, 1) != 0`
 	}
 	if mc["observed"] {
 		shown += ` AND COALESCE(observed, 0) = 0`
 	}
-	if mc["active"] && mc["compacted"] {
-		shown += ` AND NOT (COALESCE(active, 1) = 0 AND COALESCE(compacted, 0) = 0)`
-	} else if mc["active"] {
-		shown += ` AND COALESCE(active, 1) != 0`
+	if mc["_compressed_summary"] {
+		shown += ` AND COALESCE(_compressed_summary, 0) = 0`
+	}
+	if mc["display_kind"] {
+		shown += ` AND COALESCE(display_kind, '') IN ('', 'steer')`
 	}
 	if mc["display_metadata"] {
-		shown += ` AND COALESCE(CASE WHEN json_valid(display_metadata) THEN json_extract(display_metadata, '$.model_only') END, 0) NOT IN (1, 'true')`
+		for _, k := range []string{"model_only", "_compressed_summary"} {
+			shown += ` AND COALESCE(CASE WHEN json_valid(display_metadata) THEN json_extract(display_metadata, '$.` + k + `') END, 0) NOT IN (1, 'true')`
+		}
+	}
+	// Copies a compaction made share their original's display_order and
+	// message_uid.
+	key := "CAST(id AS TEXT)"
+	switch {
+	case mc["display_order"]:
+		key = "COALESCE('o' || display_order, 'u' || message_uid, 'i' || id)"
+	case mc["message_uid"]:
+		key = "COALESCE('u' || message_uid, 'i' || id)"
+	case !mc["id"]:
+		key = "CAST(rowid AS TEXT)"
+	}
+	uid := "''"
+	if mc["message_uid"] {
+		uid = "COALESCE(message_uid, '')"
 	}
 	counts := map[string]int{}
-	rows, err := db.QueryContext(ctx, `SELECT session_id, count(*) FROM messages WHERE `+shown+` GROUP BY session_id`)
+	rows, err := db.QueryContext(ctx, `SELECT session_id, count(DISTINCT `+key+`) FROM messages WHERE `+shown+` GROUP BY session_id`)
 	if err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 		return
@@ -289,19 +318,24 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 			Untrusted: slices.Contains(unvettedSources, strings.ToLower(src)) || !slices.Contains(directChats, strings.ToLower(chatType)),
 			Count:     counts[id],
 			load: func() ([]session.ImportedMessage, bool, error) {
-				rows, err := db.Query(`SELECT role, content, `+ts+` FROM messages WHERE session_id = ? AND `+shown+` ORDER BY `+order, sid)
+				rows, err := db.Query(`SELECT role, content, `+ts+`, `+key+`, `+uid+` FROM messages WHERE session_id = ? AND `+shown+` ORDER BY `+order, sid)
 				if err != nil {
 					return nil, false, err
 				}
 				defer rows.Close()
 				var out []session.ImportedMessage
+				seen := map[string]bool{}
 				for rows.Next() {
-					var role, content string
+					var role, content, k, u string
 					var at float64
-					if err := rows.Scan(&role, &content, &at); err != nil {
+					if err := rows.Scan(&role, &content, &at, &k, &u); err != nil {
 						return nil, false, err
 					}
-					if text := hermesText(content); text != "" {
+					if seen[k] || u != "" && seen["u"+u] {
+						continue // a copy of a row already read
+					}
+					seen[k], seen["u"+u] = true, u != ""
+					if text := hermesText(content); text != "" && !summaryText(text) {
 						out = append(out, session.ImportedMessage{Role: llm.Role(role), Text: text, At: unixTime(at)})
 					}
 				}
@@ -312,6 +346,11 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 	if err := rows.Err(); err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 	}
+}
+
+// summaryText reports a compaction summary written as a user message.
+func summaryText(text string) bool {
+	return strings.HasPrefix(text, "[CONTEXT COMPACTION") || strings.HasPrefix(text, "[CONTEXT SUMMARY]")
 }
 
 // hermesText is the text of a stored message: plain, or the text parts of
@@ -649,7 +688,8 @@ func ocDBSessions(db *sql.DB, fn func(id string, n int, e *ocEntry)) error {
 	}
 	q := `SELECT session_id, ` + col(wc, "session_key", "''") + `, ` + col(wc, "created_at", "0") + `, ` +
 		col(wc, "channel", "''") + `, (SELECT count(*) FROM transcript_events t WHERE t.session_id = session_windows.session_id
-			AND typeof(t.event_json) = 'text' AND (t.event_json LIKE '%"role":"user"%' OR t.event_json LIKE '%"role":"assistant"%'))
+			AND typeof(t.event_json) = 'text' AND (t.event_json LIKE '%"role":"user"%' OR t.event_json LIKE '%"role":"assistant"%')
+			AND (t.event_json LIKE '%"type":"text"%' OR t.event_json LIKE '%"content":"%'))
 		FROM session_windows WHERE session_id IN (SELECT DISTINCT session_id FROM transcript_events)
 		ORDER BY ` + col(wc, "created_at", "0") + `, session_id`
 	rows, err := db.QueryContext(ctx, q)
@@ -794,37 +834,69 @@ func transcriptLine(line []byte) (msg session.ImportedMessage, other, ok bool) {
 	return session.ImportedMessage{Role: llm.Role(role), Text: text, At: at}, other, true
 }
 
-// The context blocks the source's gateway puts in front of a user's message:
-// a label line, then a fenced JSON block (sender, forwarded and replied-to
-// messages and the like) or a paragraph (untrusted context, the chat history
+// The context blocks the source's gateway puts around a user's message: a
+// label line, then a fenced JSON block (sender, forwarded and replied-to
+// messages and the like) or a list (untrusted context, the chat history
 // since the last reply). They are other people's words or metadata, so
-// they are taken out.
+// they are taken out. Newer gateways add them after the user's text,
+// separated by a blank line; older ones put them first. A message that is
+// only observed room activity is not the user's at all.
 var (
 	reFencedLabel = regexp.MustCompile(`^(Conversation info|Sender|Thread starter|Reply chain of current user message|Reply target of current user message|Replied message|Forwarded message context|Forwarded message|Location|Structured object)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$`)
-	reBlockLabel  = regexp.MustCompile(`^(Untrusted context|Chat history since last reply)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$|\(untrusted[^)]*\):\s*$|⟦[^⟧]*ctx⟧`)
+	reBlockLabel  = regexp.MustCompile(`^(Untrusted context|Chat history since last reply|Recent chat history|Conversation context)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$|\(untrusted[^)]*\):\s*$|⟦[^⟧]*ctx⟧`)
+	reEntry       = regexp.MustCompile(`^(\[|\{|- |\* )`)
 )
 
 // stripInbound takes those context blocks out of a user's message and
 // reports whether it found any.
 func stripInbound(text string) (string, bool) {
-	if !strings.Contains(text, "ntrusted") && !strings.Contains(text, "⟦") && !strings.Contains(text, "```") {
+	if strings.HasPrefix(strings.TrimSpace(text), "[OpenClaw room event]") {
+		return "", true
+	}
+	if !strings.Contains(text, "ntrusted") && !strings.Contains(text, "⟦") && !strings.Contains(text, "```") &&
+		!strings.Contains(text, "chat history") && !strings.Contains(text, "Conversation context") {
 		return text, false
 	}
 	lines := strings.Split(text, "\n")
 	var keep []string
 	found := false
+	label := func(l string) bool {
+		return reBlockLabel.MatchString(l) || reFencedLabel.MatchString(l)
+	}
 	for i := 0; i < len(lines); i++ {
 		l := strings.TrimSpace(lines[i])
 		switch {
 		case reFencedLabel.MatchString(l) && i+1 < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[i+1]), "```"):
 			found = true
 			i += 2
-			for i < len(lines) && !strings.HasPrefix(strings.TrimSpace(lines[i]), "```") {
+			for i < len(lines) && strings.TrimSpace(lines[i]) != "```" {
 				i++
 			}
 		case reBlockLabel.MatchString(l):
 			found = true
-			for i+1 < len(lines) && strings.TrimSpace(lines[i+1]) != "" {
+			if strings.TrimSpace(strings.Join(keep, "\n")) != "" {
+				// After the user's text: every block from here on is context.
+				i = len(lines)
+				continue
+			}
+			// Before it: the block runs on, across blank lines, while its
+			// lines look like entries.
+			for i+1 < len(lines) {
+				next := strings.TrimSpace(lines[i+1])
+				if next == "" {
+					j := i + 1
+					for j < len(lines) && strings.TrimSpace(lines[j]) == "" {
+						j++
+					}
+					if j < len(lines) && (reEntry.MatchString(strings.TrimSpace(lines[j])) && !label(strings.TrimSpace(lines[j]))) {
+						i = j
+						continue
+					}
+					break
+				}
+				if label(next) {
+					break
+				}
 				i++
 			}
 		default:
@@ -845,10 +917,14 @@ func (p *Plan) planHistory() error {
 	have := map[string]bool{}
 	path := filepath.Join(p.Home, "transcripts.db")
 	if exists(path) {
-		db, err := f.roDB(path)
+		q := url.Values{}
+		q.Add("mode", "ro")
+		q.Add("_pragma", "busy_timeout(10000)")
+		db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
 		if err != nil {
 			return err
 		}
+		defer db.Close()
 		rows, err := db.Query(`SELECT source_id FROM imported_sessions WHERE source = ?`, f.From)
 		switch {
 		case err != nil && strings.Contains(err.Error(), "no such table"):
@@ -868,8 +944,6 @@ func (p *Plan) planHistory() error {
 				return err
 			}
 		}
-		// The import writes here next: no connection of its own stays open.
-		f.closeDB(path)
 	}
 	items := map[string]*Item{}
 	for _, c := range f.History {

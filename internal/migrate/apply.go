@@ -141,7 +141,8 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 		case "note":
 			var m *memory.Store
 			if m, err = openMem(); err == nil {
-				_, _, err = m.Put(ctx, it.Agent, memory.Note{Title: it.note.Title, Content: it.note.Body, Tags: it.note.Tags, Source: memory.SourceUser})
+				_, _, err = m.Put(ctx, it.Agent, memory.Note{Title: it.note.Title, Content: it.note.Body, Tags: it.note.Tags, Source: memory.SourceUser,
+					Untrusted: it.note.Untrusted})
 			}
 		case "skill":
 			err = p.copySkill(it)

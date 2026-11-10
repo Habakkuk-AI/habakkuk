@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -298,6 +299,18 @@ func TestMigrateClaudeCode(t *testing.T) {
 	if err := copyHome(project, filepath.Join("..", "..", "internal", "migrate", "testdata", "claude-code-project")); err != nil {
 		t.Fatal(err)
 	}
+	// You opened the project in Claude Code, trusted it and approved
+	// orders-db there.
+	statePath := filepath.Join(user, ".claude", ".claude.json")
+	var state map[string]any
+	if data, err := os.ReadFile(statePath); err != nil || json.Unmarshal(data, &state) != nil {
+		t.Fatalf("read %s: %v", statePath, err)
+	}
+	state["projects"] = map[string]any{project: map[string]any{"hasTrustDialogAccepted": true, "enabledMcpjsonServers": []string{"orders-db"}}}
+	data, _ := json.Marshal(state)
+	if err := os.WriteFile(statePath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	home := filepath.Join(t.TempDir(), "habakkuk")
 	var out bytes.Buffer
 	args := []string{"--from", "claude-code", "--project", project, "--secrets", "copy", "-y"}
@@ -376,5 +389,51 @@ func TestSetupOffersCodingTool(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Found a Codex setup in "+filepath.Join(user, ".codex")+". Import its instructions, MCP servers, skills and memory first?") {
 		t.Errorf("output:\n%s", out.String())
+	}
+}
+
+// A server whose command line holds a key comes along only with the keys:
+// answering no to the keys leaves it out, and its value appears nowhere.
+func TestMigrateKeyedServerFollowsKeysAnswer(t *testing.T) {
+	user, dir := sourceHome(t, migrate.Sources[0])
+	path := filepath.Join(dir, "config.yaml")
+	cfg, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg = []byte(strings.Replace(string(cfg), "mcp_servers:\n", "mcp_servers:\n  shortflag:\n    command: pkg\n    args: [\"-k\", \"shortsecretvalue94\"]\n", 1))
+	if err := os.WriteFile(path, cfg, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, input string
+		args        []string
+		kept        bool
+	}{
+		{"answer no", "y\nn\nn\n", nil, false},
+		{"answer yes", "y\ny\nn\n", nil, true},
+		{"-y without --secrets", "", []string{"-y"}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			home := t.TempDir()
+			var out bytes.Buffer
+			if err := runMigrate(context.Background(), home, c.args, strings.NewReader(c.input), &out, noEnv, user); err != nil {
+				t.Fatalf("%v\n%s", err, out.String())
+			}
+			conf, _ := os.ReadFile(filepath.Join(home, "config.yaml"))
+			env, _ := os.ReadFile(filepath.Join(home, ".env"))
+			if strings.Contains(out.String()+string(conf), "shortsecretvalue94") {
+				t.Errorf("the key is in the output or config.yaml")
+			}
+			if got := strings.Contains(string(conf), "shortflag:"); got != c.kept {
+				t.Errorf("shortflag in config.yaml: %v, want %v\n%s", got, c.kept, out.String())
+			}
+			if got := strings.Contains(string(env), "MCP_SHORTFLAG_ARG2=shortsecretvalue94"); got != c.kept {
+				t.Errorf("the key in .env: %v, want %v", got, c.kept)
+			}
+			if c.name == "answer no" && !strings.Contains(out.String(), "Without the keys, these MCP servers are left out: shortflag.") {
+				t.Errorf("output:\n%s", out.String())
+			}
+		})
 	}
 }

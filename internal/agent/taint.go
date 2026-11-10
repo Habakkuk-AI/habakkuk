@@ -23,15 +23,26 @@ func markHostedContent(env *tools.Env, m llm.Message) {
 // taint itself lives in memory for one run; without this a turn that had
 // read a web page before the restart would resume clean, and its shell
 // calls would no longer need a human. The transcript is what survives, so
-// it is the record: any hosted search block, and any call to a tool that
-// can bring outside content in, written by this turn. A call counts even
-// when its result was never recorded; the tool may have run.
+// it is the record: any hosted search block, any call to a tool that can
+// bring outside content in, and any tool result marked as having brought
+// some (a read tool that came across untrusted text, such as imported
+// history), written by this turn. A call counts even when its result was
+// never recorded; the tool may have run.
 func (t *turn) restoreTaint(env *tools.Env, recs []session.Record) {
 	if env.Taint == nil || env.Taint.Marked() {
 		return
 	}
 	for _, rec := range recs {
-		if rec.JobID != t.job.ID || rec.Message.Role != llm.Assistant {
+		if rec.JobID != t.job.ID {
+			continue
+		}
+		for _, b := range rec.Message.Blocks {
+			if b.Type == llm.ToolResult && b.Tainted {
+				env.Taint.Mark()
+				return
+			}
+		}
+		if rec.Message.Role != llm.Assistant {
 			continue
 		}
 		for _, b := range rec.Message.Blocks {

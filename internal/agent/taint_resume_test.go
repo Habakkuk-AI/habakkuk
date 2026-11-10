@@ -99,6 +99,7 @@ func interruptAndResume(t *testing.T, first string, hosted bool) (result llm.Blo
 	var fetched, shelled atomic.Int32
 	h.runner.Tools.Register("core", probeTool{"fetch_page", tools.RiskNetwork, &fetched})
 	h.runner.Tools.Register("core", probeTool{"shell", tools.RiskExec, &shelled})
+	h.runner.Tools.Register("core", markingTool{"read_imported"})
 	h.runner.Agents["habakkuk"].Mode = tools.ModeFull
 	h.runner.Env = func(s *Spec, _ string) *tools.Env {
 		return &tools.Env{Workspace: s.Workspace, Mode: s.Mode, Taint: tools.NewTaint(false)}
@@ -166,5 +167,25 @@ func TestResumeDoesNotTaintACleanTurn(t *testing.T) {
 	res, runs := interruptAndResume(t, "list_dir", false)
 	if runs != 1 || res.IsError {
 		t.Fatalf("a clean resumed turn could not use the shell (ran %d times): %+v", runs, res)
+	}
+}
+
+// markingTool is a read tool that taints the turn itself, as session_search
+// does when it returns imported history.
+type markingTool struct{ name string }
+
+func (m markingTool) Spec() llm.ToolSpec { return llm.ToolSpec{Name: m.name} }
+func (m markingTool) Risk() tools.Risk   { return tools.RiskRead }
+func (m markingTool) Run(_ context.Context, env *tools.Env, _ json.RawMessage) (string, error) {
+	env.Taint.Mark()
+	return "imported text", nil
+}
+
+// A read tool that came across outside content marks its result, so the
+// turn is still tainted after a restart.
+func TestReadToolTaintSurvivesAResumedTurn(t *testing.T) {
+	res, runs := interruptAndResume(t, "read_imported", false)
+	if runs != 0 || !res.IsError || !strings.Contains(res.Text, "outside content") {
+		t.Fatalf("after the restart the shell ran %d times without a human; result: %+v", runs, res)
 	}
 }

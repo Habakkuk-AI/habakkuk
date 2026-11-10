@@ -132,6 +132,7 @@ type Plan struct {
 // NewPlan compares what was found with the Habakkuk home at home. It
 // reads the home but changes nothing.
 func NewPlan(f *Found, home string, o Options) (*Plan, error) {
+	f, keyed := f.withoutKeyed(o.Secrets != "copy" || IsCodingTool(f.From))
 	p := &Plan{Found: f, Home: home, opts: o}
 	var cfg *config.Config
 	raw, err := os.ReadFile(filepath.Join(home, "config.yaml"))
@@ -165,6 +166,13 @@ func NewPlan(f *Found, home string, o Options) (*Plan, error) {
 	}
 	root := doc.Content[0]
 	edited := p.planConfig(cfg, root)
+	for _, m := range keyed {
+		why := "values in its command line, URL or headers may be keys, and keys are not copied; run again with --secrets copy to add it with them in .env, or add it yourself with hk mcp add " + m.Name
+		if IsCodingTool(f.From) {
+			why = "values in its command line, URL or headers may be keys, and keys never move from " + Label(f.From) + "; add it to mcp_servers in config.yaml yourself, with the key in .env, or with hk mcp add " + m.Name
+		}
+		p.add(&Item{Kind: "mcp", Name: m.Name, Status: Rejected, Detail: why})
+	}
 	switch {
 	case len(cfg.Agents) == 0 && !slices.ContainsFunc(p.Items, func(it *Item) bool { return it.Kind == "agent" && it.Changes() }):
 		p.NoConfig = "no agent has a model the import could set up, so config.yaml is not written; run hk setup, then hk migrate again for the channels and MCP servers"
@@ -792,4 +800,71 @@ func quoteAll(list []string) []string {
 		out[i] = shellQuote(s)
 	}
 	return out
+}
+
+// withoutKeyed returns f without its keyed MCP servers when drop is set,
+// and those servers: a copy, so the same Found can be planned again with
+// another answer. Their variables leave the keys to copy and to set.
+func (f *Found) withoutKeyed(drop bool) (*Found, []*MCPServer) {
+	if !drop || !slices.ContainsFunc(f.MCP, func(m *MCPServer) bool { return len(m.Keyed) > 0 }) {
+		return f, nil
+	}
+	c := *f
+	var keyed []*MCPServer
+	gone := map[string]bool{}
+	needed := map[string]bool{}
+	c.MCP = nil
+	for _, m := range f.MCP {
+		vars := append(slices.Clone(m.Keyed), sortedValues(m.Env)...)
+		for _, h := range sortedValues(m.Headers) {
+			vars = append(vars, mcpHeaderVars(h)...)
+		}
+		if len(m.Keyed) > 0 {
+			keyed = append(keyed, m)
+			for _, v := range vars {
+				gone[v] = true
+			}
+			continue
+		}
+		c.MCP = append(c.MCP, m)
+		for _, v := range vars {
+			needed[v] = true
+		}
+	}
+	c.Agents = make([]*Agent, len(f.Agents))
+	for i, a := range f.Agents {
+		b := *a
+		b.MCP = slices.DeleteFunc(slices.Clone(a.MCP), func(n string) bool {
+			return slices.ContainsFunc(keyed, func(m *MCPServer) bool { return m.Name == n })
+		})
+		c.Agents[i] = &b
+	}
+	drop2 := func(v string) bool { return gone[v] && !needed[v] }
+	if f.Secrets != nil {
+		c.Secrets = map[string]string{}
+		for k, v := range f.Secrets {
+			if !drop2(k) {
+				c.Secrets[k] = v
+			}
+		}
+	}
+	c.Missing = slices.DeleteFunc(slices.Clone(f.Missing), drop2)
+	return &c, keyed
+}
+
+func sortedValues(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for _, k := range sortedKeys(m) {
+		out = append(out, m[k])
+	}
+	return out
+}
+
+// mcpHeaderVars lists the variables a header names: a bare name, or the
+// references in a template.
+func mcpHeaderVars(spec string) []string {
+	if !strings.Contains(spec, "${") {
+		return []string{spec}
+	}
+	return varRefs(spec)
 }

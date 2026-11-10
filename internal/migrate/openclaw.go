@@ -2,11 +2,9 @@ package migrate
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -161,7 +159,7 @@ func (r *ocReader) agents() error {
 		if a.Main {
 			a.Skills = append(a.Skills, shared...)
 		}
-		own, err := findSkills(filepath.Join(ws, "skills"))
+		own, err := r.f.findSkills(filepath.Join(ws, "skills"))
 		if err != nil {
 			return err
 		}
@@ -400,7 +398,7 @@ func cleanIdentity(id agent.Identity) agent.Identity {
 
 // sharedSkills are the managed skills in the state folder.
 func (r *ocReader) sharedSkills() ([]Skill, map[string]string) {
-	dirs, err := findSkills(filepath.Join(r.dir, "skills"))
+	dirs, err := r.f.findSkills(filepath.Join(r.dir, "skills"))
 	if err != nil {
 		r.f.skip("skills in %s could not be listed: %v", filepath.Join(r.dir, "skills"), err)
 	}
@@ -661,14 +659,11 @@ func (r *ocReader) schedules() {
 func readCronDB(path string) ([]map[string]any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	q := url.Values{}
-	q.Add("mode", "ro")
-	q.Add("_pragma", "busy_timeout(5000)")
-	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	db, closeDB, err := openSourceDB(path)
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer closeDB()
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'cron_jobs'`).Scan(&n); err != nil {
 		return nil, err

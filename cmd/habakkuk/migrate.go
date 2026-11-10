@@ -152,6 +152,13 @@ func (m *migration) run(ctx context.Context) error {
 	// Without --files a person is asked once, so the plan shows the copy;
 	// with -y the files are left where they are.
 	o.FilesAsk = m.fl.files == "" && !m.fl.yes
+	// MCP servers whose command line, URL or headers hold keys come along
+	// only with the keys. A person who has not answered yet sees them in
+	// the plan, and the plan is made again without them on a no.
+	o.Secrets = m.fl.secrets
+	if o.Secrets == "" && !m.fl.yes {
+		o.Secrets = "copy"
+	}
 	if o.From == "" {
 		from, err := m.pick(o)
 		if err != nil {
@@ -229,6 +236,21 @@ func (m *migration) run(ctx context.Context) error {
 	if m.fl.secrets == "" && !m.fl.yes && len(keys) > 0 {
 		if copyKeys, err = m.ask(fmt.Sprintf("Copy the %d keys and tokens into %s (readable only by you)?", len(keys), filepath.Join(m.home, ".env")), true); err != nil {
 			return err
+		}
+		if !copyKeys {
+			o.Secrets = "skip"
+			if plan, err = migrate.NewPlan(found, m.home, o); err != nil {
+				return err
+			}
+			var left []string
+			for _, it := range plan.Items {
+				if it.Kind == "mcp" && it.Status == migrate.Rejected && strings.Contains(it.Detail, "--secrets copy") {
+					left = append(left, it.Name)
+				}
+			}
+			if len(left) > 0 {
+				m.say("Without the keys, these MCP servers are left out: %s.", strings.Join(left, ", "))
+			}
 		}
 	}
 	if fp := plan.Files; o.FilesAsk && fp.Pending() {

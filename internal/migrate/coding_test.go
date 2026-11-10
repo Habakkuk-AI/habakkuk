@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -54,11 +55,22 @@ func TestReadClaudeCode(t *testing.T) {
 	if got, want := noteTitles(a), []string{"Oven schedule", "Short answers"}; !slices.Equal(got, want) {
 		t.Errorf("notes = %v, want %v (the MEMORY.md index is left out)", got, want)
 	}
-	if got := names(f.MCP, func(m *MCPServer) string { return m.Name }); !slices.Equal(got, []string{"calendar", "github", "tracker"}) {
+	if got := names(f.MCP, func(m *MCPServer) string { return m.Name }); !slices.Equal(got, []string{"calendar", "db-cli", "github", "search", "tracker", "warehouse"}) {
 		t.Errorf("mcp = %v", got)
 	}
-	if !slices.Equal(a.MCP, []string{"calendar", "github", "tracker"}) {
-		t.Errorf("agent mcp = %v", a.MCP)
+	// Servers with possible keys in their command line or URL are found,
+	// then left out of the plan: keys never move from a coding tool.
+	p, err := NewPlan(f, t.TempDir(), Options{Secrets: "copy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"db-cli", "search", "warehouse"} {
+		if it := item(p, "mcp", n); it == nil || it.Status != Rejected || !strings.Contains(it.Detail, "keys never move from Claude Code") {
+			t.Errorf("%s = %+v", n, it)
+		}
+	}
+	if pa := p.Found.Agents[0]; !slices.Equal(pa.MCP, []string{"calendar", "github", "tracker"}) {
+		t.Errorf("agent mcp = %v", pa.MCP)
 	}
 	for _, m := range f.MCP {
 		if m.Name == "calendar" && !m.OAuth {
@@ -75,8 +87,7 @@ func TestReadClaudeCode(t *testing.T) {
 	}
 	skipped := strings.Join(f.Skipped, "\n")
 	for _, w := range []string{"/empty: it holds no text", "/pdf-notes: a skill named pdf-notes", "MCP server parked",
-		"MCP server db-cli: its --access-token argument holds a value", "MCP server warehouse: argument 1 looks like a key",
-		"MCP server search: its URL holds a key in its api_key parameter", "MCP server legacy: it uses the older SSE transport"} {
+		"MCP server legacy: it uses the older SSE transport"} {
 		if !strings.Contains(skipped, w) {
 			t.Errorf("skipped %q lack %q", skipped, w)
 		}
@@ -109,24 +120,49 @@ func TestReadClaudeCode(t *testing.T) {
 
 func TestReadClaudeCodeProject(t *testing.T) {
 	src, project := fixture(t, ClaudeCode), fixture(t, "claude-code-project")
-	// The project's own servers in .claude.json, keyed by its folder.
-	state := map[string]any{"projects": map[string]any{project: map[string]any{
-		"mcpServers": map[string]any{"preview": map[string]any{"type": "http", "url": "https://preview.example/mcp"}},
-	}}}
-	data, _ := json.Marshal(state)
-	if err := os.WriteFile(filepath.Join(src, ".claude.json"), data, 0o600); err != nil {
-		t.Fatal(err)
+	// The repository's own .claude/settings.json turns on every server and
+	// names rogue: that is whoever wrote the repository speaking, not you.
+	writeState := func(pm map[string]any) {
+		t.Helper()
+		data, _ := json.Marshal(map[string]any{"projects": map[string]any{project: pm}})
+		if err := os.WriteFile(filepath.Join(src, ".claude.json"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
+	local := map[string]any{"preview": map[string]any{"type": "http", "url": "https://preview.example/mcp"}}
 	o := options(ClaudeCode, src, false)
 	o.Project = project
-	f, err := Read(o)
-	if err != nil {
-		t.Fatal(err)
+	mcpNames := func() (*Found, []string) {
+		t.Helper()
+		f, err := Read(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f, names(f.MCP, func(m *MCPServer) string { return m.Name })
 	}
-	t.Cleanup(func() { f.Close() })
+
+	// A folder never opened in Claude Code: none of its .mcp.json servers.
+	writeState(nil)
+	if _, got := mcpNames(); len(got) != 0 {
+		t.Errorf("a repository never opened in Claude Code: mcp = %v", got)
+	}
+	// Opened, but the trust prompt never accepted: still none.
+	writeState(map[string]any{"enabledMcpjsonServers": []any{"orders-db"}})
+	if _, got := mcpNames(); len(got) != 0 {
+		t.Errorf("without the trust prompt accepted: mcp = %v", got)
+	}
+	// Trusted, with one server approved, and one added for the folder.
+	writeState(map[string]any{"hasTrustDialogAccepted": true, "enabledMcpjsonServers": []any{"orders-db"}, "mcpServers": local})
+	f, got := mcpNames()
+	if !slices.Equal(got, []string{"orders-db", "preview"}) {
+		t.Errorf("mcp = %v", got)
+	}
+	if !strings.Contains(strings.Join(f.Skipped, "\n"), "MCP server rogue in "+filepath.Join(project, ".mcp.json")+": you never approved it") {
+		t.Errorf("skipped = %q", f.Skipped)
+	}
 	a := f.Agents[0]
-	// The project's instructions are about that project: a note, not the
-	// agent's standing instructions.
+	// The project's instructions are about that project: an untrusted note,
+	// not the agent's standing instructions.
 	if agents := a.Files["AGENTS.md"]; strings.Contains(agents, "pnpm") || !strings.Contains(agents, "Answer in plain English") {
 		t.Errorf("AGENTS.md = %q", agents)
 	}
@@ -136,16 +172,8 @@ func TestReadClaudeCodeProject(t *testing.T) {
 			note = &a.Notes[i]
 		}
 	}
-	if note == nil || !strings.Contains(note.Body, "Use pnpm, never npm.") || !slices.Contains(note.Tags, "project") {
+	if note == nil || !strings.Contains(note.Body, "Use pnpm, never npm.") || !slices.Contains(note.Tags, "project") || !note.Untrusted {
 		t.Errorf("project note = %+v; notes %v", note, noteTitles(a))
-	}
-	// Only the .mcp.json servers Claude Code was told to trust, and the
-	// project's own local ones.
-	if got := names(f.MCP, func(m *MCPServer) string { return m.Name }); !slices.Equal(got, []string{"orders-db", "preview"}) {
-		t.Errorf("mcp = %v", got)
-	}
-	if !strings.Contains(strings.Join(f.Skipped, "\n"), "MCP server rogue in "+filepath.Join(project, ".mcp.json")+": Claude Code was never told to trust it") {
-		t.Errorf("skipped = %q", f.Skipped)
 	}
 	for _, s := range []string{"deploy-check", "ship"} {
 		if !slices.Contains(skillNames(a), s) {
@@ -155,26 +183,30 @@ func TestReadClaudeCodeProject(t *testing.T) {
 	if a.Workspace != "~/habakkuk-workspace" {
 		t.Errorf("workspace = %q; the project does not become the workspace", a.Workspace)
 	}
-	// The plan shows a project's server in full.
-	p, err := NewPlan(f, t.TempDir(), o)
+	// The plan shows a project's server in full; the note is saved untrusted.
+	home := t.TempDir()
+	p, err := NewPlan(f, home, o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if it := item(p, "mcp", "orders-db"); it == nil || it.Detail != "orders-mcp --read-only (from the project "+project+")" {
 		t.Errorf("orders-db = %+v", it)
 	}
-
-	// Approval from .claude.json, all at once.
-	state["projects"] = map[string]any{project: map[string]any{"enableAllProjectMcpServers": true, "disabledMcpjsonServers": []any{"orders-db"}}}
-	data, _ = json.Marshal(state)
-	if err := os.WriteFile(filepath.Join(src, ".claude.json"), data, 0o600); err != nil {
+	if _, err := p.Apply(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
-	f, err = Read(o)
+	m, err := memory.Open(context.Background(), home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := names(f.MCP, func(m *MCPServer) string { return m.Name }); !slices.Equal(got, []string{"rogue"}) {
+	defer m.Close()
+	if n, err := m.Read(context.Background(), "habakkuk", memory.Slugify(note.Title)); err != nil || !n.Untrusted() {
+		t.Errorf("the project note = %+v, %v; want it saved untrusted", n, err)
+	}
+
+	// Approval of every server, from your own record, but one turned off.
+	writeState(map[string]any{"hasTrustDialogAccepted": true, "enableAllProjectMcpServers": true, "disabledMcpjsonServers": []any{"orders-db"}})
+	if _, got := mcpNames(); !slices.Equal(got, []string{"rogue"}) {
 		t.Errorf("with all enabled but orders-db: mcp = %v", got)
 	}
 }
@@ -216,8 +248,17 @@ func TestReadCodex(t *testing.T) {
 	if tracker == nil || tracker.Headers["Authorization"] != "Bearer ${TRACKER_TOKEN}" {
 		t.Errorf("tracker = %+v", tracker)
 	}
-	if got := names(f.MCP, func(m *MCPServer) string { return m.Name }); !slices.Equal(got, []string{"docs", "files", "tracker"}) {
-		t.Errorf("mcp = %v; the turned-off server, the app's own and the ones with keys are left out", got)
+	if got := names(f.MCP, func(m *MCPServer) string { return m.Name }); !slices.Equal(got, []string{"docs", "files", "git", "shop", "tracker"}) {
+		t.Errorf("mcp = %v; the turned-off server and the app's own are left out", got)
+	}
+	p, err := NewPlan(f, t.TempDir(), Options{Secrets: "copy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"git", "shop"} {
+		if it := item(p, "mcp", n); it == nil || it.Status != Rejected {
+			t.Errorf("%s = %+v; a server with a key in its command line or URL is left out", n, it)
+		}
 	}
 	for _, m := range f.MCP {
 		if m.Name == "files" && (!slices.Equal(m.Allow, []string{"search", "read"}) || !slices.Equal(m.Approve, []string{"delete"})) {
@@ -225,8 +266,7 @@ func TestReadCodex(t *testing.T) {
 		}
 	}
 	skipped := strings.Join(f.Skipped, "\n")
-	for _, w := range []string{"MCP server node_repl (Codex): it runs a program inside a desktop app", "MCP server shop: its URL holds a key in its token parameter",
-		"MCP server git: its --token argument holds a value"} {
+	for _, w := range []string{"MCP server node_repl (Codex): it runs a program inside a desktop app"} {
 		if !strings.Contains(skipped, w) {
 			t.Errorf("skipped %q lack %q", skipped, w)
 		}
@@ -380,93 +420,241 @@ func TestDetectCodingTools(t *testing.T) {
 	}
 }
 
-func TestMCPSecret(t *testing.T) {
+func TestPlainArgs(t *testing.T) {
 	for _, c := range []struct {
-		s    MCPServer
-		want string
+		command string
+		args    []string
+		want    string // p plain, k keyed
 	}{
-		{MCPServer{Command: "npx", Args: []string{"-y", "server-github"}}, ""},
-		{MCPServer{Command: "srv", Args: []string{"--token", "${GITHUB_TOKEN}"}}, ""},
-		{MCPServer{Command: "srv", Args: []string{"--port", "8080", "--verbose"}}, ""},
-		{MCPServer{Command: "srv", Args: []string{"--access-token", "abc123"}}, "--access-token"},
-		{MCPServer{Command: "srv", Args: []string{"--api-key=abc123"}}, "argument 1"},
-		{MCPServer{Command: "srv", Args: []string{"--db-pass=abc123"}}, "--db-pass"},
-		{MCPServer{Command: "srv", Args: []string{"postgresql://sam:hunter22@db.example/orders"}}, "argument 1"},
-		{MCPServer{Command: "srv", Args: []string{"https://api.example/v1?key=abc123"}}, "key parameter"},
-		{MCPServer{URL: "https://mcp.example/mcp"}, ""},
-		{MCPServer{URL: "https://mcp.example/mcp?api_key=abc123"}, "api_key parameter"},
-		{MCPServer{URL: "https://mcp.example/u/Xk9pQ2rT7vW4yZ1aB3cD5eF7gH9jK2mN/mcp"}, "path"},
+		{"npx", []string{"-y", "@modelcontextprotocol/server-github"}, "pp"},
+		{"uvx", []string{"mcp-server-time", "--local-timezone"}, "pp"},
+		{"pipx", []string{"run", "mcp-server-fetch"}, "pp"},
+		{"npx", []string{"-y", "pkg", "8f14e45f-ceea-467a-9575-0b6b5c4e7a91"}, "ppk"},
+		{"pkg", []string{"-k", "shortsecretvalue94"}, "pk"},
+		{"pkg", []string{"--key=k1515value"}, "k"},
+		{"pkg", []string{"sbp_0123456789abcdef0123456789abcdef01234598"}, "k"},
+		{"env", []string{"TOKEN=plainsecret99", "node", "server.js"}, "kkk"},
+		{"npx", []string{"mcp-remote", "https://x.example/mcp", "--header", "Authorization: Bearer abcdefgh12345695"}, "pkpk"},
+		{"node", []string{"/opt/servers/files/index.js", "~/notes", "./data"}, "ppp"},
 	} {
-		got := mcpSecret(&c.s)
-		if c.want == "" && got != "" || c.want != "" && !strings.Contains(got, c.want) {
-			t.Errorf("%+v: %q, want %q", c.s, got, c.want)
+		var got strings.Builder
+		for _, p := range plainArgs(c.command, c.args) {
+			if p {
+				got.WriteByte('p')
+			} else {
+				got.WriteByte('k')
+			}
 		}
-	}
-	if got := redactURL("https://sam:pw@mcp.example/mcp?token=abc#x"); got != "https://mcp.example/mcp" {
-		t.Errorf("redactURL = %q", got)
+		if got.String() != c.want {
+			t.Errorf("%s %v = %s, want %s", c.command, c.args, got.String(), c.want)
+		}
 	}
 }
 
-// A skill kept elsewhere and linked into the skills folder comes along.
+func TestSplitURL(t *testing.T) {
+	for raw, want := range map[string][2]string{
+		"https://ok.example/mcp":                                                 {"https://ok.example/mcp", ""},
+		"https://mcp.example.com/v1/mcp":                                         {"https://mcp.example.com/v1/mcp", ""},
+		"https://mcp.example.com/s/8f14e45f-ceea-467a-9575-0b6b5c4e7a92/mcp":     {"https://mcp.example.com", "/s/8f14e45f-ceea-467a-9575-0b6b5c4e7a92/mcp"},
+		"https://mcp.example.com/mcp?customerId=abc":                             {"https://mcp.example.com", "/mcp?customerId=abc"},
+		"https://f.example/mcp#tok=frag1616value":                                {"https://f.example", "/mcp#tok=frag1616value"},
+		"https://user:pw1313xx@r.example/mcp":                                    {"https://", "user:pw1313xx@r.example/mcp"},
+		"https://mcp.zap.example/api/mcp/s/AbCdEfGh1234IjKlMnOp5678QrStUv90/mcp": {"https://mcp.zap.example", "/api/mcp/s/AbCdEfGh1234IjKlMnOp5678QrStUv90/mcp"},
+	} {
+		keep, rest := splitURL(raw)
+		if [2]string{keep, rest} != want {
+			t.Errorf("splitURL(%s) = %q, %q; want %q", raw, keep, rest, want)
+		}
+	}
+}
+
+// verifyServers are servers whose values a check could mistake for plain
+// ones; every value marked secret must stay out of config.yaml and the
+// plan.
+var verifyServers = map[string]map[string]any{
+	"s1-uuid-arg":          {"command": "npx", "args": []any{"-y", "pkg", "8f14e45f-ceea-467a-9575-0b6b5c4e7a91"}},
+	"s2-uuid-path":         {"type": "http", "url": "https://mcp.example.com/s/8f14e45f-ceea-467a-9575-0b6b5c4e7a92/mcp"},
+	"s3-query-id":          {"type": "http", "url": "https://mcp.example.com/mcp?customerId=8f14e45f-ceea-467a-9575-0b6b5c4e7a93"},
+	"s4-short-flag":        {"command": "pkg", "args": []any{"-k", "shortsecretvalue94"}},
+	"s5-bearer-arg":        {"command": "npx", "args": []any{"mcp-remote", "https://x.example/mcp", "--header", "Authorization: Bearer abcdefgh12345695"}},
+	"s7-env-literal":       {"command": "pkg", "env": map[string]any{"SERVICE_TOKEN": "literalvalue97xyz"}},
+	"s8-lower-hex":         {"command": "pkg", "args": []any{"sbp_0123456789abcdef0123456789abcdef01234598"}},
+	"s9-command":           {"command": "env", "args": []any{"TOKEN=plainsecret99", "node", "server.js"}},
+	"s10-hdr-literal":      {"type": "http", "url": "https://h.example/mcp", "headers": map[string]any{"X-Api-Key": "hdrliteral1010"}},
+	"s11-tmpl-mixed":       {"type": "http", "url": "https://t.example/mcp", "headers": map[string]any{"Authorization": "Basic ${USERNAME}:mixedliteral1111"}},
+	"s13-userinfo-arg":     {"command": "npx", "args": []any{"mcp-remote", "https://user:pw1313xx@r.example/mcp"}},
+	"s14-path-token-mixed": {"type": "http", "url": "https://mcp.zap.example/api/mcp/s/AbCdEfGh1234IjKlMnOp5678QrStUv90/mcp"},
+	"s15-equals-short":     {"command": "pkg", "args": []any{"--key=k1515value"}},
+	"s16-fragment":         {"type": "http", "url": "https://f.example/mcp#tok=frag1616value"},
+	"s17-streamable":       {"type": "http", "url": "https://ok.example/mcp"},
+	"s18-bearer-ref":       {"type": "http", "url": "https://b.example/mcp", "headers": map[string]any{"Authorization": "Bearer ${B_TOKEN}"}},
+	"s19-cmd-space":        {"command": "TOKEN=x node", "args": []any{"server.js"}},
+}
+
+var verifySecrets = []string{"8f14e45f-ceea-467a-9575-0b6b5c4e7a91", "8f14e45f-ceea-467a-9575-0b6b5c4e7a92", "8f14e45f-ceea-467a-9575-0b6b5c4e7a93",
+	"shortsecretvalue94", "abcdefgh12345695", "literalvalue97xyz", "sbp_0123456789abcdef0123456789abcdef01234598", "plainsecret99",
+	"hdrliteral1010", "mixedliteral1111", "pw1313xx", "AbCdEfGh1234IjKlMnOp5678QrStUv90", "k1515value", "frag1616value"}
+
+// configText is what config.yaml would hold for a server.
+func configText(m *MCPServer) string {
+	return fmt.Sprint(m.Command, m.Args, m.URL, m.Env, m.Headers)
+}
+
+func TestReadMCPKeyed(t *testing.T) {
+	f := &Found{}
+	plain := map[string]bool{"s7-env-literal": true, "s17-streamable": true, "s18-bearer-ref": true}
+	got := map[string]*MCPServer{}
+	for _, raw := range sortedKeys(verifyServers) {
+		if s := f.readMCP(raw, verifyServers[raw], map[string]string{"USERNAME": "sam"}, map[string]bool{}); s != nil {
+			got[raw] = s
+			if keyed := len(s.Keyed) > 0; keyed == plain[raw] {
+				t.Errorf("%s: keyed %v (%v)", raw, keyed, s.Keyed)
+			}
+			for _, v := range verifySecrets {
+				if strings.Contains(configText(s), v) {
+					t.Errorf("%s: config.yaml would hold %s: %s", raw, v, configText(s))
+				}
+			}
+		}
+	}
+	if got["s19-cmd-space"] != nil {
+		t.Error("a command that is not a plain program was imported")
+	}
+	if s := got["s4-short-flag"]; s == nil || !slices.Equal(s.Args, []string{"-k", "${MCP_S4_SHORT_FLAG_ARG2}"}) || f.Secrets["MCP_S4_SHORT_FLAG_ARG2"] != "shortsecretvalue94" {
+		t.Errorf("s4 = %+v", s)
+	}
+	if s := got["s2-uuid-path"]; s == nil || s.URL != "https://mcp.example.com${MCP_S2_UUID_PATH_URL}" {
+		t.Errorf("s2 = %+v", s)
+	}
+	if s := got["s10-hdr-literal"]; s == nil || s.Headers["X-Api-Key"] != "MCP_S10_HDR_LITERAL_HEADER_1" || f.Secrets["MCP_S10_HDR_LITERAL_HEADER_1"] != "hdrliteral1010" {
+		t.Errorf("s10 = %+v", s)
+	}
+	if v := f.Secrets["MCP_S11_TMPL_MIXED_HEADER_1"]; v != "Basic sam:mixedliteral1111" {
+		t.Errorf("s11 value = %q; its reference is filled from the source", v)
+	}
+	if s := got["s18-bearer-ref"]; s == nil || s.Headers["Authorization"] != "Bearer ${B_TOKEN}" {
+		t.Errorf("s18 = %+v", s)
+	}
+}
+
+// From an agent's home, a keyed server comes along only with the keys; its
+// values go to .env and config.yaml names them. Without the keys it is
+// left out with a hint, and its values appear nowhere.
+func TestKeyedServerNeedsKeys(t *testing.T) {
+	ctx := context.Background()
+	src := fixture(t, Hermes)
+	path := filepath.Join(src, "config.yaml")
+	cfg := readFile(t, path)
+	cfg = strings.Replace(cfg, "mcp_servers:\n", "mcp_servers:\n  shortflag:\n    command: pkg\n    args: [\"-k\", \"shortsecretvalue94\"]\n  zap:\n    url: https://mcp.zap.example/api/mcp/s/AbCdEfGh1234IjKlMnOp5678QrStUv90/mcp\n", 1)
+	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"skip", "copy"} {
+		t.Run(mode, func(t *testing.T) {
+			home := t.TempDir()
+			o := options(Hermes, src, false)
+			o.Secrets = mode
+			f, err := Read(o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := NewPlan(f, home, o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			p.Write(&out, mode)
+			if _, err := p.Apply(ctx, mode == "copy"); err != nil {
+				t.Fatal(err)
+			}
+			conf := readFile(t, filepath.Join(home, "config.yaml"))
+			for _, v := range verifySecrets {
+				if strings.Contains(out.String(), v) || strings.Contains(conf, v) {
+					t.Errorf("%s is in the plan or config.yaml", v)
+				}
+			}
+			env, _ := os.ReadFile(filepath.Join(home, ".env"))
+			if mode == "skip" {
+				if it := item(p, "mcp", "shortflag"); it == nil || it.Status != Rejected || !strings.Contains(it.Detail, "hk mcp add shortflag") {
+					t.Errorf("shortflag = %+v", it)
+				}
+				if strings.Contains(conf, "shortflag") || strings.Contains(conf, "mcp:shortflag") || strings.Contains(string(env), "shortsecretvalue94") {
+					t.Errorf("a keyed server or its key was written:\n%s", conf)
+				}
+				return
+			}
+			if !strings.Contains(conf, "${MCP_SHORTFLAG_ARG2}") || !strings.Contains(conf, "https://mcp.zap.example${MCP_ZAP_URL}") {
+				t.Errorf("config.yaml:\n%s", conf)
+			}
+			if !strings.Contains(string(env), "MCP_SHORTFLAG_ARG2=shortsecretvalue94") || !strings.Contains(string(env), "MCP_ZAP_URL=/api/mcp/s/AbCdEfGh1234IjKlMnOp5678QrStUv90/mcp") {
+				t.Errorf(".env lacks the keyed values")
+			}
+		})
+	}
+}
+
+// A skill kept elsewhere and linked into the skills folder comes along,
+// whether the link is in the skills folder or a category folder, or links
+// a whole category; a link that leads nowhere is named.
 func TestSymlinkedSkill(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need extra rights on Windows")
 	}
 	src := fixture(t, ClaudeCode)
-	elsewhere := filepath.Join(t.TempDir(), "price-list")
-	if err := os.MkdirAll(elsewhere, 0o700); err != nil {
-		t.Fatal(err)
+	elsewhere := t.TempDir()
+	mk := func(name string) string {
+		dir := filepath.Join(elsewhere, name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+filepath.Base(name)+"\ndescription: x\n---\n\nRead it.\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return dir
 	}
-	if err := os.WriteFile(filepath.Join(elsewhere, "SKILL.md"), []byte("---\nname: price-list\ndescription: Read the price list.\n---\n\nRead it.\n"), 0o600); err != nil {
-		t.Fatal(err)
+	link := func(target, at string) {
+		if err := os.MkdirAll(filepath.Dir(at), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, at); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.Symlink(elsewhere, filepath.Join(src, "skills", "price-list")); err != nil {
-		t.Fatal(err)
-	}
+	link(mk("price-list"), filepath.Join(src, "skills", "price-list"))
+	link(mk("oven-log"), filepath.Join(src, "skills", "kitchen", "oven-log"))
+	mk(filepath.Join("shared-category", "rota"))
+	link(filepath.Join(elsewhere, "shared-category"), filepath.Join(src, "skills", "shared"))
+	link(filepath.Join(elsewhere, "gone"), filepath.Join(src, "skills", "gone"))
 	f, err := Read(options(ClaudeCode, src, false))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(skillNames(f.Agents[0]), "price-list") {
-		t.Errorf("skills = %v; want the linked one", skillNames(f.Agents[0]))
+	for _, n := range []string{"price-list", "oven-log", "rota"} {
+		if !slices.Contains(skillNames(f.Agents[0]), n) {
+			t.Errorf("skills = %v; want the linked %s", skillNames(f.Agents[0]), n)
+		}
+	}
+	if !strings.Contains(strings.Join(f.Skipped, "\n"), "skill link "+filepath.Join(src, "skills", "gone")+": it leads nowhere") {
+		t.Errorf("skipped = %q; want the broken link named", f.Skipped)
 	}
 }
 
 func TestCodingToolInternals(t *testing.T) {
 	for _, c := range []struct{ from, name string }{
 		{ClaudeCode, "backups"}, {ClaudeCode, ".credentials.json"}, {Codex, "state_5.sqlite"}, {Codex, "memories_1.sqlite"},
-		{Codex, "browser"}, {Codex, "installation_id"}, {Codex, "auth.json"}, {Codex, "chrome-browser-profile"},
+		{Codex, "browser"}, {Codex, "installation_id"}, {Codex, "auth.json"}, {Codex, "chrome-browser-profile"}, {Codex, "logs_2.db"},
 	} {
 		if why := internalWhy(c.from, c.name); !strings.Contains(why, "keys and sign-ins") {
 			t.Errorf("%s %s: %q; want it kept as key material", c.from, c.name, why)
 		}
 	}
-	for _, c := range []struct{ from, name string }{{Codex, "sqlite"}, {Codex, "session_index.jsonl"}} {
+	for _, c := range []struct{ from, name string }{{Codex, "sqlite"}, {Codex, "session_index.jsonl"}, {Codex, "plugins"},
+		{Codex, "computer-use"}, {Codex, "node_repl"}, {Codex, "state"}, {Codex, "process_manager"}, {Codex, "ipc"}} {
 		if why := internalWhy(c.from, c.name); why == "" {
 			t.Errorf("%s %s may be copied", c.from, c.name)
 		}
 	}
 	if why := internalWhy(ClaudeCode, "scripts"); why != "" {
 		t.Errorf("scripts: %q; the user's own folder may move", why)
-	}
-}
-
-// Every source reads its servers through readMCP, so a key in a command
-// line or URL keeps a server out whatever the source.
-func TestReadMCPLeavesOutKeys(t *testing.T) {
-	f := &Found{}
-	for name, m := range map[string]map[string]any{
-		"db":     {"command": "db-mcp", "args": []any{"--access-token", "abc123"}},
-		"remote": {"url": "https://mcp.example/mcp?token=abc123"},
-	} {
-		if s := f.readMCP(name, m, map[string]string{}, map[string]bool{}); s != nil {
-			t.Errorf("%s was imported: %+v", name, s)
-		}
-	}
-	if len(f.Skipped) != 2 || !strings.Contains(strings.Join(f.Skipped, "\n"), "keys never move in a command line or URL") {
-		t.Errorf("skipped = %q", f.Skipped)
-	}
-	if s := f.readMCP("ok", map[string]any{"command": "npx", "args": []any{"-y", "server-time"}}, map[string]string{}, map[string]bool{}); s == nil {
-		t.Error("a server without keys was left out")
 	}
 }
