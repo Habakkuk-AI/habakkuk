@@ -1,6 +1,6 @@
 ---
 title: Agents
-description: "What an agent is in Habakkuk, and where to read about identity, teams, memory, skills, schedules, the board, approvals and sessions."
+description: "What an agent is in Habakkuk, and where to read about identity, teams, memory, skills, schedules, the board, approvals, sessions and retros."
 order: 3
 ---
 
@@ -27,6 +27,7 @@ Every message an agent handles is a **turn**: a durable job that runs the model,
 - [Task board](board.md): cards one agent hands another, that outlive the conversation.
 - [Permissions and approvals](approvals.md): what an agent may do on its own, the reviewer model, hooks and safety guards.
 - [Sessions and chat commands](sessions.md): titles, compaction, fork and rewind, standing goals, and the `/` commands.
+- [Retros](retros.md): an agent looks back over its own work, finds causes in the evidence, and proposes changes you approve.
 
 ## Defaults worth knowing
 

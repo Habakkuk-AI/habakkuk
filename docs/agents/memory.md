@@ -70,6 +70,8 @@ memory:
 - **Review.** With `review: true`, `habakkuk serve` reviews each conversation once it has been quiet for `review_idle`, saving what is worth keeping with `source: review`. It writes one line per review to `memory/.review.log` (`habakkuk memory log`).
 - **Nightly pass.** It merges near-duplicate notes and archives notes neither updated nor read for `stale_days`.
 
+Reviews look at one conversation's facts. To have an agent look back over a week of its own work (failures, denied approvals, stalled tasks, corrections) and propose changes to its skills, notes and `SOUL.md`, see [Retros](retros.md).
+
 [Architecture: memory](../reference/architecture.md#memory) describes the index, ranking, provenance and crash safety.
 
 ## Memory history and undo
@@ -96,6 +98,7 @@ habakkuk memory pins
 - **Pinned** notes, `USER.md` and skills are never rewritten, merged away or archived by the background review, the nightly pass or the skills curator. You and the agent can still edit them.
 - **Crash-safe.** A change is first written to the history as pending, then the file is replaced atomically, then the change is marked done. After a crash the pending change is kept if the file holds the new text and dropped if it does not, so the history never shows a change that did not happen and never misses one that did.
 - **Retention.** Changes are kept for `memory.history_days` (default 90, `-1` keeps everything) and pruned by the same maintenance pass as `retention.days`. The newest version of every file that still exists is always kept. Content is stored once per distinct text and compressed.
+- **Retros.** A [retro](retros.md) writes skills, notes and `SOUL.md` through the same history, so its changes can be undone too. Changes it makes on its own (with `retro: {apply: safe}`) are recorded as by `retro`; ones you approve as yours. `SOUL.md` is tracked from the first time Habakkuk changes it.
 - **API.** The dashboard API has the same: `GET /api/memory-history/{agent}`, `GET /api/memory-history/{agent}/{id}` and `POST /api/memory-history/{agent}/{id}/restore` ([HTTP API](../reference/api.md#memory-history)).
 
 ```yaml

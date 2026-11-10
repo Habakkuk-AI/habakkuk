@@ -163,15 +163,26 @@ A note is `{"slug", "title", "tags", "created_at", "updated_at", "body", "snippe
 
 ### Memory history
 
-Every change to an agent's notes, `USER.md`, `IDENTITY.md` and own skills, kept for `memory.history_days` (see [Memory history and undo](../agents/memory.md#memory-history-and-undo)).
+Every change to an agent's notes, `USER.md`, `IDENTITY.md`, own skills and (once Habakkuk has changed it) `SOUL.md`, kept for `memory.history_days` (see [Memory history and undo](../agents/memory.md#memory-history-and-undo)).
 
 | Request | Body | |
 |---|---|---|
-| `GET /api/memory-history/{agent}?file=&kind=&since=&limit=` | | Changes, newest first, `{"changes": [...], "pins": [{"kind", "name"}]}`. `file` is a slug, `USER.md`, `IDENTITY.md` or a skill name; `kind` is `note`, `profile`, `identity` or `skill`; `since` is `7d`, `12h` or a date. |
+| `GET /api/memory-history/{agent}?file=&kind=&since=&limit=` | | Changes, newest first, `{"changes": [...], "pins": [{"kind", "name"}]}`. `file` is a slug, `USER.md`, `IDENTITY.md`, `SOUL.md` or a skill name; `kind` is `note`, `profile`, `identity`, `skill` or `soul`; `since` is `7d`, `12h` or a date. |
 | `GET /api/memory-history/{agent}/{id}` | | One change with its unified `diff`. `id` may be shortened to four characters. |
 | `POST /api/memory-history/{agent}/{id}/restore` | `{"version"?: "before" \| "after"}` | Puts back the content before the change (default: undo) or after it (redo). The restore is recorded as a change by the user: `{"restored": {...}, "unchanged": false}`, or `"unchanged": true` when the file already held that version. |
 
-A change is `{"id", "agent", "kind", "name", "path", "op", "old_hash", "new_hash", "by", "tool", "session", "tainted", "note", "restores", "at"}`. `op` is `created`, `updated` or `deleted`; `by` is `agent`, `user`, `review`, `curator`, `hand` or `system`; `tainted` is true when external content had entered the turn that made it.
+A change is `{"id", "agent", "kind", "name", "path", "op", "old_hash", "new_hash", "by", "tool", "session", "tainted", "note", "restores", "at"}`. `op` is `created`, `updated` or `deleted`; `by` is `agent`, `user`, `review`, `curator`, `retro`, `hand` or `system`; `tainted` is true when external content had entered the turn that made it.
+
+### Retros
+
+An agent's [retrospectives](../agents/retros.md), read only. Approve or reject proposals with `habakkuk retro apply` or `/retro apply` in a chat.
+
+| Request | Body | |
+|---|---|---|
+| `GET /api/retros/{agent}?limit=` | | Retros, newest first, `{"retros": [...]}`, without their evidence. |
+| `GET /api/retros/{agent}/{id}` | | One retro with its `evidence`. `id` may be `latest`. |
+
+A retro is `{"id", "agent", "from", "to", "quiet", "plan", "evidence", "actions", "report", "delivered", "done", "summary", "created_at"}`. `plan` holds `summary`, `went_well`, `went_badly` (each `{"what", "cause", "evidence"}`), `follow_up` and `dropped` (what validation threw out). Each action is `{"n", "kind", "target", "description", "find", "change", "why", "expected", "risk", "evidence", "status", "result", "updated_at"}`; `status` is `proposed`, `applied`, `approved`, `rejected` or `failed`. `report` is the Markdown report's path under `$HABAKKUK_HOME`.
 
 ## Skills
 
