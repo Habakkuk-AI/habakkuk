@@ -47,6 +47,9 @@ type Gateway struct {
 	ApprovalTimeout time.Duration // default 15m
 	Now             func() time.Time
 	Blobs           *store.Blobs
+	// OnChannelState, when set, hears each account's connection state
+	// changes (Supervisor.OnState); serve uses it to tell when it is ready.
+	OnChannelState func(account, state string)
 	// Transcribe turns a voice note into text; nil leaves voice notes
 	// untranscribed.
 	Transcribe func(ctx context.Context, name, mediaType string, data []byte) (string, error)
@@ -106,7 +109,7 @@ func (g *Gateway) now() time.Time {
 
 // Run supervises every adapter until ctx ends.
 func (g *Gateway) Run(ctx context.Context) {
-	sup := &Supervisor{Store: g.Store, Log: g.Log}
+	sup := &Supervisor{Store: g.Store, Log: g.Log, OnState: g.OnChannelState}
 	var wg sync.WaitGroup
 	for name, a := range g.Adapters {
 		wg.Add(1)

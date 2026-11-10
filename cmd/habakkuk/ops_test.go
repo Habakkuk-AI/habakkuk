@@ -168,6 +168,45 @@ func TestServeStateFromHeartbeat(t *testing.T) {
 	}
 }
 
+// While serve starts (MCP servers, slow channels) status must say so, and
+// what it waits for, instead of "not running".
+func TestServeReportsStartingUntilReady(t *testing.T) {
+	home := t.TempDir()
+	now := time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	p := newServeProgress(home, clock)
+	state := func() string { return serveState(home, now) }
+	if s := state(); !strings.Contains(s, "starting, pid") || !strings.Contains(s, "waiting for loading config and databases") {
+		t.Fatalf("at launch: %s", s)
+	}
+	p.setPhase("starting workers")
+	p.channelsStarting([]string{"slack", "wagent"})
+	now = now.Add(3 * time.Second)
+	p.channelState("slack", "connecting")
+	p.channelState("slack", "connected")
+	if s := state(); !strings.Contains(s, "starting") || !strings.Contains(s, "channels to connect: wagent") {
+		t.Fatalf("one channel up: %s", s)
+	}
+	p.channelState("wagent", "backoff") // its first attempt failed: not worth waiting on
+	if s := state(); !strings.HasPrefix(s, "running, pid") {
+		t.Fatalf("all channels tried: %s", s)
+	}
+
+	// A channel that never reports back does not keep serve "starting".
+	home2 := t.TempDir()
+	start := now
+	p2 := newServeProgress(home2, func() time.Time { return now })
+	p2.channelsStarting([]string{"quiet"})
+	if s := serveState(home2, now); !strings.Contains(s, "starting") {
+		t.Fatalf("quiet channel: %s", s)
+	}
+	now = start.Add(startupCap + time.Second)
+	p2.update(func() {})
+	if s := serveState(home2, now); !strings.HasPrefix(s, "running") {
+		t.Fatalf("after the cap: %s", s)
+	}
+}
+
 func TestStatusAndHeartbeat(t *testing.T) {
 	home := writeHome(t, "")
 	ctx := context.Background()
@@ -175,7 +214,10 @@ func TestStatusAndHeartbeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stop := startHeartbeat(ctx, home, a, "127.0.0.1:1")
+	progress := newServeProgress(home, time.Now)
+	stop := progress.run(ctx)
+	progress.setListen("127.0.0.1:1")
+	progress.channelsStarting(nil)
 	if _, err := readHeartbeat(home); err != nil {
 		t.Fatal(err)
 	}

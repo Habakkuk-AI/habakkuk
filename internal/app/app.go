@@ -51,6 +51,10 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
 )
 
+// MCPTurnWait is how long a turn waits for an MCP server it uses that is
+// still making its first connection before going on without its tools.
+const MCPTurnWait = 15 * time.Second
+
 type App struct {
 	Cfg         *config.Config
 	Control     *sql.DB
@@ -152,8 +156,9 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 		a.Close()
 		return nil, err
 	}
-	// MCP servers connect on Start (chat, run, serve, habakkuk mcp), not here,
-	// so commands that never run tools do not spawn them.
+	// MCP servers connect on Start (chat, run, habakkuk mcp) or in the
+	// background (serve), not here, so commands that never run tools do not
+	// spawn them.
 	a.MCP = mcp.New(cfg.MCP, a.Tools, a.Secret, log)
 	a.closers = append(a.closers, a.MCP.Close)
 
@@ -208,6 +213,9 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 	}
 	a.Runner.Snapshot = a.snapshot
 	a.Runner.Policy = a.applyPolicy
+	a.Runner.ToolsPending = func(ctx context.Context, toolsets []string) []string {
+		return a.MCP.Pending(ctx, toolsets, MCPTurnWait)
+	}
 	if cfg.HTTP != nil {
 		if err := a.openWeb(ctx, home); err != nil {
 			a.Close()

@@ -14,7 +14,6 @@ import (
 
 	"github.com/habakkuk-ai/habakkuk/internal/app"
 	plat "github.com/habakkuk-ai/habakkuk/internal/core/platform"
-	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 	usagepkg "github.com/habakkuk-ai/habakkuk/internal/llm/usage"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/logs"
 )
@@ -32,42 +31,9 @@ type heartbeat struct {
 	Started time.Time `json:"started"`
 	Beat    time.Time `json:"beat"`
 	Listen  string    `json:"listen,omitempty"`
-}
-
-// startHeartbeat labels telemetry with the version and keeps serve.json
-// fresh until the returned func runs, which removes it.
-func startHeartbeat(ctx context.Context, home string, a *app.App, listen string) func() {
-	a.Telemetry.SetVersion(version)
-	path := filepath.Join(home, heartbeatFile)
-	hb := heartbeat{PID: os.Getpid(), Version: version, Started: time.Now(), Listen: listen}
-	write := func() {
-		hb.Beat = time.Now()
-		data, _ := json.Marshal(hb)
-		if err := store.WriteFileAtomic(path, data, 0o600); err != nil {
-			a.Log.Warn("write heartbeat failed", "err", err)
-		}
-	}
-	write()
-	ctx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		t := time.NewTicker(heartbeatEvery)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				write()
-			}
-		}
-	}()
-	return func() {
-		cancel()
-		<-done
-		os.Remove(path)
-	}
+	// Starting says what a starting serve still waits for; empty once it
+	// is ready (serveProgress).
+	Starting string `json:"starting,omitempty"`
 }
 
 func readHeartbeat(home string) (heartbeat, error) {
@@ -98,6 +64,9 @@ func serveState(home string, now time.Time) string {
 		return fmt.Sprintf("stuck? pid %d is alive but its last heartbeat was %s ago", hb.PID, roundDur(age))
 	}
 	s := fmt.Sprintf("running, pid %d, version %s, up %s", hb.PID, hb.Version, roundDur(now.Sub(hb.Started)))
+	if hb.Starting != "" {
+		s = fmt.Sprintf("starting, pid %d, version %s, for %s; waiting for %s", hb.PID, hb.Version, roundDur(now.Sub(hb.Started)), hb.Starting)
+	}
 	if hb.Listen != "" {
 		s += ", http on " + hb.Listen
 	}

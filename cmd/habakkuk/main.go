@@ -295,7 +295,11 @@ func defaultAgent(cfg *config.Config, name string) (string, error) {
 // startWorkers runs the job pool in the background and returns a func that
 // stops it and waits.
 func startWorkers(ctx context.Context, a *app.App, serving bool) (*poolHandle, func()) {
-	a.MCP.Start(ctx) // turns need MCP tools registered; slow servers join later
+	if serving {
+		a.MCP.StartBackground() // never hold up channels; turns wait for a server they need
+	} else {
+		a.MCP.Start(ctx) // turns need MCP tools registered; slow servers join later
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	pools := a.Pools(serving)
 	var wg sync.WaitGroup
@@ -519,11 +523,17 @@ func run(ctx context.Context, home string, args []string) error {
 }
 
 func serve(ctx context.Context, home string) error {
+	// serve.json from the first moment, so habakkuk status says "starting"
+	// rather than "not running" while the rest comes up.
+	progress := newServeProgress(home, time.Now)
+	defer progress.run(ctx)()
 	a, closeApp, err := open(ctx, home)
 	if err != nil {
 		return err
 	}
 	defer closeApp()
+	a.Telemetry.SetVersion(version)
+	progress.setLog(a.Log)
 	fmt.Fprintf(os.Stderr, "habakkuk %s serving agents %v, channels %v; logs at %s/habakkuk.log\n",
 		version, a.Cfg.AgentNames(), channelNames(a), home)
 	var ln net.Listener
@@ -532,14 +542,13 @@ func serve(ctx context.Context, home string) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "http on http://%s\n", ln.Addr())
+		progress.setListen(ln.Addr().String())
 	}
+	progress.setPhase("starting workers")
+	// MCP servers connect in the background: channels, schedules and the
+	// board start now, and a turn that needs a slow server waits for it.
 	_, stopWorkers := startWorkers(ctx, a, true)
 	defer stopWorkers()
-	listen := ""
-	if ln != nil {
-		listen = ln.Addr().String()
-	}
-	defer startHeartbeat(ctx, home, a, listen)() // serve.json, for habakkuk status
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	if ln != nil {
@@ -562,8 +571,12 @@ func serve(ctx context.Context, home string) error {
 	wg.Add(1)
 	go func() { defer wg.Done(); a.RunIntegrations(ctx) }() // Home Assistant event triggers
 	if a.Gateway != nil {
+		a.Gateway.OnChannelState = progress.channelState
+		progress.channelsStarting(slices.Sorted(maps.Keys(a.Gateway.Adapters)))
 		wg.Add(1)
 		go func() { defer wg.Done(); a.Gateway.Run(ctx) }()
+	} else {
+		progress.channelsStarting(nil)
 	}
 	if err := a.Maintain(ctx); err != nil {
 		a.Log.Error("maintenance failed", "err", err)

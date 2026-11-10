@@ -417,6 +417,44 @@ func TestLateServerRegistersWhenUp(t *testing.T) {
 	}
 }
 
+// A slow server must not hold up startup; a turn that uses it waits for it
+// briefly, and learns it is still connecting when the wait runs out.
+func TestBackgroundStartAndPending(t *testing.T) {
+	reg := tools.NewRegistry()
+	release := make(chan struct{})
+	m := New(map[string]*config.MCPServer{"slow": {}, "fast": {}}, reg, func(string) string { return "" }, nil)
+	m.dial = func(s *server) (sdk.Transport, error) {
+		if s.name == "slow" {
+			<-release
+		}
+		ct, st := sdk.NewInMemoryTransports()
+		if _, err := testServer().Connect(context.Background(), st, nil); err != nil {
+			return nil, err
+		}
+		return ct, nil
+	}
+	defer m.Close()
+	defer close(release)
+	ctx := context.Background()
+	if got := m.Pending(ctx, []string{"mcp:slow"}, time.Second); got != nil {
+		t.Fatalf("pending before start: %v", got)
+	}
+	start := time.Now()
+	m.StartBackground()
+	if d := time.Since(start); d > 100*time.Millisecond {
+		t.Fatalf("StartBackground blocked for %s", d)
+	}
+	if got := m.Pending(ctx, []string{"core", "mcp:fast"}, 5*time.Second); len(got) != 0 {
+		t.Fatalf("fast server still pending: %v", got)
+	}
+	if n := len(reg.Specs([]string{"mcp:fast"})); n == 0 {
+		t.Fatal("the fast server's tools are not registered after waiting for it")
+	}
+	if got := m.Pending(ctx, []string{"mcp:fast", "mcp:slow"}, 100*time.Millisecond); !slices.Equal(got, []string{"slow"}) {
+		t.Fatalf("pending = %v, want [slow]", got)
+	}
+}
+
 func TestFormatResult(t *testing.T) {
 	res := &sdk.CallToolResult{
 		Content: []sdk.Content{
