@@ -20,7 +20,8 @@ import (
 // finding the source, the plan, the confirmation and the closing report.
 
 const migrateUsage = `usage: habakkuk migrate [--from hermes|openclaw] [--source DIR] [--agent NAME]
-                        [--dry-run] [--secrets copy|skip] [--force] [-y]
+                        [--dry-run] [--secrets copy|skip] [--files copy|skip]
+                        [--files-dir DIR] [--files-max SIZE] [--force] [-y]
 
 Moves an existing Hermes Agent or OpenClaw setup into Habakkuk: agents and
 their persona files, the user profile, memory notes, skills, scheduled tasks
@@ -29,13 +30,23 @@ so, their keys and tokens. It prints a plan first and writes nothing until you
 confirm. Running it again changes nothing that is already there; things that
 differ are left alone unless --force.
 
+The imported text often names files in the old folder: scripts that schedules
+run, folders of notes and reports. The plan lists them. With --files copy your
+own files are copied into $HABAKKUK_HOME/files and the imported text is
+rewritten to name the copies, so the old folder is no longer needed for them.
+The old agent's own parts (its program, logs, sessions, keys) are never
+copied, and the old folder is only ever read.
+
 Flags:
 `
 
 type migrateFlags struct {
 	from, source, agent, secrets string
+	files, filesDir, filesMax    string
 	dryRun, force, yes           bool
 	userHome                     string // tests point the source lookup elsewhere
+	// freeSpace replaces the file system's answer in tests.
+	freeSpace func(string) (uint64, error)
 }
 
 func migrateCmd(ctx context.Context, home string, args []string) error {
@@ -53,8 +64,11 @@ func runMigrate(ctx context.Context, home string, args []string, in io.Reader, o
 	fs.StringVar(&fl.agent, "agent", "", `the Habakkuk agent the main agent becomes (default "habakkuk"); other agents keep their names`)
 	fs.BoolVar(&fl.dryRun, "dry-run", false, "print the plan and stop; nothing is written")
 	fs.StringVar(&fl.secrets, "secrets", "", "copy: put API keys and tokens in $HABAKKUK_HOME/.env; skip: only list their names (default: ask)")
+	fs.StringVar(&fl.files, "files", "", "copy: copy your files that the imported text names out of the old folder and rewrite the text to name the copies; skip: leave them (default: ask)")
+	fs.StringVar(&fl.filesDir, "files-dir", "", "where --files copy puts them (default $HABAKKUK_HOME/files)")
+	fs.StringVar(&fl.filesMax, "files-max", "", "the largest file --files copy takes, such as 500M or 4G; 0 is no limit (default 1G)")
 	fs.BoolVar(&fl.force, "force", false, "replace agents, files, skills, notes, schedules and .env values that already exist and differ")
-	fs.BoolVar(&fl.yes, "y", false, "do not ask: import without confirming (keys are copied only with --secrets copy)")
+	fs.BoolVar(&fl.yes, "y", false, "do not ask: import without confirming (keys are copied only with --secrets copy, files only with --files copy)")
 	fs.BoolVar(&fl.yes, "yes", false, "same as -y")
 	fs.Usage = func() {
 		fmt.Fprint(out, migrateUsage)
@@ -71,6 +85,14 @@ func runMigrate(ctx context.Context, home string, args []string, in io.Reader, o
 	}
 	if fl.secrets != "" && fl.secrets != "copy" && fl.secrets != "skip" {
 		return fmt.Errorf("--secrets %q: want copy or skip", fl.secrets)
+	}
+	if fl.files != "" && fl.files != migrate.FilesCopy && fl.files != migrate.FilesSkip {
+		return fmt.Errorf("--files %q: want copy or skip", fl.files)
+	}
+	if fl.filesMax != "" {
+		if _, err := migrate.ParseSize(fl.filesMax); err != nil {
+			return fmt.Errorf("--files-max: %w", err)
+		}
 	}
 	if fl.from != "" && !slices.Contains(migrate.Sources, fl.from) {
 		return fmt.Errorf("--from %q: want %s", fl.from, strings.Join(migrate.Sources, " or "))
@@ -97,7 +119,13 @@ func (m *migration) say(format string, args ...any) { fmt.Fprintf(m.out, format+
 
 func (m *migration) run(ctx context.Context) error {
 	o := migrate.Options{From: m.fl.from, Source: m.fl.source, Agent: m.fl.agent, Force: m.fl.force,
-		Getenv: m.getenv, UserHome: m.fl.userHome}
+		Getenv: m.getenv, UserHome: m.fl.userHome, Files: m.fl.files, FilesDir: m.fl.filesDir, FreeSpace: m.fl.freeSpace}
+	if m.fl.filesMax != "" {
+		o.FilesMax, _ = migrate.ParseSize(m.fl.filesMax) // checked with the flags
+	}
+	// Without --files a person is asked once, so the plan shows the copy;
+	// with -y the files are left where they are.
+	o.FilesAsk = m.fl.files == "" && !m.fl.yes
 	if o.From == "" {
 		from, err := m.pick(o)
 		if err != nil {
@@ -121,6 +149,17 @@ func (m *migration) run(ctx context.Context) error {
 		m.say("\nDry run: nothing was written.")
 		return nil
 	}
+	if fp := plan.Files; fp.Copies() && fp.Err != nil {
+		if !fp.Ask {
+			return errors.New("nothing was written; fix the problem above, or run again with --files skip")
+		}
+		// Nobody chose the copy: go on without it.
+		m.say("\nYour files cannot be copied now, so they stay where they are; habakkuk migrate --files copy brings them over later.")
+		o.FilesAsk = false
+		if plan, err = migrate.NewPlan(found, m.home, o); err != nil {
+			return err
+		}
+	}
 	changes := 0
 	var keys []string
 	for _, it := range plan.Items {
@@ -133,10 +172,13 @@ func (m *migration) run(ctx context.Context) error {
 	}
 	// Keys count as work only when this run may copy them.
 	mayCopy := m.fl.secrets == "copy" || m.fl.secrets == "" && !m.fl.yes
-	if changes == 0 && (len(keys) == 0 || !mayCopy) {
+	if changes == 0 && !plan.Files.Pending() && (len(keys) == 0 || !mayCopy) {
 		m.say("\nNothing to import: everything is already there.")
 		if len(keys) > 0 {
 			m.say("Still to set in %s: %s (or run again with --secrets copy).", filepath.Join(m.home, ".env"), strings.Join(keys, ", "))
+		}
+		if w := plan.Files.Waiting(); len(w) > 0 {
+			m.say("Your files that the imported text names are still in %s: run again with --files copy to bring them over.", plan.Found.Dir)
 		}
 		return nil
 	}
@@ -155,6 +197,30 @@ func (m *migration) run(ctx context.Context) error {
 		if copyKeys, err = m.ask(fmt.Sprintf("Copy the %d keys and tokens into %s (readable only by you)?", len(keys), filepath.Join(m.home, ".env")), true); err != nil {
 			return err
 		}
+	}
+	if fp := plan.Files; o.FilesAsk && fp.Pending() {
+		var names []string
+		for _, e := range fp.Waiting() {
+			names = append(names, e.Name)
+		}
+		q := fmt.Sprintf("Bring the files that changed in %s over to %s (%s)?", plan.Found.Dir, fp.Dir, migrate.HumanSize(fp.Need))
+		if len(names) > 0 {
+			q = fmt.Sprintf("Copy your files (%s: %s) into %s and point the imported text at the copies?",
+				strings.Join(names, ", "), migrate.HumanSize(fp.Need), fp.Dir)
+		}
+		ok, err := m.ask(q, true)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			o.Files, o.FilesAsk = migrate.FilesSkip, false
+			if plan, err = migrate.NewPlan(found, m.home, o); err != nil {
+				return err
+			}
+		}
+	}
+	if fp := plan.Files; fp.Copies() && fp.Need > 0 {
+		m.say("\nCopying %s into %s ...", migrate.HumanSize(fp.Need), fp.Dir)
 	}
 	res, err := plan.Apply(ctx, copyKeys)
 	if res != nil {
@@ -255,6 +321,7 @@ func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
 			m.say("Could not import %s %s: %v", it.Kind, it.Name, err)
 		}
 	}
+	m.reportFiles(p, res)
 	if len(res.Paused) > 0 {
 		m.say("\nSchedules are imported paused. Check them with habakkuk schedules list, then resume each one:")
 		for _, k := range sortedNames(res.Paused) {
@@ -280,7 +347,102 @@ func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
 	}
 	m.say("  habakkuk doctor      check the config, keys and channels")
 	m.say("  habakkuk serve       start the agents and connect the channels")
+	switch fp := p.Files; {
+	case fp == nil:
+	case len(fp.Waiting()) > 0 && !fp.Copies():
+		m.say("  habakkuk migrate --files copy    bring your files over from %s, so the new agent stops using that folder", p.Found.Dir)
+	default:
+		m.say("  habakkuk migrate --dry-run       see what still points into %s before you remove it", p.Found.Dir)
+	}
 	m.say("Read each agent's SOUL.md and AGENTS.md in %s: text written for the old agent may name tools Habakkuk does not have.", filepath.Join(m.home, "agents"))
+}
+
+// reportFiles says what was copied out of the source home, how many
+// references now name the copies, and what still points into it.
+func (m *migration) reportFiles(p *migrate.Plan, res *migrate.Result) {
+	fp := p.Files
+	if fp == nil {
+		return
+	}
+	src := p.Found.Dir
+	m.say("")
+	inside := ""
+	if fr := res.Files; fr != nil {
+		t := fr.Totals()
+		var names []string
+		for _, e := range fr.Entries {
+			names = append(names, e.Name)
+		}
+		switch n := t.Copy + t.MakeLinks; {
+		case n > 0:
+			m.say("Copied %s (%s) out of %s into %s: %s.", count(n, "file", "files"), migrate.HumanSize(t.CopyBytes), src, fr.Dir, strings.Join(names, ", "))
+		case len(names) > 0:
+			m.say("Your files are in %s: %s. Nothing new had to be copied.", fr.Dir, strings.Join(names, ", "))
+		}
+		if n := len(t.Unreadable); n > 0 {
+			m.say("Could not copy %s (the old folder would not let them be read, or they are links this system cannot make): %s.",
+				count(n, "path", "paths"), firstFew(t.Unreadable, 5))
+		}
+		for _, e := range fr.Entries {
+			if st := fr.Stats[e.Name]; st != nil && len(st.TooBig) > 0 {
+				m.say("Left out of %s, over the --files-max limit: %s.", e.Name, firstFew(st.TooBig, 5))
+			}
+		}
+		if t.References > 0 {
+			inside = fmt.Sprintf("%d inside %s", t.References, count(t.Rewritten, "copied file", "copied files"))
+		}
+	}
+	refs := map[string]int{}
+	total := 0
+	for _, it := range res.Done {
+		refs[it.Kind] += it.Rewritten()
+		total += it.Rewritten()
+	}
+	var parts []string
+	for _, k := range []struct{ kind, where string }{
+		{"file", "persona files"}, {"profile", "the profile"}, {"note", "memory notes"}, {"skill", "skills"},
+		{"schedule", "schedules"}, {"mcp", "MCP servers"}, {"agent", "workspace settings"},
+	} {
+		if n := refs[k.kind]; n > 0 {
+			parts = append(parts, fmt.Sprintf("%d in %s", n, k.where))
+		}
+	}
+	if inside != "" {
+		parts = append(parts, inside)
+		total += res.Files.Totals().References
+	}
+	if total > 0 {
+		m.say("Rewrote %s to name the copies: %s.", count(total, "reference", "references"), strings.Join(parts, ", "))
+	}
+	still := p.StillPoints()
+	switch {
+	case len(still) > 0:
+		m.say("Still points into %s (that folder is needed while these remain):", src)
+		for _, s := range still {
+			m.say("  - %s: named %s (%s): %s", s.Name, migrate.Times(s.Refs), firstFew(s.Where, 4), s.Why)
+		}
+		if len(fp.Waiting()) > 0 && !fp.Copies() {
+			m.say("habakkuk migrate --files copy copies your own files into %s and rewrites the references.", fp.Dir)
+		}
+	case len(res.Failed) == 0 && len(p.Conflicts()) == 0:
+		m.say("The imported text no longer names anything in %s.", src)
+	}
+}
+
+// count is "1 file" or "3 files".
+func count(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// firstFew joins the first n of a list and says how many more there are.
+func firstFew(list []string, n int) string {
+	if len(list) <= n {
+		return strings.Join(list, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(list[:n], ", "), len(list)-n)
 }
 
 func sortedNames(m map[string]string) []string {
