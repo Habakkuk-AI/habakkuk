@@ -261,8 +261,9 @@ func TestLoopStopFailsABackgroundTurn(t *testing.T) {
 	}
 }
 
-// A poll that waits inside its own command (sleep 10 && curl) is waiting,
-// not repeating, and so is one that took several seconds to fail.
+// A poll that waits inside its own command (sleep 10 && curl) and so took
+// ten seconds is waiting, not repeating; so is any call that took several
+// seconds to fail.
 func TestLoopGuardWaitingCallsAreNotRepeats(t *testing.T) {
 	g := newLoopGuard(LoopLimits{RepeatWarn: 3, RepeatStop: 5, IdleWarn: 8, IdleStop: 12})
 	at := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
@@ -270,7 +271,8 @@ func TestLoopGuardWaitingCallsAreNotRepeats(t *testing.T) {
 	for i := 1; i <= 30; i++ {
 		id := fmt.Sprint("p", i)
 		at = at.Add(12 * time.Second)
-		if v := g.observe([]llm.Block{useCall(id, "exec", cmd)}, []llm.Block{result(id, "exit 7: connection refused", true)}, at, nil); v.Action != "" {
+		if v := g.observe([]llm.Block{useCall(id, "exec", cmd)}, []llm.Block{result(id, "exit 7: connection refused", true)}, at,
+			map[string]time.Duration{id: 10 * time.Second}); v.Action != "" {
 			t.Fatalf("a 10s-sleep poll was flagged at try %d: %+v", i, v)
 		}
 	}
@@ -307,11 +309,35 @@ func TestLoopGuardWaitRoundsAreNotIdle(t *testing.T) {
 			stoppedAt = i
 			break
 		}
-		if v := g.observe([]llm.Block{useCall(w, "exec", `{"command":"sleep 30"}`)}, []llm.Block{result(w, "", false)}, time.Time{}, nil); v.Action == LoopStop {
+		if v := g.observe([]llm.Block{useCall(w, "exec", `{"command":"sleep 30"}`)}, []llm.Block{result(w, "", false)}, time.Time{},
+			map[string]time.Duration{w: 30 * time.Second}); v.Action == LoopStop {
 			t.Fatalf("a sleep round stopped the turn at %d: %+v", i, v)
 		}
 	}
 	if stoppedAt != 13 { // probe 1 is new; probes 2..13 are the twelve idle rounds
 		t.Fatalf("stopped at probe %d, want 13", stoppedAt)
+	}
+}
+
+// Only time actually spent counts as waiting: an instant failure is a
+// repeat whatever its command or tool name says.
+func TestLoopGuardWaitWordsDoNotExemptInstantFailures(t *testing.T) {
+	for _, c := range []struct{ tool, input string }{
+		{"exec", `{"command":"timeout 120 ./deploy.sh"}`},
+		{"exec", `{"command":"npm run watch"}`},
+		{"exec", `{"command":"curl --retry 5 localhost:3000"}`},
+		{"exec", `{"command":"sleep 10 && curl localhost:3000"}`}, // replayed or killed at once: no time spent
+		{"process_wait", `{"id":"no-such-process"}`},
+	} {
+		g := newLoopGuard(LoopLimits{RepeatWarn: 2, RepeatStop: 3})
+		var v loopVerdict
+		for i := 1; i <= 3; i++ {
+			id := fmt.Sprint("c", i)
+			v = g.observe([]llm.Block{useCall(id, c.tool, c.input)}, []llm.Block{result(id, "failed at once", true)},
+				time.Time{}, map[string]time.Duration{id: 30 * time.Millisecond})
+		}
+		if v.Action != LoopStop {
+			t.Errorf("%s %s: three instant identical failures were not stopped: %+v", c.tool, c.input, v)
+		}
 	}
 }

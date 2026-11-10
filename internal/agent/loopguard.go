@@ -4,8 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/session"
@@ -102,10 +100,9 @@ func (g *loopGuard) off() bool {
 // when unknown, which counts as straight away). It returns what to do.
 //
 // durs is how long each call ran, by call id (nil when unknown, as in a
-// replay). A call that waited, because it ran for waitAfter or more or
-// because its command sleeps or waits, is not a repeat however often it
-// fails: it is how an agent waits for a server. A round in which every
-// call waited is neither progress nor idle.
+// replay). A call that ran for waitAfter or more waited: it is not a
+// repeat however often it fails, since that is how an agent waits for a
+// server. A round in which every call waited is neither progress nor idle.
 func (g *loopGuard) observe(calls, results []llm.Block, at time.Time, durs map[string]time.Duration) loopVerdict {
 	g.round++
 	busy := false
@@ -196,33 +193,16 @@ func (g *loopGuard) replay(recs []session.Record, jobID string) {
 	}
 }
 
-// waitAfter is how long a call must run to count as waiting.
-const waitAfter = 5 * time.Second
+// waitAfter is how long a call must have run to count as waiting. Only
+// time actually spent counts: an instant failure is a repeat whatever its
+// command or tool name says (timeout 120 ..., npm run watch, a *_wait tool
+// on an unknown id).
+const waitAfter = 2 * time.Second
 
-// waitWord finds a command that waits: sleep, wait, timeout, watch, until,
-// or a retry option.
-var waitWord = regexp.MustCompile(`(?i)(^|[\s;&|(])(sleep|wait|timeout|watch|until)(\s|$)|--retry`)
-
-// waits reports whether a call waited: it ran for waitAfter or more, its
-// tool is a waiting tool, or its command sleeps or waits.
-func waits(c llm.Block, ran time.Duration) bool {
-	if ran >= waitAfter {
-		return true
-	}
-	name := strings.ToLower(c.ToolName)
-	if strings.Contains(name, "wait") || strings.Contains(name, "sleep") {
-		return true
-	}
-	var in map[string]any
-	if json.Unmarshal(c.Input, &in) != nil {
-		return false
-	}
-	for _, k := range []string{"command", "cmd", "script"} {
-		if s, ok := in[k].(string); ok && waitWord.MatchString(s) {
-			return true
-		}
-	}
-	return false
+// waits reports whether a call waited: it ran for waitAfter or more. A
+// replayed round has no timings, so none of its calls waited.
+func waits(_ llm.Block, ran time.Duration) bool {
+	return ran >= waitAfter
 }
 
 // canonicalJSON renders a call's arguments with object keys sorted, so the
