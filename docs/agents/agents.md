@@ -54,7 +54,7 @@ They are read when a session starts, so edits reach every new session (`/new`) w
 
 ## The first chat
 
-The first one-to-one conversation an agent has with its user (a direct message on any channel, `habakkuk chat` or the TUI) opens with a welcome. The agent greets the user, introduces itself, lists a handful of things it can do with the tools it actually has, and asks three questions: what to call the user, whether to keep its name and how to talk, and where they are for time zones. A first message that asks for something real is answered first.
+The first one-to-one conversation an agent has with its user (a direct message on any channel, `habakkuk chat` or the TUI) opens with a welcome. The agent greets the user, introduces itself, suggests three things to try right away, each written as a message the user could send (a morning brief first, when it can schedule tasks), picked from the tools it actually has, and asks three questions: what to call the user, whether to keep its name and how to talk, and where they are for time zones. A first message that asks for something real is answered first.
 
 The answers go to `agents/<name>/IDENTITY.md` (name, emoji and manner, through the `set_identity` tool) and to the user profile, `USER.md`. The user can change the identity later too: "call yourself Jarvis". The prompt states the identity after `SOUL.md`, so a hand-written soul keeps its place and the chosen name wins.
 

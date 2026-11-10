@@ -4,7 +4,7 @@ description: "The http section turns on a control dashboard at /app/: chat, sess
 order: 2
 ---
 
-An `http` section makes `habakkuk serve` also serve a chat page, a control dashboard, a JSON API and webhooks:
+An `http` section makes `habakkuk serve` also serve a chat page, a control dashboard, a JSON API and webhooks. `habakkuk setup` adds one on loopback to every new home, so the dashboard is there from the first `habakkuk serve` (`serve` prints its address):
 
 ```yaml
 http:
@@ -20,6 +20,8 @@ http:
 
 `http://127.0.0.1:8484/app/` is a control dashboard with these pages: overview, chat, sessions, board, schedules, memory, skills, usage, approvals and config. It is plain HTML, CSS and JavaScript embedded in the binary, over the JSON API under `/api/` with the same token ([HTTP API](../reference/api.md)).
 
+- **Overview** starts with a **Get started** panel (hide it once you are done): say hi, turn on a morning brief, teach your agent something. Each one opens Chat with the message ready to send.
+- **Empty pages explain themselves.** Chat, Sessions, Schedules, Memory, Skills and the Board each say what belongs there when they are empty and offer a one-click message that fills them.
 - **Chat** shows tool calls live, sends files as attachments and voice recordings for transcription, reads replies aloud through `tts`, and with `realtime:` offers Live mode (see [Voice](../tools/voice.md#live-mode-in-the-dashboard)).
 - **Approvals** waiting in any chat can be answered from the dashboard.
 - **Config** shows the configuration with the values of every secret variable, secret-named field and URL credential redacted.

@@ -18,6 +18,8 @@ irm https://habakkuk.ai/install.ps1 | iex
 
 ## 2. Run the setup wizard
 
+Not sure what to run? Type `hk` (or `habakkuk`) on its own: on a new computer it prints one short screen that ends with the command below.
+
 ```bash
 habakkuk setup
 ```
@@ -28,7 +30,26 @@ About a minute from download to your agent's first reply, and no YAML to edit. T
 2. **Pick where to talk.** The recommended one is a **WhatsApp agent**: in WhatsApp, open Settings > Agents > Create agent and send it "hi". Then in its chat open Chat info > API key, and paste the key. Setup checks the key with one poll that skips no messages, finds your "hi" and lets only you in. It can also connect a Telegram bot (token checked with `getMe`), WhatsApp as a linked device (it runs the QR or pairing-code link), the web chat on this computer, Slack or Discord (tokens checked), or just the terminal.
 3. **Names.** What your agent is called (default Habakkuk) and, if you like, what it should call you. On your first chat it still introduces itself, under that name.
 
-It then writes a short, commented `config.yaml` holding only what you chose. Keys go to `.env`, readable only by you, never to the config. It runs `habakkuk doctor`, prints the next step (for example, *send a message to your agent in WhatsApp*), and offers to start `habakkuk serve` now. On Linux and macOS it can instead write a systemd user unit or a launchd agent and show the command that installs it; it never installs one by itself.
+It then writes a short, commented `config.yaml` holding what you chose plus two starter defaults: the [dashboard](../interfaces/dashboard.md) on this computer only (`http.listen` on loopback, the next free port if 8484 is taken) and [memory review](../agents/memory.md) on, so your agent keeps what matters from each chat without you asking. Keys go to `.env`, readable only by you, never to the config. It runs `habakkuk doctor`, then ends with a summary like this one:
+
+```text
+Nova is ready. Setup took 2.1s.
+
+  Model      anthropic/claude-opus-5-5, and anthropic/claude-haiku-5-5 for quick messages (cheaper)
+  Talk       your WhatsApp agent; only you can message it
+  Memory     on: Nova keeps what matters from each chat
+  Dashboard  http://127.0.0.1:8484/app/ while habakkuk serve runs
+  Settings   ~/.habakkuk/config.yaml (keys in .env beside it)
+
+Try these first:
+  1. Your agent answers the message you sent it in WhatsApp.
+  2. Get a morning brief: "Every weekday at 8, send me a short brief of my day."
+  3. Teach it about you: "Remember that I like short, direct answers."
+
+Schedules, channels and memory reviews run while habakkuk serve does.
+```
+
+Then it offers to keep your agent running. On macOS and Linux, say yes and it installs a launchd agent or a systemd user unit, starts it, and waits until `habakkuk serve` is up, so it keeps answering after you close the terminal and after a restart. Say no and it offers to run `habakkuk serve` in this terminal instead. With `-y` it never installs or starts anything unless you pass `-service` (which writes the file and prints the commands) or `-serve`, and it never opens a chat.
 
 > [!TIP]
 > Run `habakkuk setup` again to change something. It edits `config.yaml` in place, keeps everything you did not change (comments too), and saves the previous file as `config.yaml.bak`.
@@ -79,7 +100,9 @@ Talk to it in the channel you picked, or in the terminal:
 habakkuk chat
 ```
 
-`habakkuk chat` opens the full-screen terminal UI on a terminal (`-plain` keeps a line-by-line chat). The first conversation opens with a welcome in which the agent introduces itself and asks what to call you; see [Agents and identity](../agents/agents.md#the-first-chat).
+`habakkuk chat` opens the full-screen terminal UI on a terminal (`-plain` keeps a line-by-line chat). An empty chat suggests things to try. The first conversation opens with a welcome in which the agent introduces itself, suggests three things you can ask for right away (a morning brief first, when it can schedule tasks) and asks what to call you; see [Agents and identity](../agents/agents.md#the-first-chat).
+
+The dashboard's Overview page has a **Get started** panel with the same first steps, and every empty page (Chat, Schedules, Memory, Skills, the Board) says what belongs there and offers a one-click message that fills it.
 
 ## 4. Keep it running
 
@@ -98,7 +121,8 @@ See [Channels](../channels/index.md) to connect more chat apps and [Run it on a 
 
 ```bash
 habakkuk run "summarise the files in my workspace"   # one turn, print the answer
-habakkuk status                                      # serve uptime, channels, queue, today's cost
+habakkuk status                                      # serve uptime, channels, queue, next schedule, today's cost
+habakkuk doctor                                      # check everything; each problem comes with its fix
 habakkuk channels                                    # channel health
 habakkuk pair ABC123                                 # approve someone who messaged the bot
 habakkuk sessions                                    # recent conversations
