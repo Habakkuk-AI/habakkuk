@@ -45,19 +45,14 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...
-      - name: install.ps1 parses
+      # install.ps1 parses and its helpers (the PATH list, whose hk it is)
+      # behave, in both PowerShells people have.
+      - name: install.ps1 tests
         shell: pwsh
-        run: |
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\scripts\install.ps1", [ref]$null, [ref]$errors) | Out-Null
-          if ($errors) { $errors | Format-List; exit 1 }
-      - name: install.ps1 parses in Windows PowerShell 5.1
+        run: .\scripts\install_test.ps1
+      - name: install.ps1 tests in Windows PowerShell 5.1
         shell: powershell
-        run: |
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\scripts\install.ps1", [ref]$null, [ref]$errors) | Out-Null
-          if ($errors) { $errors | Format-List; exit 1 }
-
+        run: .\scripts\install_test.ps1
 
   # Habakkuk Desktop is its own module (CGO, a webview); ./... above skips it.
   desktop:

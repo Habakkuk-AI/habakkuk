@@ -26,6 +26,32 @@ param(
     [switch]$NoHk
 )
 
+# Add-HabakkukPathEntry returns the PATH list with DIR added at the end, or
+# $null when DIR is already in it. It touches nothing, so it can be tested
+# anywhere.
+function Add-HabakkukPathEntry {
+    param([string]$List, [string]$Dir)
+    # @(): a list with one entry must stay a list. Without it PowerShell hands
+    # back a bare string and the + below glues the two folders into one.
+    $parts = @($List -split ';' | Where-Object { $_ })
+    if ($parts | Where-Object { $_.TrimEnd('\') -ieq $Dir.TrimEnd('\') }) { return $null }
+    return (($parts + $Dir) -join ';')
+}
+
+# Test-HabakkukForeignHk says whether DIR already holds another program
+# called hk: an hk.exe, hk.com or hk.bat (Windows runs those before hk.cmd),
+# or an hk.cmd that is not the shim this script writes.
+function Test-HabakkukForeignHk {
+    param([string]$Dir, [string]$Shim)
+    foreach ($ext in 'exe', 'com', 'bat') {
+        if (Test-Path -LiteralPath (Join-Path $Dir "hk.$ext")) { return $true }
+    }
+    $hk = Join-Path $Dir 'hk.cmd'
+    if (-not (Test-Path -LiteralPath $hk)) { return $false }
+    # In a string: an empty file reads as nothing at all, not as ''.
+    return ("$(Get-Content -Raw -LiteralPath $hk)".Trim() -ne $Shim)
+}
+
 function Install-Habakkuk {
     param([string]$Version, [string]$Dir, [bool]$NoPath, [bool]$NoHk)
 
@@ -112,36 +138,33 @@ function Install-Habakkuk {
             Move-Item -LiteralPath $staged -Destination $exe -Force
         }
 
-        $installed = (& $exe version 2>$null | Select-Object -First 1)
+        # The file is in place by now; a policy that stops it running here
+        # must not turn the install into a failure.
+        $installed = $null
+        try { $installed = (& $exe version 2>$null | Select-Object -First 1) } catch { }
         if (-not $installed) { $installed = 'habakkuk' }
         Write-Host "Installed $installed to $exe"
 
         # hk is the short name: hk.cmd beside habakkuk.exe. Another program
         # called hk is never replaced.
         if (-not $NoHk -and $env:HABAKKUK_NO_HK -ne '1') {
-            $hk = Join-Path $Dir 'hk.cmd'
             $shim = '@"%~dp0habakkuk.exe" %*'
-            $other = Test-Path -LiteralPath (Join-Path $Dir 'hk.exe')
-            if (-not $other -and (Test-Path -LiteralPath $hk)) {
-                $other = ((Get-Content -Raw -LiteralPath $hk).Trim() -ne $shim)
-            }
-            if ($other) {
+            if (Test-HabakkukForeignHk -Dir $Dir -Shim $shim) {
                 Write-Host "Left hk in $Dir alone: it is another program. Use habakkuk."
             } else {
-                Set-Content -LiteralPath $hk -Value $shim -Encoding ASCII
+                Set-Content -LiteralPath (Join-Path $Dir 'hk.cmd') -Value $shim -Encoding ASCII
                 Write-Host 'Added hk, the short name: hk chat is habakkuk chat.'
             }
         }
 
         if (-not $NoPath) {
-            $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-            $parts = @()
-            if ($userPath) { $parts = $userPath -split ';' | Where-Object { $_ } }
-            if (-not ($parts | Where-Object { $_.TrimEnd('\') -ieq $Dir.TrimEnd('\') })) {
-                [Environment]::SetEnvironmentVariable('Path', (($parts + $Dir) -join ';'), 'User')
+            $userPath = Add-HabakkukPathEntry -List ([Environment]::GetEnvironmentVariable('Path', 'User')) -Dir $Dir
+            if ($null -ne $userPath) {
+                [Environment]::SetEnvironmentVariable('Path', $userPath, 'User')
                 Write-Host "Added $Dir to your user PATH (new terminals pick it up)."
             }
-            if (-not (($env:Path -split ';') | Where-Object { $_.TrimEnd('\') -ieq $Dir.TrimEnd('\') })) {
+            # This terminal too, so the next command works without a new window.
+            if ($null -ne (Add-HabakkukPathEntry -List $env:Path -Dir $Dir)) {
                 $env:Path = "$env:Path;$Dir"
             }
         }
