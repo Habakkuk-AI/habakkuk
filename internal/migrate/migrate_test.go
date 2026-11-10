@@ -840,3 +840,18 @@ func TestHermesFactStore(t *testing.T) {
 		}
 	}
 }
+
+// Imported script schedules get room to run: ten minutes, or their interval
+// when it is shorter, never below the two-minute default.
+func TestImportedScriptTimeout(t *testing.T) {
+	for spec, want := range map[string]time.Duration{
+		"*/10 * * * *": 10 * time.Minute,
+		"@every 5m":    5 * time.Minute,
+		"@every 1m":    2 * time.Minute,
+		"@every 3h":    10 * time.Minute,
+	} {
+		if got := importedScriptTimeout(spec); got != want {
+			t.Errorf("%s: %v, want %v", spec, got, want)
+		}
+	}
+}

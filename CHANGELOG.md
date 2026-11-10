@@ -31,6 +31,7 @@ Version in development: `0.3.0-dev`. No release has been tagged yet; this sectio
 
 ### Fixed
 
+- **Imported scripts time out less.** `habakkuk migrate` gives a script schedule ten minutes (or its `@every` interval when shorter) instead of the two-minute default, which an imported inbox sync kept hitting.
 - **`habakkuk migrate` brings facts across.** A Hermes Agent home that kept learned facts in `memory_store.db` now gets one note per fact, tagged with its category, beside the `MEMORY.md` entries. Facts that repeat an entry are not doubled.
 - **A chat's agent now sees what else was sent to that chat.** A scheduled task's result, another agent's home report or `message_home` post, a background result, a board update and `habakkuk send` used to land in a chat without being in the session that answers it, so a reply such as "yes" or "how did you do that?" was read against the wrong message. Each one is now noted for that chat and shown, labelled with who sent it and when, at the start of the next message there: once, capped in size, and safe across a crash.
 - **Quoted replies keep the quote.** When you reply to a specific message on WhatsApp, Telegram, Signal or Discord, the agent now sees `[Replying to <who>: "<text>"]` before what you typed.

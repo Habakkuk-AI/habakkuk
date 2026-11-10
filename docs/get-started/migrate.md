@@ -147,7 +147,7 @@ Next:
 > [!WARNING]
 > Stop the old agent before `habakkuk serve` starts the same channels. A Telegram, Discord or Slack bot can only be polled by one program at a time, and two agents answering one chat confuses everyone.
 
-Schedules are imported paused so nothing runs twice while both agents are installed. Resume each one once the old agent is stopped. A script schedule still runs the script from the old folder; move it if you plan to delete that folder.
+Schedules are imported paused so nothing runs twice while both agents are installed. A script schedule gets a ten-minute time limit (or its interval, when an `@every` interval is shorter) instead of the usual two minutes, because the old agent let scripts run longer. Resume each one once the old agent is stopped. A script schedule still runs the script from the old folder; move it if you plan to delete that folder.
 
 After the import, read each agent's `SOUL.md` and `AGENTS.md`: instructions written for the old agent may name its tools or commands, which Habakkuk does not have.
 

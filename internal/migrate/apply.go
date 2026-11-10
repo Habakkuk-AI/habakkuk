@@ -237,6 +237,9 @@ func (p *Plan) createSchedule(ctx context.Context, st *schedule.Store, db *sql.D
 	sc := it.schedule
 	s := schedule.Schedule{Agent: sc.Agent, Name: sc.Name, Spec: sc.Spec, Prompt: sc.Prompt,
 		Command: sc.Command, OnOutput: sc.OnOutput, Workdir: sc.Workdir}
+	if sc.Command != "" {
+		s.Timeout = importedScriptTimeout(sc.Spec)
+	}
 	if sc.To != nil {
 		s.DeliverTo, _ = json.Marshal(sc.To)
 	}
@@ -320,4 +323,20 @@ func quoteEnv(v string) string {
 		return `"` + v + `"`
 	}
 	return v
+}
+
+// importedScriptTimeout is the time limit for an imported script schedule.
+// The agents Habakkuk imports from let scripts run past Habakkuk's own
+// two-minute default, and a script that used to finish in four minutes
+// would otherwise fail on every run. Imported scripts get ten minutes, or
+// their interval when an "@every" interval is shorter, never less than the
+// default.
+func importedScriptTimeout(spec string) time.Duration {
+	limit := 10 * time.Minute
+	if rest, ok := strings.CutPrefix(strings.TrimSpace(spec), "@every "); ok {
+		if d, err := time.ParseDuration(strings.TrimSpace(rest)); err == nil && d < limit {
+			limit = d
+		}
+	}
+	return max(limit, 2*time.Minute)
 }
