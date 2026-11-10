@@ -166,7 +166,7 @@ func (m *migration) run(ctx context.Context) error {
 		switch {
 		case it.Kind == "secret" && it.Changes():
 			keys = append(keys, it.Name)
-		case it.Changes():
+		case it.Changes(), it.Fixes():
 			changes++
 		}
 	}
@@ -330,6 +330,9 @@ func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
 	}
 	if conflicts := p.Conflicts(); len(conflicts) > 0 {
 		m.say("\nLeft as they were (%d conflicts): run again with --force to replace them.", len(conflicts))
+		if n := len(res.Fixed); n > 0 {
+			m.say("In %d of them only the references to the copied files were rewritten.", n)
+		}
 	}
 	if len(p.Found.Leftovers) > 0 {
 		m.say("\nStill to do by hand:")
@@ -394,7 +397,7 @@ func (m *migration) reportFiles(p *migrate.Plan, res *migrate.Result) {
 	}
 	refs := map[string]int{}
 	total := 0
-	for _, it := range res.Done {
+	for _, it := range append(slices.Clone(res.Done), res.Fixed...) {
 		refs[it.Kind] += it.Rewritten()
 		total += it.Rewritten()
 	}

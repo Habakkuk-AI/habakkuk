@@ -517,6 +517,100 @@ func TestFilesCopyAfterAnEarlierImport(t *testing.T) {
 	}
 }
 
+// What the user changed after an earlier import is theirs and is not
+// replaced. But where it still names a folder that is copied now, that
+// reference is rewritten, or the new agent would go on using the old home.
+func TestFilesCopyFixesReferencesInConflicts(t *testing.T) {
+	w := hermesWorld(t)
+	w.write("scripts/local_mcp.py", "print('mcp')\n", 0o755)
+	w.add("memories/MEMORY.md", "\n§\nReports are kept in ~/.hermes/workspaces/reports, one per quarter.\n")
+	cfgPath := filepath.Join(w.src, "config.yaml")
+	w.write("config.yaml", strings.Replace(readFile(t, cfgPath), `args: ["mcp-server-time"]`,
+		`args: ["run", "~/.hermes/scripts/local_mcp.py"]`, 1), 0o644)
+	w.run("")
+
+	// The user's own changes, each still naming the old home.
+	ctx := context.Background()
+	edit := func(rel, old, new string) {
+		t.Helper()
+		path := filepath.Join(w.home, filepath.FromSlash(rel))
+		text := readFile(t, path)
+		if !strings.Contains(text, old) {
+			t.Fatalf("%s lacks %q:\n%s", rel, old, text)
+		}
+		if err := os.WriteFile(path, []byte(strings.Replace(text, old, new, 1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	edit("agents/habakkuk/SOUL.md", "You keep answers short.", "You keep answers very short.")
+	edit("skills/notes-helper/SKILL.md", "tidy summary", "tidy, dated summary")
+	edit("agents/habakkuk/memory/reports-are-kept-in.md", "one per quarter.", "one per quarter. Drafts go to ~/.hermes/workspaces/drafts.")
+	edit("config.yaml", "local_mcp.py", "local_mcp.py, --verbose")
+	db, err := app.OpenControl(ctx, w.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE schedules SET enabled = 1, prompt = prompt || ' Then run ~/.hermes/scripts/report.sh.' WHERE name = 'Morning brief'`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	p := w.plan(w.options(FilesCopy))
+	conflicts := map[string]string{"file": "SOUL.md", "skill": "notes-helper", "note": "Reports are kept in ~/", "mcp": "time", "schedule": "Morning brief"}
+	for kind, name := range conflicts {
+		if it := item(p, kind, name); it == nil || !it.Fixes() || it.Changes() || !strings.Contains(it.Detail, "references to the copied files rewritten") {
+			t.Errorf("%s %s: %+v, want a conflict whose references are rewritten", kind, name, it)
+		}
+	}
+	res, err := p.Apply(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Failed) != 0 || len(res.Fixed) != len(conflicts) {
+		t.Errorf("failed %v, fixed %d of %d", res.Failed, len(res.Fixed), len(conflicts))
+	}
+	// Each keeps the user's change and names the copies.
+	for rel, want := range map[string][]string{
+		"agents/habakkuk/SOUL.md":                       {"You keep answers very short.", "~/.habakkuk/files/workspaces/briefs", "~/.hermes/config.yaml"},
+		"skills/notes-helper/SKILL.md":                  {"tidy, dated summary", "~/.habakkuk/files/state/inbox.json"},
+		"agents/habakkuk/memory/reports-are-kept-in.md": {"kept in ~/.habakkuk/files/workspaces/reports,", "Drafts go to ~/.habakkuk/files/workspaces/drafts.", "imported"},
+	} {
+		text := readFile(t, filepath.Join(w.home, filepath.FromSlash(rel)))
+		for _, s := range want {
+			if !strings.Contains(text, s) {
+				t.Errorf("%s lacks %q:\n%s", rel, s, text)
+			}
+		}
+		for _, gone := range []string{"~/.hermes/workspaces", "~/.hermes/scripts", "~/.hermes/state/", w.src + string(filepath.Separator)} {
+			if strings.Contains(text, gone) {
+				t.Errorf("%s still names %q:\n%s", rel, gone, text)
+			}
+		}
+	}
+	cfg, err := config.Load(w.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.MCP["time"].Args, []string{"run", "~/.habakkuk/files/scripts/local_mcp.py", "--verbose"}; !slices.Equal(got, want) {
+		t.Errorf("the MCP server's args are %v, want %v", got, want)
+	}
+	for _, sc := range listSchedules(t, w.home) {
+		if sc.Name == "Morning brief" && (!sc.Enabled || !strings.HasSuffix(sc.Prompt, "Then run ~/.habakkuk/files/scripts/report.sh.") || strings.Contains(sc.Prompt, "~/.hermes/workspaces")) {
+			t.Errorf("Morning brief: enabled %v, prompt %q", sc.Enabled, sc.Prompt)
+		}
+	}
+	// They stay conflicts, with nothing more to do.
+	p2 := w.plan(w.options(FilesCopy))
+	if n := len(p2.Conflicts()); n != len(conflicts) {
+		t.Errorf("%d conflicts on the next run, want %d", n, len(conflicts))
+	}
+	for _, it := range p2.Items {
+		if it.Changes() || it.Fixes() {
+			t.Errorf("the next run would change %s %s (%s: %s)", it.Kind, it.Name, it.Status, it.Detail)
+		}
+	}
+}
+
 // Memory notes, the profile and MCP servers are rewritten too, both when
 // they are first imported and when they were imported before the copy.
 func TestFilesRewriteNotesProfileAndMCP(t *testing.T) {

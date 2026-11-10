@@ -100,7 +100,7 @@ habakkuk migrate [--from hermes|openclaw] [--source DIR] [--agent NAME]
 | `--force` | Replace agents, persona files, skills, notes, schedules and `.env` values that already exist and differ. |
 | `-y` | Do not ask. Keys are copied only with `--secrets copy`, and files only with `--files copy`. |
 
-Without `--secrets`, an interactive run asks once whether to copy the keys. Without `--files`, it asks once whether to copy your files. With `-y` and no `--files`, the files stay where they are and the report tells you how to bring them over later: run `habakkuk migrate --files copy`. That later run also fixes what was imported before. Text that still names the old folder is rewritten in place, and a schedule keeps its ID and stays on or paused.
+Without `--secrets`, an interactive run asks once whether to copy the keys. Without `--files`, it asks once whether to copy your files. With `-y` and no `--files`, the files stay where they are and the report tells you how to bring them over later: run `habakkuk migrate --files copy`. That later run also fixes what was imported before. Text that still names the old folder is rewritten in place, and a schedule keeps its ID and stays on or paused. This covers text you changed since the import: your wording is kept, and only the paths into the copied folders change.
 
 > [!NOTE]
 > Keys are only ever shown by name. Their values go straight into `.env` and never into `config.yaml`, the plan, the report or the logs. A memory entry that looks like it holds a key or password is not imported.
@@ -217,7 +217,7 @@ After the import, read each agent's `SOUL.md` and `AGENTS.md`: instructions writ
 The import compares everything with what is already in `$HABAKKUK_HOME`:
 
 - **Already there** (`=`): the same file, note, skill, schedule, server or channel exists. Nothing happens.
-- **Conflict** (`!`): something different exists under the same name, for example a `SOUL.md` you wrote. It is left alone and listed; `--force` replaces it. Replaced files are kept as `NAME.bak`, replaced skills as `<skill>.bak`, and `config.yaml` is always kept as `config.yaml.bak` before it is edited.
+- **Conflict** (`!`): something different exists under the same name, for example a `SOUL.md` you wrote. It is left alone and listed; `--force` replaces it. One thing does change in a conflict when files are copied: a path in it that leads into a copied folder is rewritten to the copy, and the plan says so on that line. Everything else in it stays as you wrote it. Replaced files are kept as `NAME.bak`, replaced skills as `<skill>.bak`, and `config.yaml` is always kept as `config.yaml.bak` before it is edited.
 - **Added to** (`~`): the user profile and an agent's toolsets are only ever added to, never cut.
 
 `config.yaml` is edited in place, the same way `habakkuk setup` edits it, so your comments and settings stay.

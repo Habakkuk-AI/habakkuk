@@ -52,15 +52,48 @@ type Item struct {
 	// refs is how many references in its text were rewritten to name
 	// copied files.
 	refs int
+	// fix is how many references to copied files a conflict holds: what is
+	// there differs from the import and stays, but those references are
+	// rewritten where they are.
+	fix  int
+	have *Schedule // schedules: the text of the one that is there
 }
 
 // Rewritten is how many references in the item's text name copied files
 // instead of the source home.
-func (it *Item) Rewritten() int { return it.refs }
+func (it *Item) Rewritten() int {
+	if it.Status == Conflict {
+		return it.fix
+	}
+	return it.refs
+}
+
+// Fixes reports whether the item is a conflict whose references to copied
+// files are rewritten where they are. The rest of it is left alone.
+func (it *Item) Fixes() bool { return it.Status == Conflict && it.fix > 0 }
 
 // moved is the detail of an item that is already there and only needs its
 // references rewritten.
 const moved = "it will name the copied files"
+
+// fixed is added to the detail of a conflict whose references are
+// rewritten.
+const fixed = "; kept, with its references to the copied files rewritten"
+
+// noteFix counts the references to copied files in the text a conflict
+// holds and marks the item for rewriting them.
+func (p *Plan) noteFix(it *Item, texts ...string) {
+	if it.Status != Conflict {
+		return
+	}
+	for _, t := range texts {
+		_, n := p.rw.apply(t)
+		it.fix += n
+	}
+	if it.fix > 0 {
+		it.Detail += fixed
+	}
+}
 
 // Changes reports whether the item writes anything.
 func (it *Item) Changes() bool {
@@ -277,6 +310,10 @@ func (p *Plan) planConfig(cfg *config.Config, root *yaml.Node) bool {
 				continue
 			}
 			it.Status, it.Detail = p.conflict(), "config.yaml has a different server by that name"
+			if p.noteFix(it, append([]string{have.Command}, have.Args...)...); it.Fixes() {
+				moveMCP(root, &MCPServer{Name: m.Name, Command: p.rw.str(have.Command), Args: p.rw.strs(have.Args)})
+				edited = true
+			}
 		}
 		if it.Changes() {
 			setMCP(root, m)
@@ -367,6 +404,7 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 			it.Status, it.Detail = Update, moved
 		default:
 			it.Status, it.Detail = p.conflict(), "the agent already has a different "+name
+			p.noteFix(it, string(old))
 		}
 	}
 	if a.Identity != nil {
@@ -404,6 +442,7 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 				it.Status, it.Detail = Update, moved
 			default:
 				it.Status, it.Detail = p.conflict(), "a different note has that title"
+				p.noteFix(it, body)
 			}
 		}
 	}
@@ -449,7 +488,13 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 				return err
 			} else if after == want {
 				it.Status, it.Detail = Update, moved
+				break
 			}
+			var texts []string
+			if err := skillFiles(dest, func(_ string, data []byte) { texts = append(texts, string(data)) }); err != nil {
+				return err
+			}
+			p.noteFix(it, texts...)
 		}
 	}
 	return nil
@@ -482,10 +527,16 @@ func (p *Plan) planProfile(a *Agent, dir string) {
 		case ok && strings.Contains(b, s.body):
 		case ok && strings.Contains(p.rw.str(b), s.body):
 			// There already, from before its files were copied.
-			it.inPlace = true
 		default:
 			it.Status, it.Detail = Update, "adds to the existing profile"
 			grow += len(s.body) + len(s.name) + 8
+		}
+	}
+	// Whatever the profile says about folders that are copied now is
+	// rewritten where it is, the user's own lines included.
+	for _, s := range splitSections(old) {
+		if _, n := p.rw.apply(s.body); n > 0 && s.name != "" {
+			it.inPlace = true
 		}
 	}
 	if it.inPlace && it.Status == Same {
@@ -547,6 +598,8 @@ func (p *Plan) planSchedules() error {
 				it.Status = Same
 			default:
 				it.Status, it.Detail, it.oldID = p.conflict(), "a different schedule "+r.id+" has that name", r.id
+				it.have = &Schedule{Prompt: r.prompt, Command: r.command, Workdir: r.workdir}
+				p.noteFix(it, r.prompt, r.command, r.workdir)
 			}
 		}
 	}
