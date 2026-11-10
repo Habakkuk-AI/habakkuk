@@ -304,16 +304,16 @@ func firstNonEmpty(a, b string) string {
 }
 
 func (a *Adapter) Send(ctx context.Context, to channel.Address, text, _ string) error {
+	jid, err := parseTarget(to.Conversation)
+	if err != nil {
+		return err
+	}
 	cli, err := a.connected()
 	if err != nil {
 		return err
 	}
-	jid, err := types.ParseJID(to.Conversation)
-	if err != nil {
-		return channel.Undeliverable{Err: err}
-	}
 	_, err = cli.SendMessage(ctx, jid, &waE2E.Message{Conversation: proto.String(text)})
-	return err
+	return sendErr(err)
 }
 
 // Habakkuk's caps on files it sends; images over maxImage go as documents.
@@ -325,20 +325,20 @@ const (
 func (a *Adapter) MaxFileSize() int64 { return maxFile }
 
 func (a *Adapter) SendFile(ctx context.Context, to channel.Address, name, mediaType string, data []byte, caption string) error {
-	cli, err := a.connected()
+	jid, err := parseTarget(to.Conversation)
 	if err != nil {
 		return err
 	}
-	jid, err := types.ParseJID(to.Conversation)
+	cli, err := a.connected()
 	if err != nil {
-		return channel.Undeliverable{Err: err}
+		return err
 	}
 	msg, err := fileMessage(ctx, cli.Upload, name, mediaType, data, caption)
 	if err != nil {
 		return err
 	}
 	_, err = cli.SendMessage(ctx, jid, msg)
-	return err
+	return sendErr(err)
 }
 
 type uploader func(ctx context.Context, data []byte, kind whatsmeow.MediaType) (whatsmeow.UploadResponse, error)
@@ -373,11 +373,11 @@ func fileMessage(ctx context.Context, upload uploader, name, mediaType string, d
 }
 
 func (a *Adapter) Typing(ctx context.Context, to channel.Address) error {
-	cli, err := a.connected()
+	jid, err := parseTarget(to.Conversation)
 	if err != nil {
 		return err
 	}
-	jid, err := types.ParseJID(to.Conversation)
+	cli, err := a.connected()
 	if err != nil {
 		return err
 	}

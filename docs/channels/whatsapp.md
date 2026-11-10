@@ -99,6 +99,17 @@ WhatsApp now names many senders by a LID (a private id such as `98765432101234@l
 
 A phone number may have a `+`, spaces or dashes. A LID may be written with or without `@lid`. `/whoami` in the chat shows the ids Habakkuk sees for you.
 
+### Sending to a number
+
+`habakkuk send`, schedule `-to` targets and an agent's `home:` take a phone number, with or without `+`:
+
+```bash
+habakkuk send -to whatsapp:+12025550142 "The report is ready"
+habakkuk send -to whatsapp:98765432101234@lid "Same person, by LID"
+```
+
+A bare number becomes `<digits>@s.whatsapp.net`. A full id (`<digits>@lid`, a group's `...@g.us`) is used as it is. A target that can never work, such as an unknown server after the `@`, fails at once instead of being retried.
+
 ### What works
 
 - Text, images, files and voice notes in; images up to 16 MB, documents up to 100 MB and voice notes out.

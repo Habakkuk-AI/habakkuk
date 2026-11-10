@@ -6,7 +6,6 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
-	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
@@ -16,20 +15,20 @@ import (
 // WhatsApp shows as a voice note. Audio messages carry no caption, so a
 // caption follows as text.
 func (a *Adapter) SendVoice(ctx context.Context, to channel.Address, data []byte, seconds int, caption string) error {
-	cli, err := a.connected()
+	jid, err := parseTarget(to.Conversation)
 	if err != nil {
 		return err
 	}
-	jid, err := types.ParseJID(to.Conversation)
+	cli, err := a.connected()
 	if err != nil {
-		return channel.Undeliverable{Err: err}
+		return err
 	}
 	msg, err := voiceMessage(ctx, cli.Upload, data, seconds)
 	if err != nil {
 		return err
 	}
 	if _, err := cli.SendMessage(ctx, jid, msg); err != nil {
-		return err
+		return sendErr(err)
 	}
 	if caption != "" {
 		_, err = cli.SendMessage(ctx, jid, &waE2E.Message{Conversation: proto.String(caption)})

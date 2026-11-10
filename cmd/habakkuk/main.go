@@ -1022,7 +1022,13 @@ func schedules(ctx context.Context, home string, args []string) error {
 			if _, known := a.Cfg.Channels[acct]; !ok || !known || chat == "" {
 				return fmt.Errorf("-deliver %q: want CHANNEL:CHAT with a configured channel", target)
 			}
-			sc.DeliverTo, _ = json.Marshal(channel.Address{Account: acct, Conversation: chat, Thread: thread})
+			addr := channel.Address{Account: acct, Conversation: chat, Thread: thread}
+			if a.Gateway != nil {
+				if addr, err = a.Gateway.NormalizeTarget(addr); err != nil {
+					return fmt.Errorf("-deliver %q: %w", target, err)
+				}
+			}
+			sc.DeliverTo, _ = json.Marshal(addr)
 		}
 		created, err := st.Create(ctx, sc)
 		if err != nil {
