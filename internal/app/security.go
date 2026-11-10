@@ -23,7 +23,7 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 		p.TrustedWrite, _ = cfg.TrustedWriteDirs(agentName)
 	}
 	// Folders that neither a trusted folder nor an approval rule covers.
-	p.Protected = cfg.ProtectedDirs()
+	p.Protected, p.Home = cfg.ProtectedDirs(), cfg.Home
 	for _, name := range cfg.AgentNames() { // an agent home configured elsewhere
 		p.Protected = append(p.Protected, cfg.AgentDir(name))
 	}

@@ -81,10 +81,16 @@ type Rule struct {
 // RuleTools are the file tools a rule can cover, besides exec.
 var RuleTools = []string{"write_file", "edit_file", "apply_patch"}
 
-// exactOnly is set where commands run in PowerShell (Windows): words are
-// split the way a POSIX shell does, so there a command line must match
-// character for character.
-var exactOnly = runtime.GOOS == "windows"
+// windowsHost is set on Windows, where commands on this machine run in
+// PowerShell (a sandbox runs bash).
+var windowsHost = runtime.GOOS == "windows"
+
+// posixShell reports whether the agent's commands run in bash, the shell
+// command rules are judged for: everywhere but this machine on Windows. Where
+// they don't, no exec rule is offered or applies; file rules are unaffected.
+func posixShell(env *Env) bool {
+	return env.Backend != nil || !windowsHost
+}
 
 // maxOffered is the longest command or folder "Always allow" is offered
 // for: longer ones do not fit clearly in a chat prompt.
@@ -372,7 +378,7 @@ func matchRule(env *Env, t Tool, call llm.Block, rules []Rule) (Rule, bool) {
 		}
 		words, simple := simpleCommand(in.Command)
 		cwd, ok := realPath(env.Resolve(in.Cwd))
-		if !simple || !ok || inProtected(env, cwd) || namesGuarded(env, words, cwd) {
+		if !posixShell(env) || !simple || !ok || inProtected(env, cwd) || namesGuarded(env, words, cwd) {
 			return Rule{}, false
 		}
 		for _, r := range rules {
@@ -412,8 +418,8 @@ func allUnder(env *Env, targets, roots, protected []string) bool {
 	for _, target := range targets {
 		abs := env.Resolve(target)
 		real, ok := realPath(abs)
-		if !ok || guardedTarget(env, abs) != "" ||
-			underAny(protected, real) || underAny(protected, abs) || !inTrusted(roots, real) {
+		if !ok || guardedTarget(env, abs) != "" || underAny(protected, real) || underAny(protected, abs) ||
+			inProtected(env, real) || inProtected(env, abs) || !inTrusted(roots, real) {
 			return false
 		}
 	}
@@ -439,9 +445,6 @@ func sameLine(rule, cmd string) bool {
 	rule, cmd = strings.TrimSpace(rule), strings.TrimSpace(cmd)
 	if rule == cmd {
 		return true
-	}
-	if exactOnly {
-		return false
 	}
 	a, aok := shellWords(rule)
 	b, bok := shellWords(cmd)
@@ -469,8 +472,8 @@ func resolveProgram(env *Env, program, cwd string) string {
 	if env.remote() {
 		return ""
 	}
-	p := program
-	if strings.ContainsAny(program, `/\`) {
+	p := expandHome(program)
+	if strings.ContainsAny(p, `/\`) {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(cwd, p)
 		}
@@ -516,7 +519,11 @@ func inProtected(env *Env, p string) bool {
 	if env.Policy == nil {
 		return false
 	}
-	return underAny(realPaths(env.Policy.Protected), p) || underAny(env.Policy.Protected, p)
+	dirs := env.Policy.Protected
+	if env.Policy.Home != "" {
+		dirs = append(slices.Clone(dirs), env.Policy.Home) // config.yaml, .env and the databases live there
+	}
+	return underAny(realPaths(dirs), p) || underAny(dirs, p)
 }
 
 // namesGuarded reports whether a simple command's words name a guarded
@@ -604,9 +611,13 @@ func ProposeRule(env *Env, t Tool, call llm.Block) *Rule {
 		if !simple || !ok || !showsPlainly(cwd) || inProtected(env, cwd) {
 			return nil
 		}
-		r = Rule{Tool: "exec", Exact: cmd, In: cwd}
-		if !exactOnly {
-			r.Program = resolveProgram(env, words[0], cwd)
+		if !posixShell(env) {
+			return nil
+		}
+		// The program is pinned to the file it is now, or no rule is offered.
+		r = Rule{Tool: "exec", Exact: cmd, In: cwd, Program: resolveProgram(env, words[0], cwd)}
+		if r.Program == "" {
+			return nil
 		}
 	case "write_file", "edit_file", "apply_patch":
 		targets, ok := fileTargets(t, call.Input)
@@ -722,6 +733,12 @@ func guardedPath(env *Env, p string) string {
 			return name
 		}
 	}
+	if strings.HasPrefix(fold(base), fold(RulesFileName)) {
+		return rulesGuard // approvals.json, its lock, a copy of either
+	}
+	if name := homeFile(env, p); name != "" {
+		return name
+	}
 	if env.Rules == nil || env.Rules.File() == "" {
 		return ""
 	}
@@ -742,6 +759,33 @@ func guardedPath(env *Env, p string) string {
 	return ""
 }
 
+// homeFile names one of Habakkuk's own files at the root of its home when p
+// is one (config.yaml, .env, a database), or "".
+func homeFile(env *Env, p string) string {
+	if env.Policy == nil || env.Policy.Home == "" {
+		return ""
+	}
+	dir := filepath.Dir(filepath.Clean(p))
+	home := filepath.Clean(env.Policy.Home)
+	same := strings.EqualFold(dir, home)
+	if !same {
+		if real, ok := realPath(home); ok {
+			same = strings.EqualFold(dir, real)
+		}
+	}
+	if !same {
+		return ""
+	}
+	base := strings.ToLower(filepath.Base(p))
+	switch {
+	case strings.HasPrefix(base, "config.yaml"), strings.HasPrefix(base, ".env"):
+		return "Habakkuk's " + base
+	case strings.HasSuffix(base, ".db"), strings.Contains(base, ".db-"):
+		return "Habakkuk's " + base + " database"
+	}
+	return ""
+}
+
 // guardedWrite is the reason a file tool's call needs a person whatever
 // the mode, or "".
 func guardedWrite(env *Env, t Tool, call llm.Block) string {
@@ -757,7 +801,7 @@ func guardedWrite(env *Env, t Tool, call llm.Block) string {
 			continue
 		case name == rulesGuard:
 			return "it changes the agent's saved approval rules, which always needs your approval"
-		case strings.HasPrefix(name, "a file"):
+		case strings.HasPrefix(name, "a file"), strings.HasPrefix(name, "Habakkuk's"):
 			return "it changes " + name + ", which always needs your approval"
 		default:
 			return "it changes " + name + ", one of the agent's instruction files, which always needs your approval"
@@ -822,10 +866,14 @@ func shellWords(s string) ([]string, bool) {
 			if j < 0 {
 				return nil, false
 			}
+			if !inWord && j > 0 && strings.IndexByte("~=", s[i+1]) >= 0 {
+				return nil, false // a quoted ~ is not the home folder: the same words would name another file
+			}
 			cur.WriteString(s[i+1 : i+1+j])
 			i += j + 1
 			inWord = true
 		case c == '"':
+			start := !inWord
 			inWord = true
 			closed := false
 			for i++; i < len(s); i++ {
@@ -845,6 +893,9 @@ func shellWords(s string) ([]string, bool) {
 						return nil, false
 					}
 				}
+				if start && cur.Len() == 0 && (d == '~' || d == '=') {
+					return nil, false
+				}
 				cur.WriteByte(d)
 			}
 			if !closed {
@@ -858,10 +909,15 @@ func shellWords(s string) ([]string, bool) {
 				return nil, false
 			}
 			i++
+			if !inWord && (s[i] == '~' || s[i] == '=') {
+				return nil, false
+			}
 			cur.WriteByte(s[i])
 			inWord = true
 		case strings.IndexByte(unsafeChars, c) >= 0:
 			return nil, false
+		case c == '=' && !inWord:
+			return nil, false // zsh expands a leading =
 		default:
 			cur.WriteByte(c)
 			inWord = true

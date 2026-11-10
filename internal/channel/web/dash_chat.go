@@ -362,7 +362,7 @@ func (s *Server) deliverChat(rctx context.Context, req chatRequest, shown string
 	s.hub.notify(req.Conversation, false)
 	m := channel.Message{
 		Account: s.Account, Conversation: req.Conversation, ID: req.ID, Sender: "web",
-		Text: req.Text, Direct: true, Agent: req.Agent, Attachments: atts,
+		Text: req.Text, Direct: true, Agent: req.Agent, Attachments: atts, Spoken: req.Spoken,
 	}
 	in.Deliver(ctx, m)
 	out := map[string]string{"message": req.ID, "turn": ""}

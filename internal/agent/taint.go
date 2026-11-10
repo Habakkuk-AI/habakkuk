@@ -72,12 +72,13 @@ func (t *turn) limitRules(env *tools.Env, recs []session.Record) {
 	}
 }
 
-// sessionPaused reports whether anything tainted entered the session since
-// the owner's previous message: in that message's turn or any turn after
-// it, a tool that can bring outside content in or a hosted search result;
-// in a turn after it, a payload that started tainted (a tainted result, an
-// A2A task) or a chat note. A turn whose job can no longer be read counts
-// as tainted.
+// sessionPaused reports whether anything but the owner's own words entered
+// the session since the owner's previous typed message: any turn after it
+// that the owner didn't type (a notice, meeting notes, a background
+// result, a /goal follow-up, a retry), or, in that message's own turn, a
+// tool that can bring outside content in, a hosted search result, a
+// tainted start or a chat note. A turn whose job can no longer be read
+// counts too.
 func (t *turn) sessionPaused(recs []session.Record) bool {
 	var jobsSeen []string
 	seen := map[string]bool{t.job.ID: true}
@@ -89,15 +90,14 @@ func (t *turn) sessionPaused(recs []session.Record) bool {
 	}
 	for _, id := range jobsSeen {
 		typed, tainted := t.jobTrust(id)
-		if tainted || t.recordsTaint(recs, id) {
-			return true // in the previous message's own turn too: it came after the message
-		}
-		if typed {
-			return false // the owner's previous message: its notes came with it, and nothing before counts
-		}
-		if t.r.Notes != nil && t.r.Notes.NotesTaken(t.ctx, id) {
+		if !typed || tainted || t.recordsTaint(recs, id) || (t.r.Notes != nil && t.r.Notes.NotesTaken(t.ctx, id)) {
+			// A turn the owner didn't type (a notice, meeting notes, a
+			// result, a follow-up) brought in words that aren't the
+			// owner's; the previous message's own turn counts too: its
+			// tools, and the notes it carried in.
 			return true
 		}
+		return false // the owner's previous message, clean: nothing before it counts
 	}
 	return false
 }
@@ -113,7 +113,7 @@ func (t *turn) jobTrust(id string) (typed, tainted bool) {
 	if j.Decode(&p) != nil {
 		return false, true
 	}
-	typed = (p.Typed || p.Local) && p.Source == "" && !p.Background && p.Sub == nil
+	typed = p.Typed && p.Source == "" && !p.Background && p.Sub == nil
 	tainted = p.Tainted || p.Source == SourceA2A || (p.Sub != nil && p.Sub.Tainted)
 	return typed, tainted
 }

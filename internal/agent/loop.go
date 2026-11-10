@@ -86,9 +86,12 @@ type TurnPayload struct {
 	// talk). A turn with no reply address is not local without it: the
 	// API, MCP clients and editors send none either.
 	Local bool `json:"local,omitempty"`
-	// Typed: the owner sent this message just now, in a direct chat (the
-	// gateway sets it); Local implies it. Approval rules answer only for
-	// such a turn (taint.go).
+	// Typed: the whole message is plain text the owner just sent: a text
+	// message in a direct chat (the gateway sets it), a line typed at the
+	// hk chat or TUI prompt (SubmitTyped), the dashboard's chat input.
+	// Approval rules answer only for such a turn (taint.go). Local does
+	// not imply it: hk run, hk talk, /btw and skill prompts are local but
+	// carry text the owner did not just type.
 	Typed bool `json:"typed,omitempty"`
 }
 
@@ -262,10 +265,16 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 
 // Submit queues a user message as a turn. The message is written by the turn
 // itself so that it can never interleave with a turn already in progress.
-// Submit queues a message the owner typed on this machine (the CLI and the
-// TUI use it), so the turn is Local.
+// Submit queues a message from this machine (hk run, a retry, a skill or
+// plugin prompt): the turn is Local, not Typed.
 func (r *Runner) Submit(ctx context.Context, sessionID, text string) (string, error) {
 	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text, Local: true})
+}
+
+// SubmitTyped queues a line the owner just typed at the hk chat or TUI
+// prompt, nothing added: the turn is Local and Typed.
+func (r *Runner) SubmitTyped(ctx context.Context, sessionID, text string) (string, error) {
+	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text, Local: true, Typed: true})
 }
 
 func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
@@ -308,7 +317,7 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	ctx = llm.WithCaller(ctx, caller)
 	ctx = withOrigin(ctx, p.Origin)
-	info := TurnInfo{Source: p.Source, Task: p.Task, Local: p.Local, Typed: p.Typed || p.Local, Background: p.Background || p.Compact,
+	info := TurnInfo{Source: p.Source, Task: p.Task, Local: p.Local, Typed: p.Typed, Background: p.Background || p.Compact,
 		Delegated: p.Sub != nil, Tainted: p.Tainted || p.Source == SourceA2A}
 	ctx = WithTurnInfo(ctx, info)
 	chain, overridden := r.chainFor(ctx, sess.ID, spec)

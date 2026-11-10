@@ -83,22 +83,34 @@ A rule covers one of these:
 - **One simple command, in one folder.** A program followed by plain words, such as `git status` or `ls ~/notes`. The rule allows that exact line, run in the folder it ran in, and nowhere else. A subfolder is another folder: `ls`, `make` or `npm test` there read other files. Quoting may differ (`echo 'a b'` is `echo "a b"`), nothing else may: `git status -s` isn't `git status`. Habakkuk also notes where the program was found, and a program found somewhere else, or swapped for a link, isn't covered. Rules that take any arguments (wildcards) may come later, with a reviewed list of programs they're safe for.
 - **A file tool in a folder.** `write_file`, `edit_file` or `apply_patch` writing inside the folder of the file you approved, or below it. Hidden files and folders still ask.
 
-A command isn't simple, and gets no **Always allow**, if it has an unquoted `$`, a backquote, `{` or `}`, `*`, `?` or `[`, a `~` other than a leading `~/`, any of `;`, `&`, `|`, `<`, `>`, `(` or `)`, a line break, or runs `cd`, `pushd` or `popd`. You can still allow it once.
+A command isn't simple, and gets no **Always allow**, if it has an unquoted `$`, a backquote, `{` or `}`, `*`, `?` or `[`, a `~` other than an unquoted leading `~/`, a word starting with `=`, any of `;`, `&`, `|`, `<`, `>`, `(` or `)`, a line break, or runs `cd`, `pushd` or `popd`. **Always allow** also needs the program to be found where it is now (a program that's missing isn't offered a rule), and commands that run in bash: on this computer on Windows, where they run in PowerShell, no command rules are offered or applied, though a Docker or SSH sandbox runs bash. You can still allow any of these once.
 
 ### Which turns rules answer for
 
-A rule answers only when all of these hold:
+A rule answers only for a **typed** turn: one whose whole message is plain text you just sent. That's one of these:
 
-- **You typed the message just now.** In a one-to-one chat with the agent, or on this computer: the terminal, the TUI, `hk talk`, or the dashboard's chat. The dashboard's chat includes `/api/chat`, which is the same chat behind the dashboard's token.
+- a text message in a one-to-one chat with the agent;
+- a line you type at the `hk chat` or TUI prompt;
+- a message typed into the dashboard's chat. That includes `/api/chat`, which is the same chat behind the dashboard's token.
+
+None of these are typed, even when you started them:
+
+- `/btw` in the TUI, which carries the conversation's history;
+- `/skill`, plugin commands and `hk run -skill`, which carry a file's text, and `hk run` itself;
+- `hk send`, a retry, `/queue` and `/goal` follow-ups;
+- Live mode, voice notes and `hk talk`, since speech could be anyone's;
+- a message that quotes another message, a forwarded message (where the platform marks forwards, as Telegram does), and a message with an attachment.
+
+A typed turn also needs all of these:
+
 - **The conversation is yours alone.** Not a group, room or channel you share with others.
 - **The turn is untainted.** It hasn't read outside content.
-- **Your message carries no chat notes.** Nothing reached the chat from elsewhere since your last message there: no schedule's result, script output, meeting notes or `hk send` message.
-- **The conversation isn't paused.** Nothing tainted has entered it since your previous message. See [When rules pause](#when-rules-pause).
+- **Your message carries no chat notes.** Nothing reached the chat from elsewhere since your last message there: no schedule's result, script output, meeting notes, card result or `hk send` message.
+- **The conversation isn't paused.** See [When rules pause](#when-rules-pause).
 
 Rules never answer for anything else, and those calls ask a person as before:
 
 - schedules of any kind, prompt or script;
-- `/goal` continuations and other follow-ups Habakkuk queues for itself;
 - notices, board cards and sub-agents;
 - tasks from other agents (A2A), the OpenAI-compatible API, MCP clients and editors (`hk acp`);
 - webhooks, guests' turns, and turns from a chat account the config no longer has.
@@ -107,16 +119,21 @@ Rules never answer for anything else, and those calls ask a person as before:
 
 ### When rules pause
 
-When anything tainted enters a conversation, your next message there gets no rules. That covers a turn that read outside content (your previous one included), a result or run that arrived tainted (a sub-agent's result, a schedule's run, an A2A task), and messages that reached the chat from elsewhere after your previous message. Once a message of yours has gone through with nothing tainted after it, the next one gets its rules back.
+Your message gets no rules when anything but your own words entered the conversation since your previous typed message. That covers:
+
+- in your previous message's own turn: a tool that read outside content, or chat notes that came in with it;
+- after it: any turn you didn't type (a finished process, meeting notes, a sub-agent's result, a schedule's run, an A2A task, a `/goal` follow-up, a retry), and any chat note.
+
+Once a typed message of yours has gone through with nothing like that in or after it, the next one gets its rules back.
 
 ### What a rule won't match
 
 - A command that names an instruction file or the rules file, however it's quoted, escaped or cased. See [Instruction files](#instruction-files).
 - A command whose words lead to one of those files through a symlink or a hard link, as they are when it runs. Short options such as `-onotes.md` and values after `=` are read as paths too.
-- A command run in one of Habakkuk's own folders, or one that names a path there, even a file that doesn't exist yet.
+- A command run in Habakkuk's home or one of its own folders, or one that names a path there, even a file that doesn't exist yet.
 - A command on the hardline blocklist.
 
-**Always allow** isn't offered for a command or folder with a backquote or a line break, or one longer than about 300 characters. It isn't offered in an email conversation either. On Windows, commands run in PowerShell, so there the line must match character for character, quoting included.
+**Always allow** isn't offered for a command or folder with a backquote or a line break, or one longer than about 300 characters. It isn't offered in an email conversation either.
 
 ### Rules in the config
 
@@ -158,7 +175,7 @@ Some runs can't get a yes:
 
 ## Instruction files
 
-`SOUL.md`, `AGENTS.md`, `IDENTITY.md` and `USER.md` tell the agent who it is and how to behave. A write to a file with one of those names, through `write_file`, `edit_file` or `apply_patch`, always needs your approval. Names are compared without regard to case, since macOS and Windows disks ignore it. That holds in `full` mode, in a trusted notes folder, under a rule, and with a reviewer. The same goes for the agent's saved rules file, whatever case its name is written in, and for any file that has more than one name (a hard link) on macOS and Linux. **Always allow** isn't offered for these.
+`SOUL.md`, `AGENTS.md`, `IDENTITY.md` and `USER.md` tell the agent who it is and how to behave. A write to a file with one of those names, through `write_file`, `edit_file` or `apply_patch`, always needs your approval. Names are compared without regard to case, since macOS and Windows disks ignore it. That holds in `full` mode, in a trusted notes folder, under a rule, and with a reviewer. The same goes for any `approvals.json` file and its lock, whatever case its name is written in, for Habakkuk's own `config.yaml`, `.env` and databases in its home, and for any file that has more than one name (a hard link) on macOS and Linux. **Always allow** isn't offered for these.
 
 No rule covers a command that names one of these files, however it's quoted, escaped or cased: `SOU''L.md`, `"AGENTS".md` and `ſOUL.md` count, and so does a word that leads to one through a symlink or a hard link. In `full` mode, though, commands run without asking, and Habakkuk doesn't parse them, so a command can still write these files there. Below `full`, such a command asks you.
 
@@ -182,7 +199,7 @@ The setting is narrow on purpose:
 - **No scripts or programs.** A file counts as a script or program if it has an executable bit, a script extension (`.sh`, `.py`, `.js` and so on) or a `#!` first line, or if it's a program binary. Habakkuk refuses such a file in a turn that has read outside content. In a clean turn, the file goes through the usual approval. Skills use the same test for "ships scripts".
 - **No hidden files.** `.git`, `.envrc` and anything else whose name starts with a dot aren't covered. Neither is anything that sits under a folder like that.
 - **Symlinks are followed first.** Habakkuk judges a path by where it really lands, so a link inside the folder can't send a write somewhere else.
-- **Habakkuk's own folders are never trusted.** These are agent homes, skills, plugins, hooks, personas, channel credentials and backups, plus the folders your hooks and scheduled scripts run from. If an entry reaches one of them, Habakkuk ignores it and `hk security` says so.
+- **Habakkuk's own folders are never trusted.** These are agent homes, skills, plugins, hooks, personas, channel credentials, backups and scripts, plus the folders your hooks and scheduled scripts run from. If an entry reaches one of them, Habakkuk ignores it and `hk security` says so.
 - **Your home folder, or anything above it, is refused.** Habakkuk rejects it when the config loads.
 - **Guests get nothing.** A sender who was let in by `allow_from: ["*"]` can't write outside the workspace at all.
 

@@ -1342,7 +1342,7 @@ pages.approvals = view => {
     try { j = await api("approval-rules"); } catch (err) { rules.textContent = ""; rules.append(h("div", { class: "empty err" }, err.message)); return; }
     rules.textContent = "";
     rules.append(h("h3", {}, "Always allowed"),
-      h("p", { class: "small muted" }, "Calls an agent makes without asking, saved by Always allow or set in agents.<name>.allow. An exec rule is one simple command in one folder. Rules answer only for a message you typed just now, one to one or on this computer, and a rule saved in a chat applies in that chat only. They never apply to schedules, board cards, sub-agents, the API or another agent's task, nor after outside content."));
+      h("p", { class: "small muted" }, "Calls an agent makes without asking, saved by Always allow or set in agents.<name>.allow. An exec rule is one simple command in one folder. Rules answer only for a message you typed just now as plain text, one to one or here, and a rule saved in a chat applies in that chat only. They never apply to schedules, voice, board cards, sub-agents, the API or another agent's task, nor after anything but your own words came in."));
     if (!j.rules.length) { rules.append(h("div", { class: "empty" }, "No rules yet.")); return; }
     rules.append(table(["Agent", "Covers", "From", ""], j.rules.map(r => h("tr", {},
       h("td", {}, r.agent),

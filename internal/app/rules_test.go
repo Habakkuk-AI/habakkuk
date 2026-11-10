@@ -3,9 +3,15 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/habakkuk-ai/habakkuk/internal/config"
+	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -32,7 +38,7 @@ func (echoModel) Send(_ context.Context, _ []llm.Target, req llm.Request, _ func
 // request, a board card's run, a meeting notice, a sub-agent's task, an
 // A2A task.
 func TestLocalRuleAnswersOnlyForTheOwnersTurns(t *testing.T) {
-	a, _ := openWith(t, "")
+	a := openOutsideHome(t)
 	a.Runner.Models = echoModel{}
 	ctx := context.Background()
 	if _, err := a.Rules("habakkuk").Save(tools.Rule{Tool: "exec", Exact: "echo covered", Place: tools.PlaceLocal, Source: "local"}); err != nil {
@@ -72,7 +78,8 @@ func TestLocalRuleAnswersOnlyForTheOwnersTurns(t *testing.T) {
 		turn agent.Turn
 		want bool
 	}{
-		"typed here":                {agent.Turn{Text: "go", Local: true}, true},
+		"typed here":                {agent.Turn{Text: "go", Local: true, Typed: true}, true},
+		"hk run, local not typed":   {agent.Turn{Text: "go", Local: true}, false},
 		"owner's schedule, no chat": {agent.Turn{Text: "go", Background: true, Source: agent.SourceSchedule}, false},
 		"API or MCP request":        {agent.Turn{Text: "go"}, false},
 		"board card run":            {agent.Turn{Text: "go", Background: true, Source: agent.SourceBoard}, false},
@@ -112,7 +119,7 @@ func TestScheduleMadeByAnotherTurnIsTainted(t *testing.T) {
 	ctx := context.Background()
 	for _, local := range []bool{false, true} {
 		sess, _ := a.Runner.NewSession(ctx, "habakkuk")
-		id, err := a.Runner.SubmitTurn(ctx, agent.Turn{Session: sess.ID, Text: "make a schedule", Local: local})
+		id, err := a.Runner.SubmitTurn(ctx, agent.Turn{Session: sess.ID, Text: "make a schedule", Local: local, Typed: local})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -134,4 +141,62 @@ func TestScheduleMadeByAnotherTurnIsTainted(t *testing.T) {
 		}
 		a.Schedules.Delete(ctx, last.ID)
 	}
+}
+
+// openOutsideHome opens an app whose workspace is outside its home: no
+// rule covers anything in the home.
+func openOutsideHome(t *testing.T) *App {
+	t.Helper()
+	home, ws := t.TempDir(), t.TempDir()
+	cfg := strings.Replace(config.Template, "workspace: ~/habakkuk-workspace", "workspace: "+ws, 1)
+	if err := store.WriteFileAtomic(filepath.Join(home, "config.yaml"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := Open(context.Background(), home, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a.Close)
+	return a
+}
+
+// Nothing in Habakkuk's home is covered by a rule: not a command run there,
+// not a file there. Its config.yaml, .env and databases always ask.
+func TestNoRuleInTheHome(t *testing.T) {
+	a, ws := openWith(t, "") // this workspace is inside the home
+	a.Runner.Models = echoModel{}
+	ctx := context.Background()
+	if _, err := a.Rules("habakkuk").Save(tools.Rule{Tool: "exec", Exact: "echo covered", Place: tools.PlaceLocal}); err != nil {
+		t.Fatal(err)
+	}
+	sess, _ := a.Runner.NewSession(ctx, "habakkuk")
+	id, _ := a.Runner.SubmitTurn(ctx, agent.Turn{Session: sess.ID, Text: "go", Local: true, Typed: true})
+	j, _ := a.Queue.Claim(ctx, "w", time.Minute, agent.KindTurn)
+	if j == nil || j.ID != id {
+		t.Fatal("claim")
+	}
+	final, _ := a.Runner.HandleTurn(ctx, j, "w")
+	if strings.Contains(final, "saved approval rule") {
+		t.Fatalf("a rule answered in a workspace inside the home (%s): %q", ws, final)
+	}
+	env := a.Runner.Env(a.Runner.Agents["habakkuk"], sess.ID)
+	a.applyPolicy(agent.WithTurnInfo(ctx, agent.TurnInfo{Local: true, Typed: true}), a.Runner.Agents["habakkuk"], nil, env)
+	env.Mode = tools.ModeFull
+	ap := &countApprover{}
+	env.Approver = ap
+	for _, name := range []string{"config.yaml", "Config.YAML", ".env", "control.db", "state.db-wal"} {
+		ap.n = 0
+		res := a.Tools.Execute(ctx, env, llm.Block{Type: llm.ToolUse, ToolUseID: "w", ToolName: "write_file",
+			Input: json.RawMessage(`{"path":"` + filepath.ToSlash(filepath.Join(a.Cfg.Home, name)) + `","content":"x"}`)})
+		if ap.n != 1 || !res.IsError {
+			t.Errorf("write %s in full mode: asked %d times: %+v", name, ap.n, res)
+		}
+	}
+}
+
+type countApprover struct{ n int }
+
+func (c *countApprover) Approve(context.Context, tools.ApprovalRequest) (bool, error) {
+	c.n++
+	return false, nil
 }

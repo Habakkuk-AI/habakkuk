@@ -138,6 +138,10 @@ type message struct {
 		User   *user  `json:"user"`
 	} `json:"entities"`
 	ReplyTo *message `json:"reply_to_message"`
+	// Set on a forwarded message (Bot API 7.0 and older versions).
+	ForwardOrigin json.RawMessage `json:"forward_origin"`
+	ForwardFrom   *user           `json:"forward_from"`
+	ForwardDate   int64           `json:"forward_date"`
 	// Quote is the part of the replied-to message the user picked, if any.
 	Quote *struct {
 		Text string `json:"text"`
@@ -245,6 +249,7 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 		m.Mentioned = true
 	}
 	m.Quote = a.quote(msg)
+	m.Forwarded = len(msg.ForwardOrigin) > 0 || msg.ForwardFrom != nil || msg.ForwardDate != 0
 	mention := "@" + a.username
 	if a.username != "" && strings.Contains(strings.ToLower(text), strings.ToLower(mention)) {
 		m.Mentioned = true

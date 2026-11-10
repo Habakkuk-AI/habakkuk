@@ -200,11 +200,8 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 		from.Trust = TrustOwner
 	}
 	origin, _ := json.Marshal(from)
-	// Typed: the owner wrote this just now, one to one. Only such a turn
-	// may use approval rules; a group's turns, and every follow-up the
-	// gateway queues itself (/goal, /retry, /btw), never do.
 	if _, err := g.Runner.SubmitTurn(ctx, agent.Turn{
-		ID: TurnID(m), Session: conv.SessionID, Text: text, Media: media, Origin: origin, Typed: owner && m.Direct,
+		ID: TurnID(m), Session: conv.SessionID, Text: text, Media: media, Origin: origin, Typed: typed(m, owner),
 	}); err != nil {
 		log.Error("queue turn failed", "err", err)
 		g.reply(to, g.t(to, "turn.queue_failed"))
@@ -713,6 +710,7 @@ func (g *Gateway) enqueue(ctx context.Context, id string, p deliverPayload) erro
 		}
 		p.Tainted = p.Tainted || (turn != "" && g.Runner.Untrusted(turn))
 	}
+	p.Tainted = p.Tainted || agent.TaintedFrom(ctx)
 	_, err := g.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: id, Kind: KindDeliver, SerialKey: "dlv:" + p.To.key(), Priority: 20, MaxAttempts: 20,
 		Payload: p,
@@ -1117,4 +1115,13 @@ func shorten(s string, n int) string {
 		return string([]rune(s)[:n]) + "..."
 	}
 	return s
+}
+
+// typed reports whether a message is plain text the owner just typed, one
+// to one: no quote of another message, no forward, no speech, no
+// attachment (a voice note, a file). Only such a turn may use approval
+// rules; a group's turns, and every follow-up the gateway queues itself
+// (/goal, /retry, /btw), never do.
+func typed(m Message, owner bool) bool {
+	return owner && m.Direct && m.Quote == nil && !m.Forwarded && !m.Spoken && len(m.Attachments) == 0
 }

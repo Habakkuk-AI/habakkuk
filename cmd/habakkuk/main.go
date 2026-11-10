@@ -421,6 +421,7 @@ func chat(ctx context.Context, home string, args []string) error {
 		case "/exit", "/quit":
 			return nil
 		}
+		prompted := false
 		if name, arg, _ := strings.Cut(line, " "); strings.HasPrefix(name, "/") {
 			// The chat app's commands: /model, /usage, /skills, /skill,
 			// /learn and plugin commands. A prompt command becomes the message.
@@ -434,10 +435,16 @@ func chat(ctx context.Context, home string, args []string) error {
 					fmt.Println(err)
 					continue
 				}
-				line = text
+				line, prompted = text, true
 			}
 		}
-		if _, err := a.Runner.Submit(ctx, sid, line); err != nil {
+		// A line typed at the prompt is Typed; a skill or plugin prompt
+		// carries file text the owner did not type.
+		submit := a.Runner.SubmitTyped
+		if prompted {
+			submit = a.Runner.Submit
+		}
+		if _, err := submit(ctx, sid, line); err != nil {
 			return err
 		}
 		pool.wake()

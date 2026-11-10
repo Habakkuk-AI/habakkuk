@@ -124,7 +124,7 @@ func interruptAndResume(t *testing.T, first string, hosted bool, opts ...resumeO
 		return env
 	}
 	s, _ := h.runner.NewSession(ctx, "habakkuk")
-	jobID, _ := h.runner.Submit(ctx, s.ID, "read the page, then tidy up")
+	jobID, _ := h.runner.SubmitTyped(ctx, s.ID, "read the page, then tidy up")
 
 	j, _ := h.queue.Claim(ctx, "before", time.Minute, KindTurn)
 	runCtx, shutdown := context.WithCancel(ctx)

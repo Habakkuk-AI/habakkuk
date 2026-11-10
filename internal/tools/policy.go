@@ -80,6 +80,9 @@ type Policy struct {
 	// where no rule answers. A nil Policy is PlaceLocal. Which turns may use
 	// rules at all is agent.limitRules's to say.
 	Place string
+	// Home is Habakkuk's home folder: no rule covers anything in it, and
+	// its config.yaml, .env and databases are guarded files (allow.go).
+	Home string
 }
 
 // PlaceLocal is the Place of a turn started on this machine.

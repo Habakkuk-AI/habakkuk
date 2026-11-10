@@ -383,6 +383,9 @@ type chatRequest struct {
 	Text         string `json:"text"`
 	Agent        string `json:"agent"`
 	ID           string `json:"id"` // optional client message id; resending it is a no-op
+	// Spoken: the text is a transcript of Live mode's speech, never set by
+	// a client.
+	Spoken bool `json:"-"`
 }
 
 // chat hands a message to the gateway and returns the turn it started, or

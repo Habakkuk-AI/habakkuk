@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-// TestMain runs the pattern tests on every system: what PowerShell does
-// with exactOnly set is TestExactTextOnWindows's.
+// TestMain runs the command-rule tests on every system, as if commands
+// ran in bash: what happens on a Windows host is TestNoExecRulesWithoutBash's.
 func TestMain(m *testing.M) {
-	exactOnly = false
+	windowsHost = false
 	os.Exit(m.Run())
 }
 
@@ -268,19 +268,33 @@ func TestRulesFileGuardIgnoresCaseAndLinks(t *testing.T) {
 	}
 }
 
-// Windows runs commands in PowerShell: there a command line must match
-// character for character.
-func TestExactTextOnWindows(t *testing.T) {
-	exactOnly = true
-	defer func() { exactOnly = false }()
-	if sameLine("echo 'a b'", `echo "a b"`) || !sameLine("echo 'a b'", " echo 'a b' ") {
-		t.Fatal("quoting was normalised with exactOnly")
-	}
+// On this machine on Windows commands run in PowerShell, which the rules
+// can't judge: no exec rule is offered or applies there. A sandbox runs
+// bash, so there they work. File rules are unaffected.
+func TestNoExecRulesWithoutBash(t *testing.T) {
+	windowsHost = true
+	defer func() { windowsHost = false }()
 	_, env, _ := ruleRig(t, nil)
-	if p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": "git status"})); p == nil || p.Program != "" {
+	c := call("exec", map[string]any{"command": "git status"})
+	ws, _ := realPath(env.Workspace)
+	if p := ProposeRule(env, execTool{}, c); p != nil {
 		t.Fatalf("proposed %+v", p)
 	}
+	if _, ok := matchRule(env, execTool{}, c, []Rule{{Tool: "exec", Exact: "git status", In: ws}}); ok {
+		t.Fatal("an exec rule matched without bash")
+	}
+	if !posixShell(&Env{Backend: fakeBackend{}}) {
+		t.Fatal("a sandbox runs bash")
+	}
+	dir := filepath.Join(env.Workspace, "notes")
+	os.MkdirAll(dir, 0o755)
+	if p := ProposeRule(env, writeFile{}, call("write_file", map[string]any{"path": filepath.Join(dir, "a.md"), "content": "x"})); p == nil {
+		t.Fatal("a file rule was not offered")
+	}
 }
+
+// fakeBackend stands for a sandbox.
+type fakeBackend struct{ Backend }
 
 // Saves and removals from separate RuleFiles (a running server and
 // hk approvals rm) never lose one another's change (review finding 10).
@@ -426,5 +440,142 @@ func TestSwappedProgramAsks(t *testing.T) {
 	ap.d, ap.asks = DecisionDeny, 0
 	if res := r.Execute(context.Background(), env, call("exec", map[string]any{"command": "./run.sh"})); ap.asks != 1 || strings.Contains(res.Text, "EVIL") {
 		t.Fatalf("swapped program ran under the rule (asks %d): %s", ap.asks, res.Text)
+	}
+}
+
+// A quoted or escaped ~ is not the home folder, and a leading = is a zsh
+// expansion: no rule is offered for such a line, and none matches it.
+func TestQuotedTildeGetsNoRule(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.WriteFile(filepath.Join(home, "linked.md"), []byte("home file"), 0o644)
+	os.WriteFile(filepath.Join(home, "build.txt"), []byte("keep"), 0o644)
+	ap := &countingApprover{yes: false}
+	r, env, rf := ruleRig(t, ap)
+	agentDir := filepath.Dir(rf.Path)
+	os.MkdirAll(agentDir, 0o700)
+	soul := filepath.Join(agentDir, "SOUL.md")
+	os.WriteFile(soul, []byte("good soul"), 0o644)
+	env.Policy = &Policy{Place: PlaceLocal, Protected: []string{agentDir}}
+	os.WriteFile(filepath.Join(env.Workspace, "x"), []byte("EVIL SOUL"), 0o644)
+	os.MkdirAll(filepath.Join(env.Workspace, "~"), 0o755)
+	os.Symlink(soul, filepath.Join(env.Workspace, "~", "linked.md"))
+	os.WriteFile(filepath.Join(env.Workspace, "~", "build.txt"), []byte("scratch"), 0o644)
+	for _, c := range []struct{ rule, cmd string }{
+		{"cp x ~/linked.md", "cp x '~/linked.md'"}, {"cp x ~/linked.md", `cp x "~/linked.md"`}, {"cp x ~/linked.md", `cp x \~/linked.md`},
+		{"rm '~/build.txt'", "rm ~/build.txt"}, {"ls =ls", "ls =ls"}, {"ls '=ls'", "ls '=ls'"},
+	} {
+		rf.Config = []Rule{{Tool: "exec", Exact: c.rule}}
+		ap.asks = 0
+		res := r.Execute(context.Background(), env, call("exec", map[string]any{"command": c.cmd}))
+		if strings.Contains(res.Text, "saved approval rule") || ap.asks != 1 {
+			t.Errorf("rule %q answered %q (asks %d)", c.rule, c.cmd, ap.asks)
+		}
+		if p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": c.cmd})); p != nil && c.cmd != "rm ~/build.txt" {
+			t.Errorf("%q: offered %+v", c.cmd, p)
+		}
+	}
+	if b, _ := os.ReadFile(soul); string(b) != "good soul" {
+		t.Fatalf("SOUL.md now %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(home, "build.txt")); err != nil {
+		t.Fatal("the home file was removed")
+	}
+}
+
+// The program is pinned when the rule is saved, ~/ expanded, or no rule is
+// offered at all.
+func TestProgramIsPinnedOrNoRule(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell scripts")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, "bin"), 0o755)
+	os.WriteFile(filepath.Join(home, "bin", "tool"), []byte("#!/bin/sh\necho home-tool\n"), 0o755)
+	_, env, _ := ruleRig(t, nil)
+	env.Policy = &Policy{Place: PlaceLocal}
+	p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": "~/bin/tool"}))
+	real, _ := realPath(filepath.Join(home, "bin", "tool"))
+	if p == nil || p.Program != real {
+		t.Fatalf("~/bin/tool: %+v", p)
+	}
+	for _, cmd := range []string{"~/bin/missing", "./missing.sh", "no-such-program-here"} {
+		if p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": cmd})); p != nil {
+			t.Errorf("%q: offered a rule with an unresolved program: %+v", cmd, p)
+		}
+	}
+}
+
+// Habakkuk's home: its config.yaml, .env and databases always ask, and no
+// file rule over the home is offered or applies.
+func TestHomeFilesAlwaysAsk(t *testing.T) {
+	ap := &deciding{d: DecisionAlways}
+	r, env, rf := ruleRig(t, ap)
+	hkHome := filepath.Dir(filepath.Dir(rf.Path))
+	os.MkdirAll(filepath.Dir(rf.Path), 0o700)
+	cfg := filepath.Join(hkHome, "config.yaml")
+	os.WriteFile(cfg, []byte("version: 1\n"), 0o600)
+	env.Policy = &Policy{Place: PlaceLocal, Home: hkHome}
+	env.Mode = ModeFull
+	if p := ProposeRule(env, writeFile{}, call("write_file", map[string]any{"path": cfg, "content": "x"})); p != nil {
+		t.Fatalf("file rule offered over the home: %+v", p)
+	}
+	other := filepath.Join(hkHome, "notes")
+	os.MkdirAll(other, 0o700)
+	if p := ProposeRule(env, writeFile{}, call("write_file", map[string]any{"path": filepath.Join(other, "a.md"), "content": "x"})); p != nil {
+		t.Fatalf("file rule offered inside the home: %+v", p)
+	}
+	rf.Config = []Rule{{Tool: "write_file", Path: hkHome + "/notes"}}
+	ap.d = DecisionDeny
+	for _, name := range []string{"config.yaml", "CONFIG.yaml", ".env", "control.db", "usage.db-wal"} {
+		ap.asks = 0
+		r.Execute(context.Background(), env, call("write_file", map[string]any{"path": filepath.Join(hkHome, name), "content": "x"}))
+		if ap.asks != 1 {
+			t.Errorf("write %s in full mode: asks %d", name, ap.asks)
+		}
+	}
+	// Below full, a file rule over a folder in the home doesn't answer.
+	env.Mode, ap.asks = ModeWorkspace, 0
+	r.Execute(context.Background(), env, call("write_file", map[string]any{"path": filepath.Join(other, "a.md"), "content": "x"}))
+	if ap.asks != 1 {
+		t.Errorf("a file rule answered inside the home (asks %d)", ap.asks)
+	}
+	if saved, _ := rf.Saved(); len(saved) != 0 {
+		t.Fatalf("saved %+v", saved)
+	}
+}
+
+// A file rule over the workspace never covers a write through a link to
+// SOUL.md or the rules file, in any mode.
+func TestFileRuleSeesThroughLinks(t *testing.T) {
+	for _, mode := range []Mode{ModeWorkspace, ModeFull} {
+		ap := &countingApprover{yes: false}
+		r, env, rf := ruleRig(t, ap)
+		ws, _ := realPath(env.Workspace)
+		rf.Config = []Rule{{Tool: "write_file", Path: ws}}
+		env.Mode = mode
+		agentDir := filepath.Dir(rf.Path)
+		os.MkdirAll(agentDir, 0o700)
+		soul := filepath.Join(agentDir, "SOUL.md")
+		os.WriteFile(soul, []byte("good soul"), 0o644)
+		os.WriteFile(rf.Path, []byte(`{"version":1,"rules":[]}`), 0o600)
+		env.Policy = &Policy{Place: PlaceLocal, Protected: []string{agentDir}}
+		os.Symlink(soul, filepath.Join(env.Workspace, "notes.md"))
+		os.Symlink(rf.Path, filepath.Join(env.Workspace, "cfg.json"))
+		names := []string{"notes.md", "cfg.json", "Soul.MD"}
+		if os.Link(soul, filepath.Join(env.Workspace, "hl.md")) == nil {
+			names = append(names, "hl.md")
+		}
+		for _, p := range names {
+			ap.asks = 0
+			r.Execute(context.Background(), env, call("write_file", map[string]any{"path": p, "content": "EVIL"}))
+			if ap.asks != 1 {
+				t.Errorf("mode %v write %s: asks %d", mode, p, ap.asks)
+			}
+		}
 	}
 }

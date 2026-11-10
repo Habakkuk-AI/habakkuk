@@ -30,6 +30,11 @@ type Message struct {
 	// Quote is the message this one replies to, when the sender quoted one
 	// and the platform says what it said; nil otherwise.
 	Quote *Quote
+	// Forwarded: the platform says the sender forwarded this message from
+	// someone else. Spoken: the text is a transcript of speech (Live mode),
+	// which could be anyone's voice. Neither is text the sender just typed,
+	// so approval rules never answer for such a turn.
+	Forwarded, Spoken bool
 }
 
 // Quote is a message that a reply quotes.

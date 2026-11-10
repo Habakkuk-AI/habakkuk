@@ -380,7 +380,11 @@ func (d *Dispatcher) notify(ctx context.Context, c *Card) error {
 	}
 	if !sent && len(c.ReplyTo) > 0 && d.Deliver != nil {
 		text := fmt.Sprintf("Card %s %q (%s) %s.\n\n%s", c.ID, c.Title, orNone(c.Assignee), what, detail)
-		if err := d.Deliver(ctx, "dlv_"+id, c.ReplyTo, text); err != nil {
+		dctx := ctx
+		if c.Tainted {
+			dctx = agent.WithTainted(ctx) // its chat note says so
+		}
+		if err := d.Deliver(dctx, "dlv_"+id, c.ReplyTo, text); err != nil {
 			return err
 		}
 	}

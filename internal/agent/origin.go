@@ -66,8 +66,8 @@ type TurnInfo struct {
 	// Local: the owner started it on this machine (the CLI, the TUI, hk
 	// talk); TurnPayload.Local.
 	Local bool
-	// Typed: the owner sent the turn's message just now, in a direct chat
-	// or on this machine (TurnPayload.Typed or Local).
+	// Typed: the turn's whole message is plain text the owner just sent
+	// (TurnPayload.Typed).
 	Typed bool
 	// Background: nobody sent it a fresh message (TurnPayload.Background);
 	// Delegated: a sub-agent's task; Tainted: it starts tainted.
@@ -99,3 +99,17 @@ func SourceFrom(ctx context.Context) string { return TurnInfoFrom(ctx).Source }
 // TaskFrom names the work that started the turn (`scheduled task
 // "inbox"`), or "".
 func TaskFrom(ctx context.Context) string { return TurnInfoFrom(ctx).Task }
+
+type taintedKey struct{}
+
+// WithTainted marks what is delivered under ctx as outside content: a chat
+// note it leaves is tainted (meeting notes, a tainted card's result).
+func WithTainted(ctx context.Context) context.Context {
+	return context.WithValue(ctx, taintedKey{}, true)
+}
+
+// TaintedFrom reports whether ctx was marked with WithTainted.
+func TaintedFrom(ctx context.Context) bool {
+	v, _ := ctx.Value(taintedKey{}).(bool)
+	return v
+}

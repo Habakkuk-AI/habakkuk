@@ -132,6 +132,14 @@ func (b *AppBackend) Submit(ctx context.Context, id, text string) error {
 	return nil
 }
 
+func (b *AppBackend) SubmitTyped(ctx context.Context, id, text string) error {
+	if _, err := b.A.Runner.SubmitTyped(ctx, id, text); err != nil {
+		return err
+	}
+	b.wake()
+	return nil
+}
+
 func (b *AppBackend) wake() {
 	if b.A.Runner.Wake != nil {
 		b.A.Runner.Wake()

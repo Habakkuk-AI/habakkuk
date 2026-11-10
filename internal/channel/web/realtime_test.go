@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/habakkuk-ai/habakkuk/internal/agent"
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -252,4 +253,32 @@ func TestRealtimeEndNotesTheTranscriptInTheSession(t *testing.T) {
 		recs, _ := r.s.Gateway.Runner.Sessions.Messages(ctx, sid)
 		return len(recs) == 4
 	})
+}
+
+// Live mode's requests are speech, which could be anyone's: their turns are
+// not typed, so approval rules never answer for them. A message typed in
+// the dashboard's chat is.
+func TestLiveTurnsAreNotTyped(t *testing.T) {
+	r, _ := liveRig(t)
+	ctx := context.Background()
+	payload := func(turn string) agent.TurnPayload {
+		t.Helper()
+		j, err := r.s.Gateway.Queue.Get(ctx, turn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var p agent.TurnPayload
+		if err := j.Decode(&p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	r.send(t, "POST", "/api/realtime/tool", `{"conversation":"v9","call_id":"call_9","request":"check the build"}`, http.StatusOK)
+	if p := payload(channel.TurnID(channel.Message{Account: "web", Conversation: "v9", ID: "rt-call_9"})); p.Typed {
+		t.Fatalf("a Live mode turn is typed: %+v", p)
+	}
+	out := r.chat(t, "t9", "hello")
+	if p := payload(out["turn"].(string)); !p.Typed {
+		t.Fatalf("a dashboard chat message is not typed: %+v", p)
+	}
 }
