@@ -30,8 +30,10 @@ func TestGuardDefaults(t *testing.T) {
 
 func TestGuardValidation(t *testing.T) {
 	for agent, want := range map[string]string{
-		"{model: p/m, loop_guard: {repeat_stop: -2}}": "loop_guard.repeat_stop",
-		"{model: p/m, project_files: maybe}":          "project_files",
+		"{model: p/m, loop_guard: {repeat_stop: -2}}":                "loop_guard.repeat_stop",
+		"{model: p/m, project_files: maybe}":                         "project_files",
+		"{model: p/m, loop_guard: {repeat_warn: 5, repeat_stop: 5}}": "repeat_warn (5) must be below repeat_stop (5)",
+		"{model: p/m, loop_guard: {idle_stop: 4}}":                   "idle_warn (8) must be below idle_stop (4)",
 	} {
 		if _, err := Parse([]byte(strings.Replace(mediaBase, "{model: p/m}", agent, 1))); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: want %q, got %v", agent, want, err)

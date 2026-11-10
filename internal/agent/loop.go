@@ -238,7 +238,7 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 		for _, f := range snap.Project.Files {
 			paths = append(paths, f.Path)
 		}
-		r.Log.Info("project instruction files read", "agent", agent, "files", paths, "trusted", snap.Project.Files[0].Trusted)
+		r.Log.Info("project instruction files read", "agent", agent, "files", paths, "trusted", snap.Project.Trusted)
 	}
 	switch {
 	case opts.Onboard:
@@ -315,6 +315,9 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 		err = t.runCompact()
 	} else {
 		err = t.run(p.Text, p.Media)
+		if err == nil && t.loopStopped && p.Background {
+			err = jobs.Permanent{Err: LoopStopped{Message: t.final}} // the run failed
+		}
 	}
 	err = t.pauseOnBudget(err, p)
 	if j.Kind == KindSubturn {
@@ -372,8 +375,9 @@ type turn struct {
 	usageAt      int       // its seq, or -1
 	compactTried bool
 
-	paused bool       // a spending limit ended the turn (budget.go)
-	guard  *loopGuard // nil when the loop guard is off (loopguard.go)
+	paused      bool       // a spending limit ended the turn (budget.go)
+	guard       *loopGuard // nil when the loop guard is off (loopguard.go)
+	loopStopped bool       // the loop guard ended the turn
 }
 
 func (t *turn) run(userText string, media []Attachment) error {
@@ -406,6 +410,11 @@ func (t *turn) run(userText string, media []Attachment) error {
 			t.r.Log.Warn("set title failed", "session", t.sess.ID)
 		}
 		notes := t.r.takeNotes(t.ctx, t.sess.ID, t.job.ID)
+		if len(t.msgs) == 0 {
+			// A new session in an untrusted project: its instruction
+			// files start the first message, as data (projectfiles.go).
+			notes = untrustedProjectMessage(LoadProjectFiles(t.spec.Dir, t.spec.Workspace, t.spec.ProjectFiles)) + notes
+		}
 		if err := t.append(userMessage(t.stamp(notes+userText+t.r.preamble(t.ctx, t.sess.ID)), media), "", nil); err != nil {
 			return err
 		}
@@ -427,6 +436,12 @@ func (t *turn) run(userText string, media []Attachment) error {
 	}
 	t.applyPolicy(env)
 	t.restoreTaint(env, recs)
+	if projectTainted(t.msgs) { // the session started with untrusted project files
+		if env.Taint == nil {
+			env.Taint = tools.NewTaint(true)
+		}
+		env.Taint.Mark()
+	}
 	var pending []string
 	if t.r.ToolsPending != nil {
 		pending = t.r.ToolsPending(t.ctx, t.toolsets())

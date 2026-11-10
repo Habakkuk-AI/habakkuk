@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/session"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -12,8 +13,12 @@ import (
 // The loop guard ends turns that go round in circles long before
 // MaxIterations would. It watches each round of tool calls for two things:
 //
-//   - repeat: one failing call made again and again, with the same tool,
-//     the same arguments and the same error each time;
+//   - repeat: one failing call retried straight away, again and again, with
+//     the same tool, the same arguments and the same error each time. A try
+//     counts only when it follows the previous one at once: in the next
+//     round, with nothing else done in between, within repeatGap. An agent
+//     that waits for a server by trying it, sleeping and trying again is
+//     not repeating itself; the idle check still bounds such a loop;
 //   - idle: rounds in a row whose every call repeats an earlier call of
 //     the turn and gets the same result back, so nothing new is learned.
 //
@@ -52,13 +57,25 @@ const (
 	LoopStop   = "stop"
 )
 
+// repeatGap is how long after a failed try the same try still counts as a
+// straight retry. Longer means the agent waited.
+const repeatGap = 20 * time.Second
+
 type loopGuard struct {
 	lim    LoopLimits
-	seen   map[string]int  // call and result -> times seen this turn
-	fails  map[string]int  // failing call and error -> times seen
-	warned map[string]bool // failing calls already warned about
-	idle   int             // rounds in a row with nothing new
-	idleOK bool            // the current idle stretch was warned about
+	seen   map[string]int      // call and result -> times seen this turn
+	fails  map[string]int      // failing call and error -> tries in a row
+	last   map[string]failMark // failing call and error -> its latest try
+	warned map[string]bool     // failing calls already warned about
+	idle   int                 // rounds in a row with nothing new
+	idleOK bool                // the current idle stretch was warned about
+	round  int
+	busy   bool // the previous round had a call that worked
+}
+
+type failMark struct {
+	round int
+	at    time.Time
 }
 
 // loopVerdict is what one round of calls means for the turn.
@@ -71,7 +88,7 @@ type loopVerdict struct {
 }
 
 func newLoopGuard(lim LoopLimits) *loopGuard {
-	return &loopGuard{lim: lim, seen: map[string]int{}, fails: map[string]int{}, warned: map[string]bool{}}
+	return &loopGuard{lim: lim, seen: map[string]int{}, fails: map[string]int{}, last: map[string]failMark{}, warned: map[string]bool{}}
 }
 
 func (g *loopGuard) off() bool {
@@ -79,8 +96,11 @@ func (g *loopGuard) off() bool {
 }
 
 // observe records one round: the calls of an assistant message and the
-// blocks of the user message that answers them. It returns what to do.
-func (g *loopGuard) observe(calls, results []llm.Block) loopVerdict {
+// blocks of the user message that answers them, which arrived at at (zero
+// when unknown, which counts as straight away). It returns what to do.
+func (g *loopGuard) observe(calls, results []llm.Block, at time.Time) loopVerdict {
+	g.round++
+	busy := false
 	byID := map[string]llm.Block{}
 	for _, r := range results {
 		if r.Type == llm.ToolResult {
@@ -103,13 +123,23 @@ func (g *loopGuard) observe(calls, results []llm.Block) loopVerdict {
 			fresh = true
 		}
 		if !res.IsError {
+			busy = true
 			continue
 		}
-		if g.fails[key]++; g.fails[key] > worst.Count {
+		prev, ok := g.last[key]
+		quick := prev.at.IsZero() || at.IsZero() || at.Sub(prev.at) < repeatGap
+		if ok && prev.round == g.round-1 && !g.busy && quick {
+			g.fails[key]++
+		} else {
+			g.fails[key] = 1
+		}
+		g.last[key] = failMark{round: g.round, at: at}
+		if g.fails[key] > worst.Count {
 			worst = loopVerdict{Check: LoopRepeat, Tool: c.ToolName, Error: res.Text, Count: g.fails[key]}
 			worstKey = key
 		}
 	}
+	g.busy = busy
 	if fresh {
 		g.idle, g.idleOK = 0, false
 	} else if len(calls) > 0 {
@@ -143,7 +173,7 @@ func (g *loopGuard) replay(recs []session.Record, jobID string) {
 		if len(calls) == 0 || i+1 >= len(recs) || recs[i+1].Message.Role != llm.User {
 			continue
 		}
-		g.observe(calls, recs[i+1].Message.Blocks)
+		g.observe(calls, recs[i+1].Message.Blocks, recs[i+1].At)
 	}
 }
 
@@ -206,7 +236,11 @@ func (t *turn) guardRound(calls, results []llm.Block) ([]llm.Block, *loopVerdict
 	if t.guard == nil {
 		return results, nil
 	}
-	v := t.guard.observe(calls, results)
+	now := time.Now
+	if t.r.Now != nil {
+		now = t.r.Now
+	}
+	v := t.guard.observe(calls, results, now())
 	if v.Action == "" {
 		return results, nil
 	}
@@ -225,6 +259,13 @@ func (t *turn) stopLoop(v *loopVerdict) error {
 	if err := t.append(llm.Message{Role: llm.Assistant, Blocks: []llm.Block{{Type: llm.Text, Text: msg}}}, "", nil); err != nil {
 		return err
 	}
-	t.final = msg
+	t.final, t.loopStopped = msg, true
 	return nil
 }
+
+// LoopStopped is the error of a turn nobody was watching (a schedule, a
+// board card) that the loop guard stopped: such a run failed, and its
+// schedule says so. The message is the one the user would have got.
+type LoopStopped struct{ Message string }
+
+func (e LoopStopped) Error() string { return e.Message }

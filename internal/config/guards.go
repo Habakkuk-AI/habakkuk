@@ -62,6 +62,12 @@ func (a *Agent) validateGuards(name string) []error {
 				errs = append(errs, fmt.Errorf("agent %s: loop_guard.%s must be a positive number, or -1 to turn it off", name, f.key))
 			}
 		}
+		if g.RepeatWarn > 0 && g.RepeatStop > 0 && g.RepeatWarn >= g.RepeatStop {
+			errs = append(errs, fmt.Errorf("agent %s: loop_guard.repeat_warn (%d) must be below repeat_stop (%d), or the warning never comes", name, g.RepeatWarn, g.RepeatStop))
+		}
+		if g.IdleWarn > 0 && g.IdleStop > 0 && g.IdleWarn >= g.IdleStop {
+			errs = append(errs, fmt.Errorf("agent %s: loop_guard.idle_warn (%d) must be below idle_stop (%d), or the warning never comes", name, g.IdleWarn, g.IdleStop))
+		}
 	}
 	switch a.ProjectFiles {
 	case "", ProjectFilesOn, ProjectFilesTrusted, ProjectFilesOff:

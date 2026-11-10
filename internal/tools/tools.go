@@ -374,6 +374,11 @@ var ErrDenied = errors.New("denied by permission policy")
 // also gets a note for its result, so the transcript records why it ran.
 func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Block) (string, error) {
 	risk := t.Risk()
+	if risk == RiskWrite {
+		if err := instructionWrite(env, t, call); err != nil {
+			return "", err
+		}
+	}
 	var confirm string
 	if ct, ok := t.(ConfirmTool); ok {
 		confirm = ct.Confirm(ctx, env, call.Input)
