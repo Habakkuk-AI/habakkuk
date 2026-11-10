@@ -157,7 +157,7 @@ func TestSubscribeNotifyAndForgetGone(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := &Service{Dir: t.TempDir(), Client: srv.Client(), Contact: "mailto:sam@example.com"}
+	s := &Service{Dir: t.TempDir(), Client: srv.Client(), Contact: "mailto:sam@example.com", Hosts: []string{"push.example.com"}}
 	phone, laptop := newBrowser(t), newBrowser(t)
 	// The test server is on loopback, which Subscribe refuses; register
 	// through a public-looking name, then point the stored endpoint at it.
@@ -226,12 +226,22 @@ func TestSubscribeRefusesBadInput(t *testing.T) {
 	s := &Service{Dir: t.TempDir()}
 	b := newBrowser(t)
 	key, auth := b64.EncodeToString(b.priv.PublicKey().Bytes()), b64.EncodeToString(b.auth)
+	// The browsers' push services are accepted.
+	for _, ok := range []string{"https://fcm.googleapis.com/fcm/send/abc", "https://updates.push.services.mozilla.com/wpush/v2/abc",
+		"https://web.push.apple.com/QAbc", "https://wns2-par02p.notify.windows.com/w/?token=abc"} {
+		if _, err := s.Subscribe(ok, key, auth, "", nil); err != nil {
+			t.Errorf("%s: %v", ok, err)
+		}
+	}
 	for _, c := range []struct{ endpoint, key, auth string }{
-		{"http://push.example.com/x", key, auth},     // not https
-		{"https://127.0.0.1/x", key, auth},           // loopback
-		{"https://10.0.0.8/x", key, auth},            // private
-		{"https://push.example.com/x", "AAAA", auth}, // bad key
-		{"https://push.example.com/x", key, "AAAA"},  // bad auth
+		{"https://push.example.com/x", key, auth},               // any other public server
+		{"https://fcm.googleapis.com.example.net/x", key, auth}, // a look-alike
+		{"https://fcm.googleapis.com:8443/x", key, auth},        // another port
+		{"http://push.example.com/x", key, auth},                // not https
+		{"https://127.0.0.1/x", key, auth},                      // loopback
+		{"https://10.0.0.8/x", key, auth},                       // private
+		{"https://fcm.googleapis.com/x", "AAAA", auth},          // bad key
+		{"https://fcm.googleapis.com/x", key, "AAAA"},           // bad auth
 	} {
 		if _, err := s.Subscribe(c.endpoint, c.key, c.auth, "", nil); err == nil {
 			t.Errorf("accepted %+v", c)
@@ -254,4 +264,33 @@ func gcmOpen(t *testing.T, key, nonce, sealed []byte) []byte {
 		t.Fatal(err)
 	}
 	return plain
+}
+
+// Devices registered under one dashboard token are forgotten when it
+// changes: whoever registered them may no longer be allowed in.
+func TestCheckTokenForgetsDevicesWhenTheTokenChanges(t *testing.T) {
+	s := &Service{Dir: t.TempDir(), Hosts: []string{"push.example.com"}}
+	b := newBrowser(t)
+	add := func() {
+		if _, err := s.Subscribe("https://push.example.com/a", b64.EncodeToString(b.priv.PublicKey().Bytes()), b64.EncodeToString(b.auth), "", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := s.CheckToken("first-token"); n != 0 || err != nil {
+		t.Fatalf("first check: %d %v", n, err)
+	}
+	add()
+	if n, _ := s.CheckToken("first-token"); n != 0 {
+		t.Fatal("same token forgot devices")
+	}
+	if n, _ := s.CheckToken("rotated-token"); n != 1 {
+		t.Fatalf("forgot %d, want 1", n)
+	}
+	if devs, _ := s.Devices(); len(devs) != 0 {
+		t.Fatal("devices kept after the token changed")
+	}
+	data, _ := os.ReadFile(filepath.Join(s.Dir, "token.json"))
+	if strings.Contains(string(data), "rotated-token") {
+		t.Fatal("the token itself was stored")
+	}
 }

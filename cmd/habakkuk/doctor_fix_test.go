@@ -14,7 +14,7 @@ import (
 
 func fixEnv(t *testing.T, home string) repairEnv {
 	t.Helper()
-	return repairEnv{home: home, userHome: t.TempDir(), goos: "linux", exe: "/usr/local/bin/habakkuk", path: "/usr/bin", now: time.Now()}
+	return repairEnv{home: home, userHome: t.TempDir(), goos: "linux", exe: "/usr/local/bin/habakkuk", now: time.Date(2026, 11, 10, 17, 30, 0, 0, time.UTC)}
 }
 
 func TestDoctorFixFoldersPermissionsAndConfig(t *testing.T) {
@@ -95,7 +95,9 @@ func TestDoctorFixServiceFile(t *testing.T) {
 	unit := filepath.Join(e.userHome, ".config", "systemd", "user", "habakkuk.service")
 	os.MkdirAll(filepath.Dir(unit), 0o700)
 	gone := filepath.Join(t.TempDir(), "old", "habakkuk")
-	os.WriteFile(unit, []byte(systemdUnit(gone, home, "/opt/bin:/usr/bin")), 0o600)
+	// A unit the user added to: an argument and an environment line.
+	custom := strings.Replace(systemdUnit(gone, home, "/opt/bin:/usr/bin"), " serve\n", " serve --quiet\n", 1) + "Environment=\"HTTPS_PROXY=http://proxy:3128\"\n"
+	os.WriteFile(unit, []byte(custom), 0o600)
 
 	var out bytes.Buffer
 	if serviceDoctor(e, &out) != 1 || !strings.Contains(out.String(), "no longer exists") {
@@ -113,11 +115,12 @@ func TestDoctorFixServiceFile(t *testing.T) {
 		t.Fatalf("no reload advice: %q", done)
 	}
 	data, _ := os.ReadFile(unit)
-	if !strings.Contains(string(data), `ExecStart="/usr/local/bin/habakkuk" serve`) || !strings.Contains(string(data), "PATH=/opt/bin:/usr/bin") {
-		t.Fatalf("unit not rewritten with this binary and the old PATH:\n%s", data)
+	if want := strings.Replace(custom, `"`+gone+`"`, `"/usr/local/bin/habakkuk"`, 1); string(data) != want {
+		t.Fatalf("only the program should change:\n got %s\nwant %s", data, want)
 	}
-	if old, _ := os.ReadFile(unit + ".bak"); !strings.Contains(string(old), gone) {
-		t.Fatal("old unit not kept")
+	bak := filepath.Join(home, "backups", "habakkuk.service.20261110-173000.bak")
+	if old, _ := os.ReadFile(bak); string(old) != custom {
+		t.Fatalf("old unit not kept at %s", bak)
 	}
 
 	// A service for another home is left alone.
@@ -138,7 +141,39 @@ func TestReadLaunchdService(t *testing.T) {
 	if !ok || s.program != "/Users/sam/old & new/habakkuk" || s.home != home {
 		t.Fatalf("read %+v", s)
 	}
-	if got := servicePath("darwin", launchdPlist("x", home, "/usr/bin:/bin")); got != "/usr/bin:/bin" {
-		t.Fatalf("path %q", got)
+	old, _ := os.ReadFile(plist)
+	text, ok := withProgram("darwin", string(old), "/opt/hk & co/habakkuk")
+	if want := strings.Replace(string(old), "/Users/sam/old &amp; new/habakkuk", "/opt/hk &amp; co/habakkuk", 1); !ok || text != want {
+		t.Fatalf("plist edit:\n%s", text)
+	}
+}
+
+// doctor --fix only changes things under $HABAKKUK_HOME: a workspace on a
+// drive that is not mounted is not created, and a hook program elsewhere
+// keeps its mode.
+func TestDoctorFixStaysInsideTheHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes")
+	}
+	outside := t.TempDir()
+	hook := filepath.Join(outside, "notify.sh")
+	os.WriteFile(hook, []byte("#!/bin/sh\n"), 0o777)
+	os.Chmod(hook, 0o777)
+	home := writeHome(t, "\nhooks:\n  - {event: turn_end, command: "+hook+"}\n")
+	cfgPath := filepath.Join(home, "config.yaml")
+	data, _ := os.ReadFile(cfgPath)
+	ext := filepath.Join(outside, "Volumes", "Ext", "work")
+	os.WriteFile(cfgPath, bytes.Replace(data, []byte("workspace: "+filepath.Join(home, "ws")), []byte("workspace: "+ext), 1), 0o600)
+	for _, r := range planRepairs(fixEnv(t, home)) {
+		if strings.Contains(r.what, outside) {
+			t.Errorf("doctor --fix would touch %q", r.what)
+		}
+		r.apply()
+	}
+	if _, err := os.Stat(ext); !os.IsNotExist(err) {
+		t.Fatal("created a workspace outside the home")
+	}
+	if st, _ := os.Stat(hook); st.Mode().Perm() != 0o777 {
+		t.Fatalf("changed a hook program outside the home: %o", st.Mode().Perm())
 	}
 }

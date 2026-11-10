@@ -44,7 +44,7 @@ func newPushRig(t *testing.T) (*dashRig, *pushService, string) {
 	}))
 	t.Cleanup(ps.srv.Close)
 	dir := filepath.Join(r.home, "push")
-	r.s.Push = &webpush.Service{Dir: dir, Client: ps.srv.Client(), Log: quiet}
+	r.s.Push = &webpush.Service{Dir: dir, Client: ps.srv.Client(), Log: quiet, Hosts: []string{"push.example.com"}}
 
 	info := r.get(t, "/api/push")
 	if info["public_key"] == "" || len(list(info, "devices")) != 0 || len(list(info, "kinds")) != 3 {
@@ -138,7 +138,8 @@ func TestPushApprovals(t *testing.T) {
 	if err := g.Store.Bind(ctx, channel.Address{Account: "web", Conversation: "ap1"}, "habakkuk", sess.ID); err != nil {
 		t.Fatal(err)
 	}
-	r.open(t, "/api/chat/ap1/events") // the prompt itself is no reply to push
+	// No dashboard shows ap1, yet the prompt itself is not pushed as a
+	// reply: only the approval notice goes out.
 	go g.ApproverFor(sess.ID).Approve(ctx, tools.ApprovalRequest{Tool: "exec", Summary: "make deploy"})
 	waitFor(t, "approval push", func() bool {
 		ps.mu.Lock()
@@ -152,8 +153,14 @@ func TestPushApprovals(t *testing.T) {
 	})
 	n := ps.count()
 	time.Sleep(3 * approvalPoll)
-	if ps.count() != n {
-		t.Fatal("the same approval was pushed twice")
+	if ps.count() != n || n != 1 {
+		t.Fatalf("%d pushes, want the one approval notice (no reply push, no repeat)", ps.count())
+	}
+	// The lock screen gets the agent and the kind of action, not the command.
+	a := g.Approvals()[0]
+	m := r.s.approvalNotice(a)
+	if strings.Contains(m.Body, "make deploy") || m.Body != "habakkuk is waiting for your yes or no to run a command." {
+		t.Fatalf("approval notice %+v", m)
 	}
 }
 

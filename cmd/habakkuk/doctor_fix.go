@@ -47,12 +47,11 @@ type repairEnv struct {
 	userHome string // the user's home folder, for the service file
 	goos     string
 	exe      string // this binary
-	path     string // PATH for a rewritten service file
 	now      time.Time
 }
 
 func defaultRepairEnv(home string) repairEnv {
-	e := repairEnv{home: home, goos: runtime.GOOS, path: os.Getenv("PATH"), now: time.Now()}
+	e := repairEnv{home: home, goos: runtime.GOOS, now: time.Now()}
 	e.userHome, _ = os.UserHomeDir()
 	if exe, err := os.Executable(); err == nil {
 		if p, err := filepath.EvalSymlinks(exe); err == nil {
@@ -89,7 +88,9 @@ func planRepairs(e repairEnv) []repair {
 	}
 	opts := security.Options{Home: e.home, Config: cfg, ConfigErr: cfgErr, Now: e.now}
 	for _, f := range security.Audit(opts) {
-		if f.Fixable() {
+		// Only the checks whose fixes stay inside $HABAKKUK_HOME: hook
+		// programs can live anywhere on the disk, so they stay advice.
+		if f.Fixable() && inHomeChecks[f.Check] {
 			out = append(out, repair{what: f.Message, apply: func() (string, error) {
 				if err := f.Apply(); err != nil {
 					return "", err
@@ -104,8 +105,17 @@ func planRepairs(e repairEnv) []repair {
 	return out
 }
 
-// missingFolders: the folders open() would create, listed so the fix says
-// what it did.
+// inHomeChecks are the audit checks whose automatic fixes only change
+// files under $HABAKKUK_HOME: its own files and folders (permissions), the
+// skill folders in it (skills, which skips skills linked from elsewhere)
+// and backup archives in it and its backups folder (backups, as doctor
+// runs it).
+var inHomeChecks = map[string]bool{"permissions": true, "skills": true, "backups": true}
+
+// missingFolders: the folders under $HABAKKUK_HOME that open() would
+// create, listed so the fix says what it did. A workspace elsewhere is left
+// alone: it may be on a drive that is not mounted, and creating it would
+// hide that.
 func missingFolders(home string, cfg *config.Config) []repair {
 	dirs := []string{home}
 	for _, name := range slices.Sorted(maps.Keys(cfg.Agents)) {
@@ -113,6 +123,9 @@ func missingFolders(home string, cfg *config.Config) []repair {
 	}
 	var out []repair
 	for _, d := range dirs {
+		if d != home && !insideDir(home, d) {
+			continue
+		}
 		if _, err := os.Stat(d); !os.IsNotExist(err) {
 			continue
 		}
@@ -137,7 +150,6 @@ type installedService struct {
 var (
 	plistString  = regexp.MustCompile(`<string>([^<]*)</string>`)
 	plistHome    = regexp.MustCompile(`<key>HABAKKUK_HOME</key>\s*<string>([^<]*)</string>`)
-	plistPath    = regexp.MustCompile(`<key>PATH</key>\s*<string>([^<]*)</string>`)
 	unitExec     = regexp.MustCompile(`(?m)^ExecStart=("(?:[^"\\]|\\.)*"|\S+)`)
 	unitEnv      = regexp.MustCompile(`(?m)^Environment="((?:[^"\\]|\\.)*)"`)
 	unitUnescape = strings.NewReplacer(`\\`, `\`, `\"`, `"`, "%%", "%")
@@ -183,22 +195,6 @@ func readService(e repairEnv) (installedService, bool) {
 	return s, s.program != ""
 }
 
-// servicePath is the PATH a service file sets, or "".
-func servicePath(goos, text string) string {
-	if goos == "darwin" {
-		if m := plistPath.FindStringSubmatch(text); m != nil {
-			return html.UnescapeString(m[1])
-		}
-		return ""
-	}
-	for _, m := range unitEnv.FindAllStringSubmatch(text, -1) {
-		if v, ok := strings.CutPrefix(unitUnescape.Replace(m[1]), "PATH="); ok {
-			return v
-		}
-	}
-	return ""
-}
-
 // serviceProblem says what is wrong with the installed service for this
 // home, or "".
 func serviceProblem(e repairEnv) (installedService, string) {
@@ -212,8 +208,40 @@ func serviceProblem(e repairEnv) (installedService, string) {
 	return s, fmt.Sprintf("the background service at %s runs %s, which no longer exists", s.path, s.program)
 }
 
-// serviceRepair writes the service file again for this binary, keeping the
-// PATH the old one set. It leaves alone a service for another home, and
+// insideDir reports whether path is under dir.
+func insideDir(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// withProgram changes only the program in a service file's text: the
+// first word of ExecStart (systemd), or the first string of
+// ProgramArguments (launchd). Everything else, extra arguments and
+// environment lines included, stays as it was.
+func withProgram(goos, text, exe string) (string, bool) {
+	if goos == "darwin" {
+		i := strings.Index(text, "<key>ProgramArguments</key>")
+		if i < 0 {
+			return "", false
+		}
+		loc := plistString.FindStringIndex(text[i:])
+		if loc == nil {
+			return "", false
+		}
+		start, end := i+loc[0], i+loc[1]
+		return text[:start] + "<string>" + html.EscapeString(exe) + "</string>" + text[end:], true
+	}
+	loc := unitExec.FindStringSubmatchIndex(text)
+	if loc == nil {
+		return "", false
+	}
+	quoted := `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "%", "%%").Replace(exe) + `"`
+	return text[:loc[2]] + quoted + text[loc[3]:], true
+}
+
+// serviceRepair points the service file at this binary, changing nothing
+// else in it, after a timestamped copy of the old file in
+// $HABAKKUK_HOME/backups. It leaves alone a service for another home, and
 // one it would point at a temporary go run build.
 func serviceRepair(e repairEnv) (repair, bool) {
 	s, problem := serviceProblem(e)
@@ -225,21 +253,21 @@ func serviceRepair(e repairEnv) (repair, bool) {
 		if err != nil {
 			return "", err
 		}
-		path := servicePath(e.goos, string(old))
-		if path == "" {
-			path = e.path
+		text, ok := withProgram(e.goos, string(old), e.exe)
+		if !ok {
+			return "", fmt.Errorf("could not find the program in %s; run hk setup -service again", s.path)
 		}
-		text := systemdUnit(e.exe, e.home, path)
-		if e.goos == "darwin" {
-			text = launchdPlist(e.exe, e.home, path)
+		bak := filepath.Join(e.home, "backups", fmt.Sprintf("%s.%s.bak", filepath.Base(s.path), e.now.UTC().Format("20060102-150405")))
+		if err := os.MkdirAll(filepath.Dir(bak), 0o700); err != nil {
+			return "", err
 		}
-		if err := store.WriteFileAtomic(s.path+".bak", old, 0o600); err != nil {
+		if err := store.WriteFileAtomic(bak, old, 0o600); err != nil {
 			return "", err
 		}
 		if err := store.WriteFileAtomic(s.path, []byte(text), 0o600); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("pointed the background service at %s (the old file is %s.bak); reload it with: %s", e.exe, s.path, s.restart), nil
+		return fmt.Sprintf("pointed the background service at %s (the old file is %s); reload it with: %s", e.exe, bak, s.restart), nil
 	}}, true
 }
 

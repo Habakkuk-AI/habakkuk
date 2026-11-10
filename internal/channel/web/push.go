@@ -151,9 +151,10 @@ func (s *Server) notify(kind string, m webpush.Message) {
 }
 
 // replyPushed notifies about a reply in a web conversation that no open
-// dashboard is showing.
+// dashboard is showing. An approval prompt is not a reply: the approval
+// notice covers it, without the command.
 func (s *Server) replyPushed(ctx context.Context, to channel.Address, text string) {
-	if s.Push == nil || s.hub.watched(to.Conversation) {
+	if s.Push == nil || s.hub.watched(to.Conversation) || s.asking(to) {
 		return
 	}
 	title := "New reply"
@@ -176,6 +177,51 @@ func (s *Server) ScheduleFailed(id, name, status string) {
 		Body: plainPreview(fmt.Sprintf("%s: %s", name, status), 180), URL: "#/schedules", Tag: "schedule-" + id})
 }
 
+// asking reports whether an approval is waiting in the conversation. The
+// gateway records it before it sends the prompt, so the prompt's Send
+// sees it.
+func (s *Server) asking(to channel.Address) bool {
+	if s.Gateway == nil {
+		return false
+	}
+	for _, a := range s.Gateway.Approvals() {
+		if a.To.Account == s.Account && a.To.Conversation == to.Conversation {
+			return true
+		}
+	}
+	return false
+}
+
+// approvalNotice is what a lock screen shows for an approval: the agent and
+// what kind of thing it wants to do, never the command or its arguments.
+func (s *Server) approvalNotice(a channel.Approval) webpush.Message {
+	who := "Your agent"
+	if s.Gateway != nil && s.Gateway.Store != nil {
+		if c, err := s.Gateway.Store.BySession(context.Background(), a.Session); err == nil && c != nil && c.Agent != "" {
+			who = c.Agent
+		}
+	}
+	return webpush.Message{Title: "Approval needed", Body: who + " is waiting for your yes or no to " + plainAction(a.Tool) + ".",
+		URL: "#/approvals", Tag: "approval-" + a.ID}
+}
+
+// plainAction names a tool call in everyday words for a notification.
+func plainAction(tool string) string {
+	switch {
+	case tool == "exec" || strings.HasPrefix(tool, "process_"):
+		return "run a command"
+	case tool == "write_file" || tool == "edit_file" || tool == "apply_patch":
+		return "change a file"
+	case strings.HasPrefix(tool, "browser_"):
+		return "use the browser"
+	case strings.HasPrefix(tool, "computer_"):
+		return "use the computer"
+	case strings.HasPrefix(tool, "mcp__"):
+		return "use a connected service"
+	}
+	return "use a tool"
+}
+
 // watchApprovals notifies once for each approval that starts waiting.
 func (s *Server) watchApprovals(ctx context.Context) {
 	if s.Push == nil || s.Gateway == nil {
@@ -191,12 +237,7 @@ func (s *Server) watchApprovals(ctx context.Context) {
 			if seen[a.ID] {
 				continue
 			}
-			body := a.Summary
-			if body == "" {
-				body = a.Tool
-			}
-			s.notify(webpush.KindApprovals, webpush.Message{Title: "Approval needed", Body: plainPreview(body, 180),
-				URL: "#/approvals", Tag: "approval-" + a.ID})
+			s.notify(webpush.KindApprovals, s.approvalNotice(a))
 		}
 		seen = now
 		select {

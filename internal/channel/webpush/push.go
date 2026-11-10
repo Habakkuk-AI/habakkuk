@@ -3,6 +3,8 @@ package webpush
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -73,6 +75,9 @@ var ErrGone = errors.New("the subscription is gone")
 // Service keeps the key pair and subscriptions under Dir and sends.
 type Service struct {
 	Dir string // $HABAKKUK_HOME/push
+	// Hosts are the push services a subscription may name: exact hosts,
+	// or "*.example.com" for any host under it. Nil is DefaultHosts.
+	Hosts []string
 	// Contact is the VAPID subject: a mailto: address or an https URL push
 	// services can reach the sender at.
 	Contact string
@@ -149,15 +154,46 @@ func SubscriptionID(endpoint string) string {
 	return "dev_" + hex.EncodeToString(sum[:8])
 }
 
-// checkEndpoint accepts only an https URL on a public host: the server
-// will POST to it.
-func checkEndpoint(endpoint string) error {
+// DefaultHosts are the browsers' own push services: Chrome, Edge and other
+// Chromium browsers (FCM), Firefox (Mozilla), Safari (Apple) and Windows
+// (WNS). Only these may receive messages, so someone who got hold of the
+// dashboard token cannot register a server of their own to read approval
+// and reply notices from then on.
+var DefaultHosts = []string{"fcm.googleapis.com", "*.push.services.mozilla.com", "web.push.apple.com", "*.notify.windows.com"}
+
+func (s *Service) hosts() []string {
+	if s.Hosts != nil {
+		return s.Hosts
+	}
+	return DefaultHosts
+}
+
+func hostAllowed(host string, allowed []string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	for _, a := range allowed {
+		if suffix, ok := strings.CutPrefix(a, "*."); ok {
+			if strings.HasSuffix(host, "."+suffix) {
+				return true
+			}
+		} else if host == a {
+			return true
+		}
+	}
+	return false
+}
+
+// checkEndpoint accepts only an https URL on a known push service: the
+// server will POST notices to it.
+func (s *Service) checkEndpoint(endpoint string) error {
 	if len(endpoint) > 2048 {
 		return errors.New("the endpoint is too long")
 	}
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Port() != "" {
 		return errors.New("the endpoint must be an https URL")
+	}
+	if !hostAllowed(u.Hostname(), s.hosts()) {
+		return fmt.Errorf("%s is not a browser push service this server sends to (%s)", u.Hostname(), strings.Join(s.hosts(), ", "))
 	}
 	if err := tools.CheckURL(endpoint); err != nil {
 		return fmt.Errorf("the endpoint: %w", err)
@@ -169,7 +205,7 @@ func checkEndpoint(endpoint string) error {
 // endpoint (keeping its settings). off lists kinds to turn off for a new
 // one. It returns the subscription's id.
 func (s *Service) Subscribe(endpoint, p256dh, auth, label string, off []string) (string, error) {
-	if err := checkEndpoint(endpoint); err != nil {
+	if err := s.checkEndpoint(endpoint); err != nil {
 		return "", err
 	}
 	pub, err := decodeB64(p256dh)
@@ -408,6 +444,66 @@ func (s *Service) send(ctx context.Context, sub Subscription, kind string, m Mes
 		return ErrGone
 	}
 	return fmt.Errorf("push service answered %s: %s", res.Status, strings.TrimSpace(string(detail)))
+}
+
+// tokenFile records which dashboard token the devices were registered
+// under, as a salted hash.
+type tokenFile struct {
+	Salt string `json:"salt"`
+	Sum  string `json:"sum"`
+}
+
+// CheckToken forgets every device when the dashboard token is not the one
+// they were registered under: whoever registered a device may have had a
+// token that was since rotated. It returns how many devices it forgot. The
+// first call only records the token.
+func (s *Service) CheckToken(token string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path := filepath.Join(s.Dir, "token.json")
+	var tf tokenFile
+	data, err := os.ReadFile(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return 0, err
+	default:
+		if err := json.Unmarshal(data, &tf); err != nil {
+			tf = tokenFile{}
+		}
+	}
+	sum := func(salt string) string {
+		mac := hmac.New(sha256.New, []byte(salt))
+		mac.Write([]byte(token))
+		return hex.EncodeToString(mac.Sum(nil))
+	}
+	if tf.Salt != "" && hmac.Equal([]byte(sum(tf.Salt)), []byte(tf.Sum)) {
+		return 0, nil // same token
+	}
+	forgot := 0
+	if tf.Salt != "" { // the token changed: devices registered before go
+		subs, err := s.load()
+		if err != nil {
+			return 0, err
+		}
+		forgot = len(subs)
+		if forgot > 0 {
+			if err := s.save(nil); err != nil {
+				return 0, err
+			}
+		}
+	}
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return 0, err
+	}
+	tf.Salt = hex.EncodeToString(salt)
+	tf.Sum = sum(tf.Salt)
+	out, _ := json.Marshal(tf)
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
+		return 0, err
+	}
+	return forgot, store.WriteFileAtomic(path, out, 0o600)
 }
 
 // DefaultContact is the VAPID subject when none is configured.
