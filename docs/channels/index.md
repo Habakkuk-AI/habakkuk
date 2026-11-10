@@ -50,6 +50,18 @@ channels:
 | [Nextcloud Talk](more-platforms.md#nextcloud-talk) | `nextcloudtalk` | Talk bot webhook | yes | moderate |
 | [Twitch chat](more-platforms.md#twitch) | `twitch` | IRC over TLS | no | easy |
 
+## What has been tested live
+
+Three channels have run against the real service so far:
+
+- **WhatsApp linked device** (`whatsapp`), linked to a real account.
+- **WhatsApp agents** (`whatsappagent`).
+- **Slack** over Socket Mode (`slack`), including two Slack apps side by side.
+
+The web chat is Habakkuk's own HTTP server, so its tests exercise the real thing.
+
+Every other channel in the table is built against the platform's documented API and tested here with a fake platform server. None of them has run against the real service yet. Expect rough edges there, and please [report what you find](https://github.com/habakkuk-ai/habakkuk/issues/new/choose) with the output of `habakkuk logs -level warn -since 1h`.
+
 ## How channels work
 
 - **Who may talk.** Direct messages from someone not in `allow_from` get a pairing code that you approve with `habakkuk pair CODE`. See [Access, groups and delivery](settings.md#who-may-talk-to-the-bot).

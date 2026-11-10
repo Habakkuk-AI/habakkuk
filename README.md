@@ -33,26 +33,39 @@ The scripts check the release against its `SHA256SUMS` and install `habakkuk` in
 
 ## Quick start
 
+Type `hk` on its own. On a new computer it prints one short screen that ends with the command to run next:
+
 ```bash
-habakkuk setup        # one-minute wizard: model, WhatsApp/Telegram/Slack/..., names
-habakkuk chat         # talk to it in the terminal
-habakkuk serve        # run channels, schedules, the board and the dashboard
-habakkuk doctor       # check config, keys and channels
-habakkuk status       # what is running, queue, today's cost
+hk setup        # one-minute wizard: model, WhatsApp/Telegram/Slack/..., names
 ```
+
+Setup finds the API keys and local models on your computer, connects the app you want to talk in, checks that your agent answers, and offers to keep it running. No YAML to edit. After that:
+
+```bash
+hk chat         # talk to it in the terminal
+hk serve        # run channels, schedules, the board and the dashboard
+hk doctor       # check config, keys and channels; each problem comes with its fix
+hk status       # what is running, the queue, today's cost
+hk -r srv chat  # the same commands, on the Habakkuk on your server
+```
+
+`hk` and `habakkuk` are the same program. The [quickstart](docs/get-started/quickstart.md) walks through the first run.
 
 Coming from another agent? `habakkuk setup` offers to import it on a new install, or run `habakkuk migrate --dry-run` to see what would move. See [Move from another agent](docs/get-started/migrate.md).
 
 ## Features
 
 - **Crash-proof work.** Leased jobs, transcript repair, exactly-once replies and resumable deliveries.
-- **Many channels.** Telegram, Slack, WhatsApp (linked device, WhatsApp agents, Business Cloud API), Discord, Signal, Matrix, email, SMS, Teams, Google Chat, iMessage, LINE, Mattermost, IRC, ntfy, Messenger, Instagram, Feishu, DingTalk, WeCom, Zulip, Rocket.Chat, Nextcloud Talk, Twitch and a web chat.
+- **Many channels.** Telegram, Slack, WhatsApp (linked device, WhatsApp agents, Business Cloud API), Discord, Signal, Matrix, email, SMS, Teams, Google Chat, iMessage, LINE, Mattermost, IRC, ntfy, Messenger, Instagram, Feishu, DingTalk, WeCom, Zulip, Rocket.Chat, Nextcloud Talk, Twitch and a web chat. The channels page says [which of these have run against the real service](docs/channels/index.md#what-has-been-tested-live) so far.
+- **One conversation, whoever spoke.** What reaches a chat from elsewhere (a scheduled result, another agent's report, `hk send`) is kept as a chat note and shown to the agent on your next message, so a reply such as "yes" is read against the right thing.
 - **Any model, and the right one for each message.** Claude, GPT, Gemini, DeepSeek, Grok, Mistral, Qwen, Kimi, GLM, Bedrock, OpenRouter and 20 more presets, or a local model through Ollama, LM Studio, vLLM or llama.cpp. Quick messages go to a cheap model and real work to a strong one, automatically. Key rotation, fallbacks, subscription logins, spending caps and cost tracking.
 - **Tools with guardrails.** Permission modes, an approval reviewer, sandboxes, workspace checkpoints, a browser, computer use and meeting notes.
 - **Memory and skills.** Markdown notes with semantic search, a user profile, `SKILL.md` skills and plugins.
 - **Teams of agents.** Several agents, delegation, schedules and a shared task board.
+- **Retros.** An agent looks back over its own work, finds what went wrong and why, proposes changes, and checks next time whether they helped.
 - **Open protocols.** MCP client and server, Agent2Agent, the Agent Client Protocol and an OpenAI-compatible API.
-- **Your interfaces.** A terminal UI, a web dashboard with live voice, `habakkuk talk`, and a desktop app.
+- **Your interfaces.** A terminal UI, a web dashboard with live voice, `hk talk`, and a desktop app.
+- **One CLI, here or there.** `hk remote add srv ssh://you@server` saves a server once; then `hk -r srv COMMAND` runs any command on the Habakkuk there.
 
 ## Documentation
 
@@ -60,9 +73,10 @@ The docs are in [`docs/`](docs/index.md) and at [habakkuk.ai/docs](https://habak
 
 - **Get started:** [quickstart](docs/get-started/quickstart.md), [installation](docs/get-started/installation.md), [configuration](docs/get-started/configuration.md), [use cases](docs/get-started/use-cases.md)
 - **Channels:** [overview](docs/channels/index.md), [WhatsApp](docs/channels/whatsapp.md), [Telegram](docs/channels/telegram.md), [Slack](docs/channels/slack.md), [Discord](docs/channels/discord.md) and [the rest](docs/channels/index.md#all-channels)
-- **Agents:** [agents and identity](docs/agents/agents.md), [multi-agent teams](docs/agents/multi-agent.md), [memory](docs/agents/memory.md), [skills](docs/agents/skills.md), [schedules](docs/agents/schedules.md), [permissions and approvals](docs/agents/approvals.md)
+- **Agents:** [agents and identity](docs/agents/agents.md), [multi-agent teams](docs/agents/multi-agent.md), [memory](docs/agents/memory.md), [skills](docs/agents/skills.md), [schedules](docs/agents/schedules.md), [the board](docs/agents/board.md), [retros](docs/agents/retros.md), [permissions and approvals](docs/agents/approvals.md)
 - **Models and tools:** [providers](docs/models/providers.md), [routing](docs/models/routing.md), [tools](docs/tools/index.md), [MCP](docs/tools/mcp.md), [plugins](docs/tools/plugins.md)
-- **Run it:** [on a server](docs/deploy/server.md), [security](docs/deploy/security.md), [FAQ](docs/help/faq.md), [troubleshooting](docs/help/troubleshooting.md)
+- **Interfaces:** [CLI and terminal UI](docs/interfaces/cli-and-tui.md), [dashboard](docs/interfaces/dashboard.md), [desktop app](docs/interfaces/desktop-app.md), [remote CLI](docs/interfaces/remote-cli.md)
+- **Run it:** [on a server](docs/deploy/server.md), [updating](docs/get-started/updating.md), [security](docs/deploy/security.md), [FAQ](docs/help/faq.md), [troubleshooting](docs/help/troubleshooting.md)
 - **Reference:** [CLI](docs/reference/cli.md), [configuration](docs/reference/configuration.md), [HTTP API](docs/reference/api.md), [architecture](docs/reference/architecture.md)
 
 ## Project layout
@@ -73,7 +87,7 @@ The docs are in [`docs/`](docs/index.md) and at [habakkuk.ai/docs](https://habak
 | [`internal/`](internal) | The agent, channels, models, tools, storage and protocols, grouped by area ([map](docs/contributing/codebase.md)) |
 | [`apps/desktop`](apps/desktop) | Habakkuk Desktop, a native app around the dashboard (its own Go module) |
 | [`docs/`](docs/index.md) | Documentation, published at [habakkuk.ai/docs](https://habakkuk.ai/docs) |
-| [`scripts/`](scripts) | `install.sh` |
+| [`scripts/`](scripts) | The installers: `install.sh` and `install.ps1` |
 | [`assets/`](assets/brand) | Logo, icons and social card |
 
 ## Security
