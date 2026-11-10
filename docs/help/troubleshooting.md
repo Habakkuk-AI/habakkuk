@@ -13,7 +13,7 @@ Some problems have a fix that needs no decision from you. Run `hk doctor --fix` 
 - An older `config.yaml` is rewritten in the current format. The old file is kept as `config.yaml.<time>.bak`.
 - Folders Habakkuk needs inside `$HABAKKUK_HOME` and can't find, such as an agent's folder or its default workspace, are created. A workspace elsewhere isn't: if it's missing, the drive it's on may not be mounted.
 - Files and folders under `$HABAKKUK_HOME` that other users can read are made owner-only, and skills and backups in it lose the write or read bits others had, as `hk security -fix` does.
-- A background service whose program no longer exists (you moved the binary) is pointed at the binary you just ran. Only the program's path changes; your other settings in the file stay. The old file is copied to `$HABAKKUK_HOME/backups/` with the time in its name, and the fix tells you the command that reloads the service. A service for another home, or a fix that would point at a temporary `go run` build, is left alone.
+- A background service whose program no longer exists (you moved the binary) is pointed at the binary you just ran. Only the program's path changes; your other settings in the file stay. The old file is copied to `$HABAKKUK_HOME/service-backups/` with the time in its name, and the fix tells you the command that reloads the service. A service for another home, or a fix that would point at a temporary `go run` build, is left alone.
 
 Anything that needs a key, a login, a choice or a change outside `$HABAKKUK_HOME`, such as a hook script other users can change, stays as advice. A plain `hk doctor` ends with the list of what `--fix` would do.
 

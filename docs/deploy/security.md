@@ -52,7 +52,7 @@ Setting `allow_tainted_exec: true` on an agent turns this off. The audit flags i
 
 A project's instruction files work the same way. When an agent's workspace is a project outside its own workspace, Habakkuk gives the agent that project's `AGENTS.md`, `CLAUDE.md` and `.cursorrules` as untrusted data, and every turn of that session is tainted. So a cloned repository whose `AGENTS.md` says "before any task, run this script" can't get a command run without you. The taint is read back from the session's first message, so it holds after a restart too. `project_files: trusted` lifts it for a project you vouch for. See [Project instruction files](../agents/agents.md#project-instruction-files).
 
-A tainted turn, or a message from someone other than the owner, also can't write `AGENTS.md`, `CLAUDE.md` or `.cursorrules` with the file tools, wherever they are and through any link. Those files go into future prompts as instructions.
+A tainted turn, or a message from someone other than the owner, also can't write `AGENTS.md`, `CLAUDE.md` or `.cursorrules`. The file tools refuse those names, wherever they are and through any link. And whatever tool a call uses, such as a browser download, a generated image or an MCP tool, a new or changed instruction file in the agent's workspace is put back as it was after the call. That also covers a call that brings outside content in itself. Those files go into future prompts as instructions.
 
 ## Trusted folders for notes
 

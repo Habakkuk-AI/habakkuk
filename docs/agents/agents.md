@@ -45,8 +45,8 @@ Sometimes a model gets stuck. It runs the same command, gets the same error and 
 
 It watches each round of tool calls for two things:
 
-- **Repeats.** The same call, with the same tool and the same arguments, failing with the same error, and tried again straight away: in the very next round, with nothing that worked in between, within 20 seconds. An agent that waits for a server by trying it, sleeping and trying again isn't repeating itself. The idle check still stops that kind of loop if it never ends.
-- **Idle rounds.** Rounds in a row where every call is one the agent already made in this turn and the results come back the same. Nothing new is learned.
+- **Repeats.** The same call, with the same tool and the same arguments, failing with the same error, and tried again straight away: in the very next round, with nothing that worked in between, within 20 seconds. A call that waits isn't a repeat: one that ran for 5 seconds or more before it failed, or a command that sleeps or waits, such as `sleep 10 && curl localhost:3000`. That's how an agent waits for a server.
+- **Idle rounds.** Rounds in a row where every call is one the agent already made in this turn and the results come back the same. Nothing new is learned. A round that only waits, such as a `sleep`, doesn't count, so an agent that checks a server, sleeps and checks again gets 12 checks.
 
 The first time a count reaches its warn level, the agent is told plainly that it's repeating itself and should change its approach or stop and tell you what's blocking it. If it keeps going and reaches the stop level, the turn ends and you get a message saying why, such as "I stopped working on this because I was going round in circles: I tried read_file 5 times and it failed the same way each time". Reply to tell it how to go on.
 
@@ -60,7 +60,7 @@ agents:
       idle_stop: 12     # default 12
 ```
 
-Leave out a key to keep its default. Set it to `-1` to turn that check off. The idle levels are higher on purpose: waiting on a slow job by checking it again and again is a fair reason to repeat a call.
+Leave out a key to keep its default. Set it to `-1` to turn that check off. A warn level must be below its stop level. The idle levels are higher on purpose: waiting on a slow job by checking it again and again is a fair reason to repeat a call. A run nobody was watching, such as a schedule, that the guard stopped counts as failed, and its chat and home chat get the message.
 
 Each warning and stop fires the `loop_guard` [hook](approvals.md) and counts in the `habakkuk_loop_guard_total` metric. See [Observability](../deploy/observability.md). A turn that's resumed after a restart picks up its counts from its own transcript, so a restart doesn't reset them.
 
@@ -89,7 +89,7 @@ Point an agent's `workspace` at a code project and it picks up the instructions 
 
 Who wrote the files decides how far the agent trusts them:
 
-- **The agent's own workspace.** The folder Habakkuk makes for the agent, `$HABAKKUK_HOME/agents/<name>/workspace`, holds what you and the agent wrote, so its files go into the prompt as instructions. A workspace path that's a link to somewhere else doesn't count. A turn that has read outside content, or a message from someone other than you, can't change `AGENTS.md`, `CLAUDE.md` or `.cursorrules` with the file tools, so a web page can't plant instructions there.
+- **The agent's own workspace.** The folder Habakkuk makes for the agent, `$HABAKKUK_HOME/agents/<name>/workspace`, holds what you and the agent wrote, so its files go into the prompt as instructions. A workspace path that's a link to somewhere else doesn't count. A turn that has read outside content, or a message from someone other than you, can't leave a new or changed `AGENTS.md`, `CLAUDE.md` or `.cursorrules` there with any tool. The file tools refuse the write. Any other tool that saves a file under that name, such as a browser download, a generated image or a connected service, has the file put back as it was, and the agent is told why. The same goes for any call that itself brings outside content in, such as a download. Files that arrive in a chat land in `inbox/` in the workspace, which is never read as instructions. So a web page can't plant instructions there. (The shell is the one exception, because in such a turn every command needs your approval, and you see the command.)
 - **Any other folder.** That's a project anyone with a commit could have written to. Its files are marked untrusted and given to the agent at the start of the session's first message, as information about the project, not as instructions. And because they're there, the whole session is treated like a turn that read a web page: every command, and every write outside the workspace, needs your approval. See [Security](../deploy/security.md#outside-content-taints-a-turn).
 
 ```yaml
