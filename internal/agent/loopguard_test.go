@@ -341,3 +341,37 @@ func TestLoopGuardWaitWordsDoNotExemptInstantFailures(t *testing.T) {
 		}
 	}
 }
+
+// slowHooks takes its time over tool_before, as a hook or an approval
+// can.
+type slowHooks struct{ d time.Duration }
+
+func (h slowHooks) Fire(_ context.Context, event, _ string, _ any) string {
+	if event == HookToolBefore {
+		time.Sleep(h.d)
+	}
+	return ""
+}
+
+// Time spent before the tool runs (a tool_before hook, an approval) is not
+// the tool waiting: a call that fails at once is still a repeat.
+func TestLoopGuardTimesOnlyTheToolsOwnRun(t *testing.T) {
+	old := waitAfter
+	waitAfter = 50 * time.Millisecond
+	t.Cleanup(func() { waitAfter = old })
+	ctx := context.Background()
+	h := newHarness(t, &repeatModel{})
+	spec := h.runner.Agents["habakkuk"]
+	spec.MaxIterations, spec.Loop = 20, LoopLimits{RepeatWarn: 2, RepeatStop: 3}
+	h.runner.Hooks = slowHooks{d: 120 * time.Millisecond}
+	s, _ := h.runner.NewSession(ctx, "habakkuk")
+	h.runner.Submit(ctx, s.ID, "read missing.txt")
+	j, _ := h.queue.Claim(ctx, "w1", time.Minute, KindTurn)
+	final, err := h.runner.HandleTurn(ctx, j, "w1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(final, "going round in circles") {
+		t.Fatalf("a slow hook made instant failures look like waiting: %q", final)
+	}
+}

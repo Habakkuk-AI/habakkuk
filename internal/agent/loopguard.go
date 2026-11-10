@@ -197,7 +197,7 @@ func (g *loopGuard) replay(recs []session.Record, jobID string) {
 // time actually spent counts: an instant failure is a repeat whatever its
 // command or tool name says (timeout 120 ..., npm run watch, a *_wait tool
 // on an unknown id).
-const waitAfter = 2 * time.Second
+var waitAfter = 2 * time.Second // a variable for tests
 
 // waits reports whether a call waited: it ran for waitAfter or more. A
 // replayed round has no timings, so none of its calls waited.

@@ -574,9 +574,8 @@ func (t *turn) runTools(env *tools.Env, calls []llm.Block, truncated bool) []llm
 			defer wg.Done()
 			t.r.publishEvent(events.Event{Session: t.sess.ID, Kind: events.ToolStart, Text: c.ToolName + " " + preview(string(c.Input)),
 				ToolID: c.ToolUseID, Tool: c.ToolName, Input: c.Input})
-			start := time.Now()
-			res, extra := t.runTool(env, c)
-			durs[i] = time.Since(start)
+			res, extra, ran := t.runTool(env, c)
+			durs[i] = ran
 			t.r.publishEvent(events.Event{Session: t.sess.ID, Kind: events.ToolDone, Text: c.ToolName + ": " + preview(res.Text),
 				IsError: res.IsError, ToolID: c.ToolUseID, Tool: c.ToolName})
 			results[i], media[i] = res, extra

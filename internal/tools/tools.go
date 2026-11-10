@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -313,6 +314,15 @@ func WithCallID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, callIDKey{}, id)
 }
 
+type runTimeKey struct{}
+
+// WithRunTime returns a context under which Execute records how long the
+// tool itself ran: only its Run, not the approval or hooks before it.
+func WithRunTime(ctx context.Context) (context.Context, *time.Duration) {
+	d := new(time.Duration)
+	return context.WithValue(ctx, runTimeKey{}, d), d
+}
+
 // CallID is the id of the tool call being run, or "". Tools with side
 // effects derive idempotency keys from it.
 func CallID(ctx context.Context) string {
@@ -350,7 +360,11 @@ func (r *Registry) Execute(ctx context.Context, env *Env, call llm.Block) llm.Bl
 		return res
 	}
 	env.checkpoint(ctx, t, call.Input)
+	start := time.Now()
 	out, err := t.Run(ctx, env, call.Input)
+	if d, ok := ctx.Value(runTimeKey{}).(*time.Duration); ok {
+		*d = time.Since(start)
+	}
 	if taints(t) {
 		env.Taint.Mark()
 	}
