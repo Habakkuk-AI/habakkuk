@@ -241,7 +241,7 @@ func (r *Runner) Handle(ctx context.Context, j *jobs.Job, owner string) (string,
 	}
 	ctx = llm.WithCaller(ctx, llm.Caller{Agent: j.Agent, Session: "retro"})
 	ret, err := r.Get(ctx, j.ID)
-	if err != nil && !errors.Is(err, errNoRetro) {
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return "", err
 	}
 	if ret != nil && ret.Done {
@@ -413,7 +413,8 @@ func (ret *Retro) Line() string {
 	return s
 }
 
-var errNoRetro = errors.New("no such retro")
+// ErrNotFound is returned for a retro that does not exist.
+var ErrNotFound = errors.New("no such retro")
 
 func (r *Runner) insert(ctx context.Context, ret *Retro) error {
 	plan, err := json.Marshal(ret.Plan)
@@ -461,7 +462,7 @@ func (r *Runner) Get(ctx context.Context, id string) (*Retro, error) {
 		delivered, done, summary, created_at FROM retros WHERE id = ?`, id).Scan(&ret.ID, &ret.Agent, &from, &to, &ret.Quiet,
 		&plan, &ev, &ret.Next, &ret.Report, &ret.Delivered, &ret.Done, &ret.Summary, &created)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("%w %q", errNoRetro, id)
+		return nil, fmt.Errorf("%w %q", ErrNotFound, id)
 	}
 	if err != nil {
 		return nil, err
@@ -548,7 +549,7 @@ func (r *Runner) Resolve(ctx context.Context, agent, id string) (*Retro, error) 
 		return nil, err
 	}
 	if len(list) == 0 {
-		return nil, fmt.Errorf("agent %s has no retros yet", agent)
+		return nil, fmt.Errorf("%w: agent %s has no retros yet", ErrNotFound, agent)
 	}
 	return r.Get(ctx, list[0].ID)
 }
