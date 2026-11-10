@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,90 @@ commands:
 	}
 	if out := cmds["/hello"].Run(ctx, sess.ID, "there"); out != "hi there" || !cmds["/hello"].Async {
 		t.Fatalf("/hello: %q", out)
+	}
+}
+
+// Every skill an agent can use is a slash command of its own, the skills
+// that ship with the program are there on a new install, and a skill that
+// is turned off is neither listed nor a command.
+func TestSkillsAsCommandsAndBundledSkills(t *testing.T) {
+	home := t.TempDir()
+	os.MkdirAll(filepath.Join(home, "agents", "habakkuk", "skills", "weekly-report"), 0o755)
+	os.WriteFile(filepath.Join(home, "agents", "habakkuk", "skills", "weekly-report", "SKILL.md"), []byte("---\nname: weekly-report\ndescription: Weekly report.\n---\n\nWrite it.\n"), 0o644)
+	// The agent's own skill with the name of a bundled one, and one named like a command.
+	os.MkdirAll(filepath.Join(home, "agents", "habakkuk", "skills", "summarize"), 0o755)
+	os.WriteFile(filepath.Join(home, "agents", "habakkuk", "skills", "summarize", "SKILL.md"), []byte("---\nname: summarize\ndescription: My way.\n---\n\nMy summary steps.\n"), 0o644)
+	os.MkdirAll(filepath.Join(home, "skills", "usage"), 0o755)
+	os.WriteFile(filepath.Join(home, "skills", "usage", "SKILL.md"), []byte("---\nname: usage\ndescription: Shadowed.\n---\n\nNever a command.\n"), 0o644)
+
+	a, _, _ := openTestAppIn(t, home, "\nskills:\n  disabled: [brainstorm]\n")
+	ctx := context.Background()
+	sess, err := a.Runner.NewSession(ctx, "habakkuk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(name, arg string) string {
+		t.Helper()
+		cmd, ok := a.ChatCommand("habakkuk", name)
+		if !ok || cmd.Prompt == nil {
+			t.Fatalf("%s is not a skill command", name)
+		}
+		text, err := cmd.Prompt(ctx, sess.ID, arg)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return text
+	}
+	if text := run("/weekly-report", "for last week"); !strings.Contains(text, "Write it.") || !strings.Contains(text, "Request: for last week") {
+		t.Fatalf("/weekly-report:\n%s", text)
+	}
+	// An underscore stands for the hyphen, and case does not matter.
+	if text := run("/Weekly_Report", ""); !strings.Contains(text, "Write it.") {
+		t.Fatalf("/Weekly_Report:\n%s", text)
+	}
+	// A bundled skill is a command too, and the agent's own copy wins.
+	if text := run("/daily-brief", ""); !strings.Contains(text, "[Skill daily-brief, invoked by the user]") {
+		t.Fatalf("/daily-brief:\n%s", text)
+	}
+	if text := run("/summarize", "this"); !strings.Contains(text, "My summary steps.") {
+		t.Fatalf("/summarize did not use the agent's own skill:\n%s", text)
+	}
+	// A real command is never replaced by a skill of the same name.
+	if cmd, ok := a.ChatCommand("habakkuk", "/usage"); !ok || cmd.Prompt != nil {
+		t.Fatal("the skill named usage took the /usage command")
+	}
+	for _, name := range []string{"/brainstorm", "/no-such-skill", "/Bad Name", "weekly-report", "/etc/hosts"} {
+		if _, ok := a.SkillCommand("habakkuk", name); ok {
+			t.Errorf("%s is a command", name)
+		}
+	}
+	list := a.ChatCommands()["/skills"].Run(ctx, sess.ID, "")
+	for _, want := range []string{"- daily-brief:", "- weekly-report (mine):", "- summarize (mine): My way.", "/<name> [request]"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("/skills lacks %q:\n%s", want, list)
+		}
+	}
+	if strings.Contains(list, "brainstorm") {
+		t.Errorf("/skills lists a skill that is turned off:\n%s", list)
+	}
+	// The session's prompt lists the user's skills before the bundled ones.
+	snap := a.snapshot(ctx, a.Runner.Agents["habakkuk"])
+	var names []string
+	for _, s := range snap.SkillSet {
+		names = append(names, s.Name)
+	}
+	if len(names) < 20 || !slices.Contains(names, "daily-brief") || slices.Contains(names, "brainstorm") {
+		t.Fatalf("snapshot skills %v", names)
+	}
+
+	// skills.bundled: false leaves only the user's own.
+	home2 := t.TempDir()
+	b, _, _ := openTestAppIn(t, home2, "\nskills:\n  bundled: false\n")
+	if list, _ := b.Skills.List("habakkuk"); len(list) != 0 {
+		t.Fatalf("bundled: false left %d skills", len(list))
+	}
+	if _, ok := b.SkillCommand("habakkuk", "/daily-brief"); ok {
+		t.Fatal("bundled: false left /daily-brief")
 	}
 }
 

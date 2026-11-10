@@ -507,6 +507,27 @@ func TestLocalCommands(t *testing.T) {
 	}
 }
 
+// A slash command the UI does not have itself goes to the backend, which
+// knows the app's chat commands and every skill as /<skill-name>.
+func TestUnknownCommandsGoToTheBackend(t *testing.T) {
+	h := newHarness(t, Options{})
+	h.typ("/Weekly-Report for last week")
+	h.key("enter")
+	h.be.mu.Lock()
+	got := strings.Join(h.be.commands, "|")
+	h.be.mu.Unlock()
+	if got != "/weekly-report for last week" {
+		t.Fatalf("backend commands %q", got)
+	}
+	var shown []string
+	for _, e := range h.m.entries {
+		shown = append(shown, e.text)
+	}
+	if all := strings.Join(shown, "\n"); !strings.Contains(all, "/weekly-report for last week") || !strings.Contains(all, "ran /weekly-report") {
+		t.Fatalf("entries:\n%s", all)
+	}
+}
+
 func TestCtrlCCancelsThenQuits(t *testing.T) {
 	h := newHarness(t, Options{})
 	h.typ("work")

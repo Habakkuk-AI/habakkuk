@@ -105,17 +105,21 @@ Habakkuk keeps a backup whenever a version goes away. That covers every version 
 
 ## Registries
 
-A registry is a JSON index served over HTTPS. It lets you install a package by name. You set registries up in `config.yaml`:
+A registry is a JSON index served over HTTPS. It lets you install a package by name.
+
+Habakkuk comes with one registry, named `default`: the public directory at [habakkuk.ai/skills](https://www.habakkuk.ai/skills), whose index is `https://habakkuk.ai/skills/index.json`. So `hk skills search QUERY` and `hk skills install NAME` work on a new install. Habakkuk fetches the index only when you run `hk skills` or `hk plugins` with `search`, `install` or `update`, and it sends nothing about you or your setup with the request. A listing in the directory was read by a person and pins the exact files that were read, but it is still someone else's work: an install from it is scanned, and starts unapproved, like any other.
+
+You can remove the default, replace it, and add your own in `config.yaml`:
 
 ```yaml
 skills:
-  default_registry: ""        # the index named "default"; empty uses the build's default (none), "off" turns it off
-  registries:
+  default_registry: ""        # "" uses the public directory, "off" removes it, a URL replaces it
+  registries:                 # searched after the default, in order
     - name: team
       url: https://skills.example.com/index.json
 ```
 
-Habakkuk doesn't ship with a default registry. A build can set one with `-ldflags "-X github.com/habakkuk-ai/habakkuk/internal/config.DefaultRegistryURL=https://..."`.
+With `default_registry: "off"` and no `registries`, a bare name is refused and `hk skills search` says there is nothing to search. A build can change the default with `-ldflags "-X github.com/habakkuk-ai/habakkuk/internal/config.DefaultRegistryURL=https://..."`.
 
 The index looks like this:
 

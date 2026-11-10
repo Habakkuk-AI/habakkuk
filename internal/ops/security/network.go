@@ -200,8 +200,10 @@ func Network(c *config.Config) []Endpoint {
 	for _, r := range regs {
 		names = append(names, host(r.URL))
 	}
+	// The first is the public skills directory, unless skills.default_registry
+	// is "off" or names another index.
 	add(Endpoint{Kind: "hub", Name: "skills.registries", Target: listOr(names, ""),
-		When: "only on hk skills/plugins search, install, update", Enabled: len(regs) > 0})
+		When: "only on hk skills/plugins search, install, update (skills.default_registry: \"off\" drops the public directory)", Enabled: len(regs) > 0})
 	add(Endpoint{Kind: "hub", Name: "skills install github:...", Target: "api.github.com, codeload.github.com",
 		When: "only when you install or update from GitHub"})
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Enabled && !out[j].Enabled })

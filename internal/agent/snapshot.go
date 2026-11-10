@@ -31,6 +31,9 @@ type MemoryRef struct {
 type SkillRef struct {
 	Name        string
 	Description string
+	// Bundled skills ship with the program. They are listed after the
+	// user's own, so those are never the ones the caps leave out.
+	Bundled bool
 }
 
 // Caps keep the listings to a few KB however much the agent accumulates.
@@ -90,7 +93,15 @@ func writeSkills(b *strings.Builder, snap Snapshot) {
 		return
 	}
 	skills := slices.Clone(snap.SkillSet)
-	slices.SortFunc(skills, func(a, b SkillRef) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(skills, func(a, b SkillRef) int {
+		if a.Bundled != b.Bundled {
+			if b.Bundled {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
 	b.WriteString("\n\nAvailable skills:\n")
 	used, listed := 0, 0
 	for _, s := range skills {

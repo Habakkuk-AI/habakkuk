@@ -30,7 +30,7 @@ The config file is `$HABAKKUK_HOME/config.yaml`. It's strict YAML, so an unknown
 | `computer` | The computer toolset: `backend`, `display`, `screen`, `max_actions`, `confirm_apps`, `native`, `timeout` | [Browser and computer use](../tools/computer-use.md) |
 | `meeting` | Meeting attendance: `name`, `announce`, `max_duration`, `lobby_timeout`, `alone_timeout`, `headless`, `summary_model` | [Meetings](../tools/meetings.md) |
 | `memory` | `embeddings` (`provider`, `model`, `dimensions`), `review`, `review_model`, `review_idle`, `nightly`, `stale_days`, `history_days` | [Memory and skills](../agents/memory.md) |
-| `skills` | `registries`, `default_registry`, `curate`, `archive_after_days` | [Memory and skills](../agents/skills.md) |
+| `skills` | `bundled`, `disabled`, `default_registry`, `registries`, `curate`, `archive_after_days` | [Memory and skills](../agents/skills.md) |
 | `retro` | Retrospectives on a timer: `every`, `at`, `agents`, `model`, `apply`, `deliver` | [Retros](../agents/retros.md) |
 | `hooks` | A list of `{event, command, timeout, match}` | [Tools and approvals](../agents/approvals.md#hooks) |
 | `pricing` | Model prices per million tokens: `input`, `output`, `cache_read`, `cache_write` | [Models and providers](../models/usage-and-limits.md#usage-and-cost) |

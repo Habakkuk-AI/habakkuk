@@ -33,10 +33,19 @@ func HubFetcher(cfg *config.Config) *hub.Fetcher {
 	}}
 }
 
-// SkillLibrary is the skill library of a home, with enabled plugins' skill
-// folders.
+// SkillLibrary is the skill library of a home: its shared and agent
+// skills, enabled plugins' skill folders, and the skills shipped in the
+// binary unless the config turns them off. A skill that requires an
+// environment variable finds it in the process environment or in .env.
 func SkillLibrary(cfg *config.Config) *skills.Library {
-	return &skills.Library{Home: cfg.Home, Extra: cfg.PluginSkillDirs()}
+	l := &skills.Library{Home: cfg.Home, Extra: cfg.PluginSkillDirs(), Off: cfg.DisabledSkills()}
+	if cfg.BundledSkills() {
+		l.Bundled = skills.Bundled()
+	}
+	l.Env = func(name string) bool {
+		return os.Getenv(name) != "" || loadDotEnv(filepath.Join(cfg.Home, ".env"))[name] != ""
+	}
+	return l
 }
 
 // agentOf is the agent a session belongs to.
@@ -59,6 +68,41 @@ func (a *App) SkillPrompt(agentName, name, request string) (string, error) {
 	return a.Skills.Invoke(agentName, name, request)
 }
 
+// SkillCommand makes "/<skill-name> [request]" a command of its own: when
+// name (with the slash) is a skill the agent can use, the command it returns
+// runs that skill as /skill NAME would. An underscore stands for a hyphen,
+// for chat apps whose command names cannot hold one. Callers try every
+// other command first, so a skill never takes a command's place.
+func (a *App) SkillCommand(agentName, name string) (channel.AppCommand, bool) {
+	skill := strings.ReplaceAll(strings.TrimPrefix(strings.ToLower(name), "/"), "_", "-")
+	if a.Skills == nil || !strings.HasPrefix(name, "/") || skills.ValidName(skill) != nil {
+		return channel.AppCommand{}, false
+	}
+	s, err := a.Skills.Get(agentName, skill)
+	if err != nil {
+		return channel.AppCommand{}, false
+	}
+	return channel.AppCommand{
+		Help: "/" + s.Name + " [request]: " + s.Description,
+		Prompt: func(ctx context.Context, session, arg string) (string, error) {
+			// The session's own agent: a chat can be moved to another one.
+			if owner, err := a.agentOf(ctx, session); err == nil {
+				agentName = owner
+			}
+			return a.SkillPrompt(agentName, s.Name, arg)
+		},
+	}, true
+}
+
+// ChatCommand finds a slash command for an agent's chat: one of
+// ChatCommands, else a skill of that name.
+func (a *App) ChatCommand(agentName, name string) (channel.AppCommand, bool) {
+	if cmd, ok := a.ChatCommands()[strings.ToLower(name)]; ok {
+		return cmd, true
+	}
+	return a.SkillCommand(agentName, name)
+}
+
 // addHubCommands adds /skills, /skill, /learn and enabled plugins'
 // commands to cmds, never replacing a command already there or one of the
 // gateway's own.
@@ -70,7 +114,7 @@ func (a *App) addHubCommands(cmds map[string]channel.AppCommand) {
 		cmds[name] = c
 		return true
 	}
-	add("/skills", channel.AppCommand{Help: "/skills: list the skills I can use", Run: a.listSkills})
+	add("/skills", channel.AppCommand{Help: "/skills: list the skills I can use (each one is a command too: /<name> [request])", Run: a.listSkills})
 	add("/skill", channel.AppCommand{Help: "/skill <name> [request]: follow one of my skills for this request",
 		Prompt: func(ctx context.Context, session, arg string) (string, error) {
 			name, request, _ := strings.Cut(arg, " ")
@@ -153,6 +197,8 @@ func (a *App) listSkills(ctx context.Context, session, _ string) string {
 	for _, s := range list {
 		origin := ""
 		switch {
+		case s.Bundled:
+			origin = "" // comes with Habakkuk
 		case s.Plugin:
 			origin = " (plugin)"
 		case s.Shared:
@@ -164,7 +210,7 @@ func (a *App) listSkills(ctx context.Context, session, _ string) string {
 		}
 		fmt.Fprintf(&b, "\n- %s%s: %s", s.Name, origin, s.Description)
 	}
-	b.WriteString("\n\nRun one with /skill <name> [request].")
+	b.WriteString("\n\nRun one with /<name> [request], or /skill <name> [request].")
 	return b.String()
 }
 

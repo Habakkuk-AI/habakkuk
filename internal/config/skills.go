@@ -7,11 +7,21 @@ import (
 	"time"
 )
 
-// Skills configures the skills hub (registries to search and install
-// from) and the curator that tidies agent-written skills.
+// Skills configures which skills agents are offered, the skills hub
+// (registries to search and install from) and the curator that tidies
+// agent-written skills.
 type Skills struct {
+	// Bundled says whether the skills shipped inside the program are
+	// offered (default true). False turns all of them off at once.
+	Bundled *bool `yaml:"bundled"`
+	// Disabled are skill names turned off for every agent, wherever the
+	// skill comes from (bundled, shared, a plugin or an agent's own).
+	// Nothing is removed. `hk skills disable NAME` does the same without
+	// editing this file.
+	Disabled []string `yaml:"disabled"`
 	// DefaultRegistry is the index URL searched first, named "default".
-	// Empty means DefaultRegistryURL; "off" turns it off.
+	// Empty means DefaultRegistryURL (the public directory); "off" turns
+	// it off.
 	DefaultRegistry string `yaml:"default_registry"`
 	// Registries are more indexes, searched in order after the default.
 	// Plugins are looked up in the same indexes.
@@ -31,12 +41,32 @@ type SkillRegistry struct {
 	URL  string `yaml:"url"`
 }
 
-// DefaultRegistryURL is the registry Habakkuk ships with. It is empty; a
-// build may set one with
+// DefaultRegistryURL is the registry Habakkuk ships with: the index of the
+// public skills directory at habakkuk.ai/skills. It is contacted only by
+// `hk skills` and `hk plugins` search, install and update.
+// skills.default_registry: "off" in config.yaml removes it, another URL
+// there replaces it, and a build may change it with
 // -ldflags "-X github.com/habakkuk-ai/habakkuk/internal/config.DefaultRegistryURL=https://...".
-var DefaultRegistryURL = ""
+var DefaultRegistryURL = "https://habakkuk.ai/skills/index.json"
 
-var reRegistryName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+// BundledSkills reports whether the skills shipped inside the program are
+// offered to agents.
+func (c *Config) BundledSkills() bool {
+	return c.Skills == nil || c.Skills.Bundled == nil || *c.Skills.Bundled
+}
+
+// DisabledSkills are the skill names turned off in the config file.
+func (c *Config) DisabledSkills() []string {
+	if c.Skills == nil {
+		return nil
+	}
+	return c.Skills.Disabled
+}
+
+var (
+	reRegistryName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+	reSkillName    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+)
 
 // SkillRegistries is the default registry (when there is one) followed by
 // the configured ones.
@@ -99,6 +129,11 @@ func (c *Config) validateSkills() []error {
 	}
 	if s.ArchiveAfterDays < 0 {
 		bad("archive_after_days must not be negative")
+	}
+	for _, name := range s.Disabled {
+		if !reSkillName.MatchString(name) {
+			bad("disabled: %q is not a skill name (lowercase letters, digits and hyphens)", name)
+		}
 	}
 	if s.DefaultRegistry != "" && s.DefaultRegistry != "off" && !registryURL(s.DefaultRegistry) {
 		bad("default_registry %q must be an https URL or off", s.DefaultRegistry)

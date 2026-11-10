@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -252,8 +253,30 @@ func (b *AppBackend) Command(ctx context.Context, id, name, arg string) (Command
 		reply, err := b.A.Undo(ctx, id)
 		return CommandResult{Reply: reply}, err
 	}
-	return CommandResult{}, fmt.Errorf("unknown command %s", name)
+	// The chat commands the app adds, and each skill as /<skill-name>.
+	sess, err := b.A.Sessions.Get(ctx, id)
+	if err != nil {
+		return CommandResult{}, err
+	}
+	cmd, ok := b.A.ChatCommand(sess.Agent, name)
+	if !ok {
+		return CommandResult{}, errNoCommand
+	}
+	if cmd.Prompt == nil {
+		return CommandResult{Reply: cmd.Run(ctx, id, arg)}, nil
+	}
+	text, err := cmd.Prompt(ctx, id, arg)
+	if err != nil {
+		return CommandResult{Reply: err.Error()}, nil
+	}
+	if err := b.Submit(ctx, id, text); err != nil {
+		return CommandResult{}, err
+	}
+	return CommandResult{Started: true}, nil
 }
+
+// errNoCommand is what Command answers for a name nothing knows.
+var errNoCommand = errors.New("there's no such command. /help lists them; start a message with // to send it as text")
 
 // lastTyped is the newest message the user typed.
 func lastTyped(recs []session.Record) (string, bool) {

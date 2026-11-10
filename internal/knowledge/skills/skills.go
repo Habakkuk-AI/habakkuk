@@ -3,6 +3,9 @@
 // supporting files the instructions refer to. Shared skills live in
 // $HABAKKUK_HOME/skills/<name>/; an agent's own skills live in
 // $HABAKKUK_HOME/agents/<agent>/skills/<name>/ and win on a name clash.
+// Below both come enabled plugins' skills, then the skills shipped inside
+// the binary (bundled.go). Any skill can be turned off by name, and one
+// whose requirements the machine does not meet is not offered (gate.go).
 package skills
 
 import (
@@ -13,6 +16,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -49,13 +53,18 @@ type Skill struct {
 	Name        string
 	Description string
 	Dir         string
-	Shared      bool // from $HABAKKUK_HOME/skills (or a plugin) rather than the agent's own folder
+	Shared      bool // from $HABAKKUK_HOME/skills, a plugin or the binary rather than the agent's own folder
 	Plugin      bool // from an enabled plugin's skills folder
+	Bundled     bool // shipped inside the binary; Dir is empty
+	Requires    Requires
+
+	fsys fs.FS // a bundled skill's folder
 }
 
 type meta struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
+	Name        string   `yaml:"name"`
+	Description string   `yaml:"description"`
+	Requires    Requires `yaml:"requires,omitempty"`
 }
 
 // Library finds skills under a Habakkuk home directory.
@@ -67,6 +76,18 @@ type Library struct {
 	// History, when set, records every change to an agent's own SKILL.md
 	// files, and the curator leaves pinned skills alone.
 	History *history.Log
+	// Bundled is a folder of skill folders that ship with the program
+	// (Bundled() in bundled.go), below everything else in precedence. Nil
+	// leaves them out.
+	Bundled fs.FS
+	// Off are skill names turned off in config.yaml (skills.disabled).
+	// `hk skills disable` keeps its own list in skills/.state.json.
+	Off []string
+	// Env reports whether an environment variable a skill requires is set,
+	// and LookPath whether a program it requires can be run. Nil uses the
+	// process environment and PATH.
+	Env      func(name string) bool
+	LookPath func(name string) bool
 
 	mu sync.Mutex // serializes this process's writes to the usage file
 }
@@ -117,9 +138,31 @@ func (l *Library) agentDir(agent string) (string, error) {
 }
 
 // List returns the skills available to agent, sorted by name. Folders with an
-// invalid name or no SKILL.md are skipped.
+// invalid name or no SKILL.md are skipped, and so are skills that are
+// turned off, not approved yet or missing something they require.
 func (l *Library) List(agent string) ([]Skill, error) {
+	all, err := l.Inventory(agent)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Skill, 0, len(all))
+	for _, e := range all {
+		if e.Usable() {
+			out = append(out, e.Skill)
+		}
+	}
+	return out, nil
+}
+
+// Inventory is every skill agent could have, sorted by name: the ones List
+// returns, and the ones held back, each with the reason. A name is settled
+// by precedence first (the agent's own, then shared, plugin and bundled),
+// so a skill that is held back still hides the ones below it.
+func (l *Library) Inventory(agent string) ([]Entry, error) {
 	byName := map[string]Skill{}
+	if err := scanBundled(l.Bundled, byName); err != nil {
+		return nil, err
+	}
 	for _, root := range slices.Backward(l.Extra) {
 		if err := scan(root, true, byName); err != nil {
 			return nil, err
@@ -141,14 +184,12 @@ func (l *Library) List(agent string) ([]Skill, error) {
 	if err := scan(dir, false, byName); err != nil {
 		return nil, err
 	}
-	out := make([]Skill, 0, len(byName))
+	off := l.off()
+	out := make([]Entry, 0, len(byName))
 	for _, s := range byName {
-		if s.Shared && !s.Plugin && l.Disabled(s) {
-			continue // ships scripts and is not approved yet
-		}
-		out = append(out, s)
+		out = append(out, l.check(s, off))
 	}
-	slices.SortFunc(out, func(a, b Skill) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(out, func(a, b Entry) int { return strings.Compare(a.Name, b.Name) })
 	return out, nil
 }
 
@@ -182,13 +223,21 @@ func load(dir string) (Skill, string, error) {
 	if err != nil {
 		return Skill{}, "", err
 	}
+	s, body := parse(filepath.Base(dir), data)
+	s.Dir = dir
+	return s, body, nil
+}
+
+// parse reads a SKILL.md: the description and requirements from its
+// frontmatter, and the instructions.
+func parse(name string, data []byte) (Skill, string) {
 	var m meta
 	body, _ := frontmatter.Parse(data, &m)
 	return Skill{
-		Name:        filepath.Base(dir),
+		Name:        name,
 		Description: strings.Join(strings.Fields(m.Description), " "),
-		Dir:         dir,
-	}, body, nil
+		Requires:    m.Requires,
+	}, body
 }
 
 // Get finds one skill, preferring the agent's own copy.
@@ -217,16 +266,30 @@ func (l *Library) get(agent, name string) (Skill, string, error) {
 		s, body, err := load(filepath.Join(c.dir, name))
 		if err == nil {
 			s.Shared, s.Plugin = c.shared, c.plugin
-			if s.Shared && !s.Plugin && l.Disabled(s) {
-				return Skill{}, "", fmt.Errorf("skill %q is disabled: it was installed from outside, ships scripts and is not approved yet (the owner can run hk skills approve %s)", name, name)
-			}
-			return s, body, nil
+			return l.usable(s, body)
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return Skill{}, "", err
 		}
 	}
+	if s, body, err := loadBundled(l.Bundled, name); err == nil {
+		return l.usable(s, body)
+	}
 	return Skill{}, "", fmt.Errorf("no skill %q", name)
+}
+
+// usable hands back a skill found by precedence, unless it is held back.
+func (l *Library) usable(s Skill, body string) (Skill, string, error) {
+	e := l.check(s, l.off())
+	switch {
+	case e.Off != "":
+		return Skill{}, "", fmt.Errorf("skill %q is %s", s.Name, e.Reason())
+	case e.Unapproved:
+		return Skill{}, "", fmt.Errorf("skill %q is disabled: it was installed from outside, ships scripts and is not approved yet (the owner can run hk skills approve %s)", s.Name, s.Name)
+	case len(e.Missing) > 0:
+		return Skill{}, "", fmt.Errorf("skill %q cannot be used on this machine: it %s", s.Name, e.Reason())
+	}
+	return s, body, nil
 }
 
 // View returns a skill's instructions and its supporting files (paths
@@ -237,6 +300,10 @@ func (l *Library) View(agent, name string) (Skill, string, []string, error) {
 		return s, "", nil, err
 	}
 	var files []string
+	if s.fsys != nil {
+		files, err = bundledFiles(s.fsys)
+		return s, body, files, err
+	}
 	err = filepath.WalkDir(s.Dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil // unreadable entries are just not listed
@@ -278,18 +345,23 @@ func (l *Library) ReadFile(agent, name, rel string) (string, error) {
 	if rel == "" || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == "." {
 		return "", fmt.Errorf("path %q must be relative to the skill folder", rel)
 	}
-	// os.Root resolves every component, symlinks included, inside the folder
-	// and fails rather than follow one out of it.
-	root, err := os.OpenRoot(s.Dir)
-	if err != nil {
-		return "", err
+	var f fs.File
+	if s.fsys != nil {
+		f, err = s.fsys.Open(path.Clean(filepath.ToSlash(clean)))
+	} else {
+		// os.Root resolves every component, symlinks included, inside the
+		// folder and fails rather than follow one out of it.
+		var root *os.Root
+		if root, err = os.OpenRoot(s.Dir); err != nil {
+			return "", err
+		}
+		defer func() { _ = root.Close() }()
+		f, err = root.Open(clean)
 	}
-	defer func() { _ = root.Close() }()
-	f, err := root.Open(clean)
 	if err != nil {
 		return "", fmt.Errorf("skill %s: %w", name, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		return "", err
@@ -342,24 +414,27 @@ func (l *Library) SaveContext(ctx context.Context, agent, name, description, bod
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return s, false, err
 	}
-	path := filepath.Join(dir, FileName)
-	old, err := os.ReadFile(path)
+	file := filepath.Join(dir, FileName)
+	var requires Requires
+	old, err := os.ReadFile(file)
 	switch {
 	case err == nil:
 		if err := store.WriteFileAtomic(filepath.Join(dir, BackupName), old, 0o600); err != nil {
 			return s, false, err
 		}
+		was, _ := parse(name, old)
+		requires = was.Requires // a rewrite keeps what the skill needs
 	case errors.Is(err, fs.ErrNotExist):
 		created = true
 	default:
 		return s, false, err
 	}
-	data, err := frontmatter.Format(meta{Name: name, Description: description}, body)
+	data, err := frontmatter.Format(meta{Name: name, Description: description, Requires: requires}, body)
 	if err != nil {
 		return s, false, err
 	}
 	if err := l.writeSkill(ctx, agent, name, data); err != nil {
 		return s, false, err
 	}
-	return Skill{Name: name, Description: description, Dir: dir}, created, nil
+	return Skill{Name: name, Description: description, Dir: dir, Requires: requires}, created, nil
 }

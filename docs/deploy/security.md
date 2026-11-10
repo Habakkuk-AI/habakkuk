@@ -87,7 +87,8 @@ Habakkuk doesn't send usage telemetry, and it checks for updates only when you r
 
 - your model providers and the channels you configured;
 - services you named in `config.yaml`: a `search:` provider, `tts`, `images`, `video`, `realtime`, `memory.embeddings`, `telemetry.otlp_endpoint`, MCP servers, A2A peers, Home Assistant;
-- the pages an agent reads with `fetch_url` or the browser.
+- the pages an agent reads with `fetch_url` or the browser;
+- the public skills directory (`habakkuk.ai`), only when you run `hk skills` or `hk plugins` with `search`, `install` or `update`. `skills.default_registry: "off"` removes it.
 
 There's no default web search provider. The `web_search` tool exists only once `search:` names one. Run `hk security -network` to list every endpoint and see whether your config turns it on.
 

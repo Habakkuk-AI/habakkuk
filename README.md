@@ -60,7 +60,7 @@ Coming from another agent? `hk setup` offers to import it on a new install, or r
 - **One conversation, whoever spoke.** What reaches a chat from elsewhere (a scheduled result, another agent's report, `hk send`) is kept as a chat note and shown to the agent on your next message, so a reply such as "yes" is read against the right thing.
 - **Any model, and the right one for each message.** Claude, GPT, Gemini, DeepSeek, Grok, Mistral, Qwen, Kimi, GLM, Bedrock, OpenRouter and 20 more presets, or a local model through Ollama, LM Studio, vLLM or llama.cpp. Quick messages go to a cheap model and real work to a strong one, automatically. Key rotation, fallbacks, subscription logins, spending caps and cost tracking.
 - **Tools with guardrails.** Permission modes, an approval reviewer, sandboxes, workspace checkpoints, a browser, computer use and meeting notes.
-- **Memory and skills.** Markdown notes with semantic search, a user profile, `SKILL.md` skills and plugins.
+- **Memory and skills.** Markdown notes with semantic search, a user profile, `SKILL.md` skills (a set comes built in, and each skill is a slash command), a public directory to install more from, and plugins.
 - **Teams of agents.** Several agents, delegation, schedules and a shared task board.
 - **Retros.** An agent looks back over its own work, finds what went wrong and why, proposes changes, and checks next time whether they helped.
 - **Open protocols.** MCP client and server, Agent2Agent, the Agent Client Protocol and an OpenAI-compatible API.

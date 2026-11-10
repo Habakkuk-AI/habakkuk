@@ -278,7 +278,7 @@ func (idx *Index) list(kind string) []IndexEntry {
 // set), in order.
 func (f *Fetcher) Lookup(ctx context.Context, kind, registry, name string) (IndexEntry, string, error) {
 	if len(f.Registries) == 0 {
-		return IndexEntry{}, "", fmt.Errorf("%q looks like a registry name, but no registries are configured (skills.registries in config.yaml); give a github:, https or local source instead", name)
+		return IndexEntry{}, "", fmt.Errorf("%q looks like a registry name, but no registries are in use (skills.default_registry is \"off\" and skills.registries is empty in config.yaml); give a github:, https or local source instead", name)
 	}
 	var errs []error
 	found := false

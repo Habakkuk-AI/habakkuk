@@ -76,6 +76,11 @@ type Gateway struct {
 	// the conversation's session and the text after the command. The reply
 	// is sent back to the chat.
 	Commands map[string]AppCommand
+	// AgentCommand, when set, finds a slash command that depends on the
+	// agent a chat goes to (each of its skills is one: "/<skill-name>"). It
+	// is asked last, after the built-in commands and Commands, so it never
+	// takes a command's place.
+	AgentCommand func(agent, name string) (AppCommand, bool)
 	// Memory backs /remember and /forget; nil turns them off.
 	Memory MemoryCommands
 	// Language is the language of Habakkuk's own chat text (config
@@ -473,7 +478,7 @@ func (g *Gateway) command(ctx context.Context, ch *config.Channel, to Address, p
 		}
 		g.reply(to, builtinHelp(g.lang(to))+g.commandHelp(g.lang(to))+g.extraHelp())
 	default:
-		if cmd, ok := g.Commands[strings.ToLower(name)]; ok {
+		if cmd, ok := g.appCommand(ch, to, pick, strings.ToLower(name)); ok {
 			conv, err := g.conversation(ctx, ch, to, pick, false)
 			if err != nil {
 				g.Log.Error("open conversation failed", "err", err)
@@ -508,6 +513,23 @@ func (g *Gateway) command(ctx context.Context, ch *config.Channel, to Address, p
 		return g.runCommand(ctx, ch, to, pick, text)
 	}
 	return true
+}
+
+// appCommand finds a command the app added: one of Commands, else, for a
+// name that is not one of the gateway's own, one that depends on the agent
+// this chat goes to (AgentCommand).
+func (g *Gateway) appCommand(ch *config.Channel, to Address, pick, name string) (AppCommand, bool) {
+	if cmd, ok := g.Commands[name]; ok {
+		return cmd, true
+	}
+	if g.AgentCommand == nil || Reserved(name) {
+		return AppCommand{}, false
+	}
+	agentName := ch.AgentFor(to.Conversation)
+	if _, ok := g.Runner.Agents[pick]; ok {
+		agentName = pick
+	}
+	return g.AgentCommand(agentName, name)
 }
 
 // AppCommand is a chat command the app adds to the gateway.
