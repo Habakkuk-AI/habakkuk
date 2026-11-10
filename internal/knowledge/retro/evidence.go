@@ -417,6 +417,9 @@ func (g *gatherer) jobs(ctx context.Context) error {
 		g.ev.Turns.P95MS = ms[min(len(ms)-1, len(ms)*95/100)]
 		slices.SortStableFunc(done, func(a, b turn) int { return cmp.Compare(b.ms, a.ms) })
 		for _, t := range done[:min(len(done), maxSlowest)] {
+			if t.ms <= 0 {
+				break
+			}
 			g.ev.Turns.Slow = append(g.ev.Turns.Slow, SlowTurn{Ref: "job:" + t.id, Session: t.session, MS: t.ms,
 				First: g.cut(firstLine(t.first), 160)})
 		}
@@ -469,7 +472,7 @@ func (g *gatherer) transcripts(ctx context.Context) error {
 		if role == string(llm.Assistant) && model != "" && len(g.ag.Models) > 0 && !slices.Contains(g.ag.Models, model) {
 			f := fallbacks[model]
 			if f == nil {
-				f = &Fallback{To: model, Reason: "answered by a model other than the agent's own (a fallback, or a /model choice)"}
+				f = &Fallback{To: model, Reason: "answered by a model other than the agent's own: a fallback, or a /model choice"}
 				if len(g.ag.Models) > 0 {
 					f.From = g.ag.Models[0]
 				}

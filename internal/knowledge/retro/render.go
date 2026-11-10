@@ -25,7 +25,11 @@ func (e *Evidence) Text() string {
 		if s.Session != "" {
 			refs += ", session:" + s.Session
 		}
-		line("- slow: %s, first message %q [%s]", ms(s.MS), s.First, refs)
+		first := ""
+		if s.First != "" {
+			first = fmt.Sprintf(", first message %q", s.First)
+		}
+		line("- slow: %s%s [%s]", ms(s.MS), first, refs)
 	}
 
 	if len(e.Jobs) > 0 {
@@ -37,7 +41,7 @@ func (e *Evidence) Text() string {
 	if len(e.Problems) > 0 {
 		line("\n## Jobs that went wrong")
 		for _, p := range e.Problems {
-			s := fmt.Sprintf("- %s %s after %d attempts", p.Kind, p.What, p.Attempts)
+			s := fmt.Sprintf("- %s %s after %s", p.Kind, p.What, count(p.Attempts, "attempt"))
 			if p.Error != "" {
 				s += ": " + p.Error
 			}
@@ -51,7 +55,7 @@ func (e *Evidence) Text() string {
 	if len(e.ToolErrors) > 0 {
 		line("\n## Tool errors")
 		for _, te := range e.ToolErrors {
-			line("- %s: %d errors", te.Tool, te.Count)
+			line("- %s: %s", te.Tool, count(te.Count, "error"))
 			for _, s := range te.Samples {
 				line("  - %s [%s]", s.Text, s.Ref)
 			}
@@ -83,9 +87,9 @@ func (e *Evidence) Text() string {
 	if len(e.Cost) > 0 {
 		line("\n## Cost by model")
 		for _, c := range e.Cost {
-			s := fmt.Sprintf("- %s: %d calls, %d input and %d output tokens, $%.2f", c.Model, c.Calls, c.Input, c.Output, c.USD)
+			s := fmt.Sprintf("- %s: %s, %d input and %d output tokens, $%.2f", c.Model, count(c.Calls, "call"), c.Input, c.Output, c.USD)
 			if c.Unpriced > 0 {
-				s += fmt.Sprintf(" (%d calls unpriced)", c.Unpriced)
+				s += fmt.Sprintf(" (%s unpriced)", count(c.Unpriced, "call"))
 			}
 			line("%s", s)
 		}
@@ -93,21 +97,21 @@ func (e *Evidence) Text() string {
 	if len(e.Schedules) > 0 || e.SchedulesOK > 0 {
 		line("\n## Schedules")
 		if e.SchedulesOK > 0 {
-			line("%d schedules ran without trouble.", e.SchedulesOK)
+			line("%s ran without trouble.", count(e.SchedulesOK, "schedule"))
 		}
 		for _, s := range e.Schedules {
 			state := "on"
 			if !s.Enabled {
 				state = "paused"
 			}
-			line("- %q (%s, %s): %d runs, %d errors, %d skipped by a spending limit, %d failed turns, %d approvals nobody could give, fail streak %d, last status %q [%s]",
-				s.Name, s.Spec, state, s.Runs, s.Errors, s.BudgetSkips, s.TurnsFailed, s.Denied, s.FailStreak, s.LastStatus,
+			line("- %q (%s, %s): %s, %s, %d skipped by a spending limit, %s, %d approvals nobody could give, fail streak %d, last status %q [%s]",
+				s.Name, s.Spec, state, count(s.Runs, "run"), count(s.Errors, "error"), s.BudgetSkips, count(s.TurnsFailed, "failed turn"), s.Denied, s.FailStreak, s.LastStatus,
 				strings.Join(append([]string{s.Ref}, s.Refs...), ", "))
 		}
 	}
 	if e.CardsDone > 0 || len(e.Stalled) > 0 {
 		line("\n## Board and delegated tasks")
-		line("%d cards finished in the period.", e.CardsDone)
+		line("%s finished in the period.", count(e.CardsDone, "card"))
 		for _, s := range e.Stalled {
 			line("- stalled %s %q: %s, no progress for %d days [%s]", s.What, s.Title, s.Status, s.Days, s.Ref)
 		}
@@ -115,7 +119,7 @@ func (e *Evidence) Text() string {
 	if len(e.Deliveries) > 0 {
 		line("\n## Deliveries that failed or kept retrying")
 		for _, d := range e.Deliveries {
-			s := fmt.Sprintf("- to %s: %s after %d attempts", d.Target, d.Status, d.Attempts)
+			s := fmt.Sprintf("- to %s: %s after %s", d.Target, d.Status, count(d.Attempts, "attempt"))
 			if d.Error != "" {
 				s += ": " + d.Error
 			}
@@ -135,6 +139,14 @@ func (e *Evidence) Text() string {
 		}
 	}
 	return cutText(b.String(), maxEvidenceText)
+}
+
+// count is "1 call", "2 calls".
+func count(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // ms formats milliseconds for people.

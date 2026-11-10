@@ -46,9 +46,9 @@ func Markdown(ret *Retro, loc *time.Location) string {
 		line("## What went badly")
 		line("")
 		for _, p := range ret.Plan.WentBadly {
-			s := "- " + p.What
+			s := "- " + sentence(p.What)
 			if p.Cause != "" {
-				s += " Likely cause: " + p.Cause
+				s += " Likely cause: " + sentence(p.Cause)
 			}
 			line("%s (%s)", s, refList(p.Evidence))
 		}
@@ -56,8 +56,8 @@ func Markdown(ret *Retro, loc *time.Location) string {
 	if len(ret.Actions) > 0 {
 		line("")
 		line("## Proposals")
-		line("")
 		if ret.ID != DryRunID {
+			line("")
 			line("Approve with `habakkuk retro apply %s N`, or `/retro apply N` in a chat; reject with `reject`. Skill and memory changes can also be applied on their own with `retro: {apply: safe}`. SOUL.md, config, schedule changes and questions always wait for you.", ret.ID)
 		}
 		for _, a := range ret.Actions {
@@ -214,6 +214,14 @@ func (r *Runner) writeReport(ctx context.Context, ret *Retro) error {
 		return err
 	}
 	return store.WriteFileAtomic(path, []byte(Markdown(ret, loc)), 0o600)
+}
+
+// sentence ends s with a full stop unless it ends with punctuation.
+func sentence(s string) string {
+	if s == "" || strings.ContainsAny(s[len(s)-1:], ".!?:") {
+		return s
+	}
+	return s + "."
 }
 
 func refList(refs []string) string {
