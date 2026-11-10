@@ -23,7 +23,9 @@ jobs:
   # plus SHA256SUMS, attached to a release. When the RELEASE_SIGNING_KEY
   # secret (an Ed25519 private key in PEM) is set, SHA256SUMS.sig is added
   # and binaries built with the RELEASE_PUBLIC_KEY variable (the raw public
-  # key, base64) refuse unsigned or mis-signed updates.
+  # key, base64) refuse unsigned or mis-signed updates. The two must be one
+  # key pair: a binary built with a public key that no signature matches
+  # could never update itself, so the Sign step stops the release instead.
   binaries:
     needs: test
     runs-on: ubuntu-latest
@@ -69,18 +71,37 @@ jobs:
       - name: Sign
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          RELEASE_PUBLIC_KEY: ${{ vars.RELEASE_PUBLIC_KEY }}
         run: |
           set -eu
           if [ -z "${RELEASE_SIGNING_KEY:-}" ]; then
+            if [ -n "${RELEASE_PUBLIC_KEY:-}" ]; then
+              echo "::error::RELEASE_PUBLIC_KEY is set, so these binaries refuse unsigned updates, but the RELEASE_SIGNING_KEY secret is not set. Set the secret, or delete the variable to release without signatures."
+              exit 1
+            fi
             echo "RELEASE_SIGNING_KEY is not set; the release is checksummed but not signed"
             exit 0
           fi
           umask 077
-          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/release-key.pem"
-          openssl pkeyutl -sign -inkey "$RUNNER_TEMP/release-key.pem" -rawin -in dist/SHA256SUMS \
+          key="$RUNNER_TEMP/release-key.pem"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$key"
+          # The public half of the signing key: the last 32 bytes of its DER form.
+          pub=$(openssl pkey -in "$key" -pubout -outform DER | tail -c 32 | base64 -w0)
+          if [ -z "${RELEASE_PUBLIC_KEY:-}" ]; then
+            echo "::warning::RELEASE_PUBLIC_KEY is not set, so these binaries do not check SHA256SUMS.sig. Set the variable to $pub to make them."
+          elif [ "$pub" != "$RELEASE_PUBLIC_KEY" ]; then
+            echo "::error::RELEASE_SIGNING_KEY and RELEASE_PUBLIC_KEY are not one key pair (the signing key's public half is $pub). Binaries from this build could never update, so nothing was released."
+            exit 1
+          fi
+          openssl pkeyutl -sign -inkey "$key" -rawin -in dist/SHA256SUMS \
             | base64 -w0 > dist/SHA256SUMS.sig
           echo >> dist/SHA256SUMS.sig
-          rm -f "$RUNNER_TEMP/release-key.pem"
+          # Prove the file that ships verifies against the key the binaries carry.
+          openssl pkey -in "$key" -pubout -out "$RUNNER_TEMP/release-pub.pem"
+          base64 -d dist/SHA256SUMS.sig > "$RUNNER_TEMP/SHA256SUMS.sig.bin"
+          openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/release-pub.pem" -rawin \
+            -in dist/SHA256SUMS -sigfile "$RUNNER_TEMP/SHA256SUMS.sig.bin"
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
