@@ -532,6 +532,7 @@ func serve(ctx context.Context, home string) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "http on http://%s\n", ln.Addr())
+		fmt.Fprintf(os.Stderr, "dashboard: http://%s/app/\n", ln.Addr())
 	}
 	_, stopWorkers := startWorkers(ctx, a, true)
 	defer stopWorkers()
