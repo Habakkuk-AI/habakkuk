@@ -299,6 +299,9 @@ type Scheduler struct {
 	// Secrets returns extra environment for scripts ($HABAKKUK_HOME/.env);
 	// the process environment wins over it.
 	Secrets func() map[string]string
+	// OnFailure hears about a failed run: each prompt run whose turn
+	// failed, and a script's first failure in a row. Nil is none.
+	OnFailure func(id, name, status string)
 }
 
 type payload struct {
@@ -406,16 +409,16 @@ const statusStarted = "started"
 // advanced after the script already finished is caught here too. Tick
 // calls it; hk schedules list calls it before listing.
 func (s *Scheduler) Settle(ctx context.Context) error {
-	rows, err := s.Store.db.QueryContext(ctx, `SELECT id, last_job FROM schedules
+	rows, err := s.Store.db.QueryContext(ctx, `SELECT id, name, last_job FROM schedules
 		WHERE last_status = ? AND last_job != ''`, statusStarted)
 	if err != nil {
 		return err
 	}
-	type run struct{ id, job string }
+	type run struct{ id, name, job string }
 	var runs []run
 	for rows.Next() {
 		var r run
-		if err := rows.Scan(&r.id, &r.job); err != nil {
+		if err := rows.Scan(&r.id, &r.name, &r.job); err != nil {
 			rows.Close()
 			return err
 		}
@@ -430,9 +433,14 @@ func (s *Scheduler) Settle(ctx context.Context) error {
 		if err != nil || status == "" {
 			continue // still running, or unreadable for now
 		}
-		if _, err := s.Store.db.ExecContext(ctx, `UPDATE schedules SET last_status = ?
-			WHERE id = ? AND last_job = ? AND last_status = ?`, status, r.id, r.job, statusStarted); err != nil {
+		res, err := s.Store.db.ExecContext(ctx, `UPDATE schedules SET last_status = ?
+			WHERE id = ? AND last_job = ? AND last_status = ?`, status, r.id, r.job, statusStarted)
+		if err != nil {
 			return err
+		}
+		// Only the process whose update took effect reports the failure.
+		if n, _ := res.RowsAffected(); n == 1 && strings.HasPrefix(status, "failed:") && s.OnFailure != nil {
+			s.OnFailure(r.id, r.name, status)
 		}
 	}
 	return nil

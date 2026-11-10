@@ -18,7 +18,7 @@ The config file is `$HABAKKUK_HOME/config.yaml`. It's strict YAML, so an unknown
 | `channels` | Chat accounts, keyed by account name | [Channels](../channels/index.md) |
 | `mcp_servers` | MCP servers whose tools agents can use | [MCP servers](../tools/mcp.md) |
 | `mcp_server` | Habakkuk as an MCP server over HTTP (`http`, `allow_send`) | [MCP servers](../tools/mcp.md#habakkuk-as-an-mcp-server) |
-| `http` | The HTTP server: `listen`, `token_env`, `public_url`, `webhooks` | [Dashboard and web chat](../interfaces/dashboard.md) |
+| `http` | The HTTP server: `listen`, `token_env`, `public_url`, `webhooks`, `push_contact` (the `mailto:` address or `https` URL sent with [Web Push](../interfaces/dashboard.md#notifications); default `public_url` when it's `https`) | [Dashboard and web chat](../interfaces/dashboard.md) |
 | `transcription` | Speech-to-text for voice notes and `hk talk`: `provider`, `model`, `prompt` | [Models and providers](../models/speech.md#speech-to-text) |
 | `tts` | Speech for `speak` and voice replies: `provider`, `key_env`, `base_url`, `model`, `voice`, `format`, `instructions`, `max_chars` | [Voice](../tools/voice.md) |
 | `realtime` | Live voice mode in the dashboard: `provider`, `model`, `voice`, `key_env`, `base_url`, `transcription`, `instructions`, `ttl` | [Voice](../tools/voice.md#live-mode-in-the-dashboard) |

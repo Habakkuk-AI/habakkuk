@@ -81,7 +81,7 @@ A skill that ships scripts stays disabled until you run `hk skills approve`. Plu
 
 ## Private files
 
-Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles and backups. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `hk doctor` and `hk security` warn you about anything wider, and `hk doctor --fix` or `hk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
+Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles, backups and the Web Push key and devices in `push/`. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `hk doctor` and `hk security` warn you about anything wider, and `hk doctor --fix` or `hk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
 
 ## No surprise network calls
 
@@ -89,7 +89,8 @@ Habakkuk doesn't send usage telemetry, and it checks for updates only when you r
 
 - your model providers and the channels you configured;
 - services you named in `config.yaml`: a `search:` provider, `tts`, `images`, `video`, `realtime`, `memory.embeddings`, `telemetry.otlp_endpoint`, MCP servers, A2A peers, Home Assistant;
-- the pages an agent reads with `fetch_url` or the browser.
+- the pages an agent reads with `fetch_url` or the browser;
+- with an `http` section, the browser push service of each device you turned [notifications](../interfaces/dashboard.md#notifications) on for, and only those. Each message is encrypted for that device.
 
 There's no default web search provider. The `web_search` tool exists only once `search:` names one. Run `hk security -network` to list every endpoint and see whether your config turns it on.
 

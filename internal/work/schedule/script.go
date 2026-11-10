@@ -40,6 +40,9 @@ func (s *Scheduler) handleScript(ctx context.Context, j *jobs.Job, sc *Schedule)
 		if err != nil {
 			return "", err
 		}
+		if streak == 1 && s.OnFailure != nil {
+			s.OnFailure(sc.ID, sc.Name, status)
+		}
 		if streak == failNotice {
 			msg := fmt.Sprintf("Scheduled script %q has failed %d times in a row. I will not report it again until it works.\n\nLast %s",
 				sc.Name, streak, status)

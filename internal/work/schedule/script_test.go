@@ -208,6 +208,8 @@ func TestFailureStreakNotifiesOnce(t *testing.T) {
 
 	r := newRig(t)
 	ctx := context.Background()
+	var failures []string
+	r.sch.OnFailure = func(id, name, status string) { failures = append(failures, name+": "+status) }
 	sc := r.script(t, Schedule{Name: "ledger sync", Command: "echo partial; echo 'db locked' >&2; exit 3"})
 	for i := 1; i <= 5; i++ {
 		_, res := r.runNow(t, sc.ID)
@@ -218,6 +220,10 @@ func TestFailureStreakNotifiesOnce(t *testing.T) {
 	got := r.deliveries()
 	if len(got) != 1 || !strings.Contains(got[0].text, `"ledger sync" has failed 3 times`) {
 		t.Fatalf("deliveries %+v", got)
+	}
+	// OnFailure (web push) hears about the first failure of the streak only.
+	if len(failures) != 1 || !strings.HasPrefix(failures[0], "ledger sync: error: exit status 3") {
+		t.Fatalf("failures %q", failures)
 	}
 	row, _ := r.st.Get(ctx, sc.ID)
 	if row.FailStreak != 5 || !strings.Contains(row.LastOutput, "partial") || !strings.Contains(row.LastOutput, "db locked") {

@@ -64,7 +64,7 @@ hk schedules add -agent habakkuk -name inbox -when "@every 10m" \
 | `agent` | a turn starts with the schedule's prompt and the output appended |
 | `silent` | nothing is sent |
 
-- **Failures.** A non-zero exit or a timeout is recorded, and the run isn't retried. The third failure in a row sends one notice to the chat. The first success after that tells the chat the script works again.
+- **Failures.** A non-zero exit or a timeout is recorded, and the run isn't retried. The third failure in a row sends one notice to the chat. The first success after that tells the chat the script works again. If you turned on dashboard [notifications](../interfaces/dashboard.md#notifications), the first failure in a row also sends one, and so does any prompt run that fails.
 - **No overlap.** If a slot comes due while the previous run is still going, it's skipped.
 
 > [!NOTE]

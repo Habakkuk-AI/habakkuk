@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel/web"
+	"github.com/habakkuk-ai/habakkuk/internal/channel/webpush"
 )
 
 // openWeb prepares the HTTP surface when the config has an http section. It
@@ -32,6 +34,11 @@ func (a *App) openWeb(ctx context.Context, home string) error {
 		}
 		s.Hooks[name] = hook
 	}
+	contact := h.PushContact
+	if contact == "" && strings.HasPrefix(h.PublicURL, "https://") {
+		contact = h.PublicURL
+	}
+	s.Push = &webpush.Service{Dir: filepath.Join(home, "push"), Contact: contact, Log: a.Log}
 	a.Web = s
 	return nil
 }
