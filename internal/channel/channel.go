@@ -127,6 +127,15 @@ type Editor interface {
 	Delete(ctx context.Context, to Address, id string) error
 }
 
+// LoudPoster is implemented by editors whose Post is silent (it posts
+// without a notification, as a progress draft should). PostLoud posts a
+// message that notifies like an ordinary reply, quoting replyTo when set;
+// a reply streamed into the chat starts with it, so the person is told the
+// answer has begun even though it is finished by editing.
+type LoudPoster interface {
+	PostLoud(ctx context.Context, to Address, text, replyTo string) (id string, err error)
+}
+
 // Button is one choice shown under a message.
 type Button struct {
 	Text  string // the label
