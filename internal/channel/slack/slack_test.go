@@ -176,6 +176,46 @@ func TestSocketModeEvents(t *testing.T) {
 	}
 }
 
+func TestListenChannelsAndTopLevelDMs(t *testing.T) {
+	f := &fakeSlack{frames: []string{
+		// A DM written inside a thread: still answered at the top level.
+		envelope("e1", "TA", `{"type":"message","channel_type":"im","channel":"D1","user":"U1","text":"hi","ts":"1.2","thread_ts":"1.1"}`),
+		// A listen channel: a top-level message with no mention starts a thread.
+		envelope("e2", "TA", `{"type":"message","channel_type":"channel","channel":"CLISTEN","user":"U1","text":"status?","ts":"2.1"}`),
+		// ... and a reply in some thread there continues that thread.
+		envelope("e3", "TA", `{"type":"message","channel_type":"channel","channel":"CLISTEN","user":"U1","text":"and now?","ts":"2.3","thread_ts":"2.2"}`),
+		// A listen entry with a workspace only matches that workspace.
+		envelope("e4", "TB", `{"type":"message","channel_type":"channel","channel":"CB","user":"U2","text":"beta","ts":"3.1"}`),
+		envelope("e5", "TA", `{"type":"message","channel_type":"channel","channel":"CB","user":"U2","text":"alpha","ts":"3.2"}`),
+		// An ordinary channel still needs a mention.
+		envelope("e6", "TA", `{"type":"message","channel_type":"channel","channel":"COTHER","user":"U1","text":"chatter","ts":"4.1"}`),
+		// A mention in a listen channel comes once, through app_mention.
+		envelope("e7", "TA", `{"type":"message","channel_type":"channel","channel":"CLISTEN","user":"U1","text":"<@UBOT> hi","ts":"5.1"}`),
+		// Bots in a listen channel are never answered.
+		envelope("e8", "TA", `{"type":"message","channel_type":"channel","channel":"CLISTEN","bot_id":"B9","user":"U9","text":"beep","ts":"6.1"}`),
+		`{"type":"disconnect","reason":"refresh_requested"}`,
+	}}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	f.wsURL = "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	a := New("xapp-1", []string{"xoxb-a", "xoxb-b"}, srv.URL+"/api")
+	a.Listen = []string{"CLISTEN", "TB/CB"}
+	in := &inbox{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	a.Run(ctx, in)
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	var got []string
+	for _, m := range in.msgs {
+		got = append(got, m.Conversation+" "+m.Thread+" "+m.Text+" "+strconv.FormatBool(m.Mentioned || m.Direct))
+	}
+	want := []string{"TA/D1  hi true", "TA/CLISTEN 2.1 status? true", "TA/CLISTEN 2.2 and now? true", "TB/CB 3.1 beta true", "TA/CB  alpha false", "TA/COTHER  chatter false"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 func TestSendUsesWorkspaceToken(t *testing.T) {
 	f := &fakeSlack{}
 	srv := httptest.NewServer(f.handler())

@@ -328,7 +328,9 @@ func (a *App) openChannels(home string) {
 			for _, env := range ch.BotTokensEnv {
 				bots = append(bots, a.Secret(env))
 			}
-			g.Adapters[name] = slack.New(a.Secret(ch.AppTokenEnv), bots, ch.APIURL)
+			sa := slack.New(a.Secret(ch.AppTokenEnv), bots, ch.APIURL)
+			sa.Listen = ch.ListenChannels
+			g.Adapters[name] = sa
 		case "whatsapp":
 			wa := whatsapp.New(name, filepath.Join(home, "channels", "whatsapp-"+name+".db"),
 				filepath.Join(home, "backups"), a.Log)

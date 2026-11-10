@@ -29,7 +29,28 @@ channels:
 
 ## Channels and threads
 
-In channels the bot answers mentions and replies in a thread under the mention. Once it has replied in a thread, later messages there count as addressed to it. Direct messages are answered directly.
+In channels the bot answers mentions and replies in a thread under the mention. Once it has replied in a thread, later messages there count as addressed to it.
+
+Direct messages are answered at the top level of the chat, even when you write inside a thread there.
+
+### Channels where no mention is needed
+
+`listen_channels` lists channels where every message from an allowed sender is for the bot, with no `@mention`:
+
+```yaml
+channels:
+  slack:
+    type: slack
+    app_token_env: SLACK_APP_TOKEN
+    bot_tokens_env: [SLACK_BOT_TOKEN]
+    allow_from: [U0123ABCD, U0456EFGH]
+    listen_channels: [C0123ABC, C0456DEF]
+```
+
+- Use channel ids, not names. In Slack, open the channel's name, then **About**: the id is at the bottom. With several workspaces, `T0123/C0123ABC` limits an entry to one workspace.
+- A top-level message starts a thread under it, and the bot answers there. A message inside a thread continues that thread, as with a mention.
+- Only senders in `allow_from` (or paired) are answered. Others are ignored without a pairing code, and so are other bots.
+- Invite the bot to each channel, and subscribe to `message.channels` (and `message.groups` for private channels) with the `channels:history` (and `groups:history`) scope.
 
 ## What works
 
