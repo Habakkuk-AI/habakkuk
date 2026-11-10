@@ -239,6 +239,14 @@ func (d *Dispatcher) Handle(ctx context.Context, j *jobs.Job, owner string) (str
 		return "", jobs.Permanent{Err: err}
 	}
 	final, err := d.Runner.HandleTurn(ctx, &turn, owner)
+	if d.Runner.Untrusted(turn.ID) {
+		// Outside content steered the run: whatever it left on the card,
+		// and the notice to whoever made it, carry the taint, even when it
+		// ended without board_complete or board_block.
+		if merr := d.Store.MarkTainted(ctx, c.ID); merr != nil {
+			d.Log.Error("mark card tainted failed", "card", c.ID, "err", merr)
+		}
+	}
 	if err != nil {
 		if errors.Is(err, jobs.ErrLeaseLost) || ctx.Err() != nil {
 			return "", err

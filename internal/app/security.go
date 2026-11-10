@@ -28,7 +28,9 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 		p.Protected = append(p.Protected, cfg.AgentDir(name))
 	}
 	if len(origin) == 0 {
-		p.Place = tools.PlaceLocal
+		// No reply address: the CLI and TUI, but also the API, MCP
+		// clients, editors and A2A. applyPolicy makes it local only for a
+		// turn the owner typed here, or a schedule with no chat.
 		return p, false
 	}
 	var addr channel.Address
@@ -72,7 +74,11 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 func (a *App) applyPolicy(ctx context.Context, spec *agent.Spec, origin json.RawMessage, env *tools.Env) {
 	p, external := TurnPolicy(a.Cfg, spec.Name, origin)
 	p.Protected = append(p.Protected, a.scheduledScriptDirs(ctx)...)
-	if agent.SourceFrom(ctx) == agent.SourceA2A {
+	info := agent.TurnInfoFrom(ctx)
+	if len(origin) == 0 && (info.Local || info.Source == agent.SourceSchedule) {
+		p.Place = tools.PlaceLocal
+	}
+	if info.Source == agent.SourceA2A {
 		// Another agent's task is outside content: no rule answers for
 		// it (the runner taints the turn too).
 		p.Place = ""

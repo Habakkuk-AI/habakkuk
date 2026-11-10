@@ -243,5 +243,4 @@ approval.always_command: "**Toujours autoriser** enregistre une règle pour %[1]
 approval.always_write: "**Toujours autoriser** enregistre une règle pour %[1]s. Je ne demanderai plus avant de modifier des fichiers comme celui-ci dans ce dossier :"
 approval.scope.chat: "cette conversation"
 approval.scope.local: "cet ordinateur"
-approval.or_below: "%s ou un dossier qu'il contient"
 approval.always_saved: "Approuvé. J'ai enregistré une règle pour %s et je ne demanderai plus pour ceci."

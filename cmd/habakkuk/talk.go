@@ -93,7 +93,7 @@ func talk(ctx context.Context, home string, args []string) error {
 		Play:       dev.Play,
 		Transcribe: transcriber.Transcribe,
 		Ask: func(ctx context.Context, text string) (string, error) {
-			return a.Runner.Ask(ctx, agent.Turn{Session: sid, Text: text}, nil)
+			return a.Runner.Ask(ctx, agent.Turn{Session: sid, Text: text, Local: true}, nil)
 		},
 		VAD:      voice.VADConfig{Threshold: tc.Threshold, Silence: tc.Silence},
 		Wake:     phrases,

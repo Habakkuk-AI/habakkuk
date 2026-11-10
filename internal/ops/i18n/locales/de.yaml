@@ -243,5 +243,4 @@ approval.always_command: "**Immer erlauben** speichert eine Regel für %[1]s. Ic
 approval.always_write: "**Immer erlauben** speichert eine Regel für %[1]s. Ich frage nicht mehr nach, bevor ich Dateien wie diese in diesem Ordner ändere:"
 approval.scope.chat: "diesen Chat"
 approval.scope.local: "diesen Computer"
-approval.or_below: "%s oder einem Ordner darin"
 approval.always_saved: "Genehmigt. Ich habe eine Regel für %s gespeichert und frage dafür nicht mehr nach."

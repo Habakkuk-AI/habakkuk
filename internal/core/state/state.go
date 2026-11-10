@@ -86,6 +86,8 @@ CREATE TABLE asked_approvals (
 	hash         TEXT NOT NULL,
 	created_at   INTEGER NOT NULL
 ) WITHOUT ROWID;
+`}, {Version: 4, SQL: `
+ALTER TABLE chat_notes ADD COLUMN tainted INTEGER NOT NULL DEFAULT 0;
 `}}
 
 type Store struct {

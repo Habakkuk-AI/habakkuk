@@ -245,5 +245,4 @@ approval.always_command: "**اسمح دائمًا** يحفظ قاعدة لـ %[1
 approval.always_write: "**اسمح دائمًا** يحفظ قاعدة لـ %[1]s. لن أسأل مرة أخرى قبل إجراء تغييرات على ملفات مثل هذا في هذا المجلد:"
 approval.scope.chat: "هذه المحادثة"
 approval.scope.local: "هذا الحاسوب"
-approval.or_below: "%s أو مجلد بداخله"
 approval.always_saved: "تمت الموافقة. حفظتُ قاعدة لـ %s ولن أسأل مرة أخرى عن هذا."

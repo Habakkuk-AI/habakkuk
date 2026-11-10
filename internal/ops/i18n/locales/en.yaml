@@ -241,5 +241,4 @@ approval.always_command: "**Always allow** saves a rule for %[1]s. I won't ask a
 approval.always_write: "**Always allow** saves a rule for %[1]s. I won't ask again before making file changes like this one in this folder:"
 approval.scope.chat: "this chat"
 approval.scope.local: "this computer"
-approval.or_below: "%s or a folder inside it"
 approval.always_saved: "Approved. I saved a rule for %s and won't ask again for this."

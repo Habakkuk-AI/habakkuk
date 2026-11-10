@@ -1,7 +1,6 @@
 package config
 
 import (
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -10,10 +9,7 @@ func TestAllowRules(t *testing.T) {
 	agent := func(allow string) string {
 		return strings.Replace(mediaBase, "{model: p/m}", "{model: p/m, allow: "+allow+"}", 1)
 	}
-	good := `[{command: git status}, {command: "git log *", in: ~/code/shop}, {exact: "make build && make test"}, {tool: write_file, path: ~/reports}]`
-	if runtime.GOOS == "windows" {
-		good = `[{exact: "make build && make test"}, {tool: write_file, path: ~/reports}]`
-	}
+	good := `[{exact: git status}, {exact: "git log -1", in: ~/code/shop}, {exact: "make build && make test"}, {tool: write_file, path: ~/reports}]`
 	cfg, err := Parse([]byte(agent(good)))
 	if err != nil {
 		t.Fatal(err)

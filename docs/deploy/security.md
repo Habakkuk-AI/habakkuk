@@ -75,25 +75,28 @@ Use this setting for folders that hold only notes. `hk security` lists each agen
 
 ## Saved approval rules
 
-**Always allow** in a chat, and `agents.<name>.allow` in the config, let an agent run a command or write to a folder without asking you each time. See [how it works](../agents/approvals.md#always-allow).
+**Always allow** in a chat, and `agents.<name>.allow` in the config, let an agent run one command line, or write to one folder, without asking you each time. See [how it works](../agents/approvals.md#always-allow).
 
-A rule is a standing yes, so it's held to the same promises as everything else here:
+A rule is a standing yes, so it's kept narrow:
 
+- **Your turns only.** Rules answer for a message you sent (in a chat, or typed on this computer) and for the run of a schedule you made. Never for board card runs, sub-agents and their results, notices, the API, MCP clients, editors, A2A tasks, webhooks or guests. Those ask a person.
+- **Where you gave it.** A rule saved in a chat applies in that chat (and to its schedules). One saved on this computer applies to turns started here.
+- **One line, one folder.** An exec rule is one exact command line, run in one folder exactly. Only quoting may differ. There are no wildcard rules yet.
 - **Never in a tainted turn.** Once a turn has read outside content, a rule doesn't answer. A person does.
-- **Never for what a tainted turn set up.** A schedule or board card that a tainted turn created, or wrote to, runs tainted every time. A sub-agent's result from a tainted task arrives tainted.
-- **Never right after one.** Once a turn in a conversation has read outside content, rules stay off for the conversation's background turns until you send a new message. The injected text is still in the conversation's history.
-- **Only for your own turns.** A rule saved in a chat applies in that chat. A guest's turn, an inbound A2A task and a webhook get no rules.
+- **Paused after taint.** Anything tainted that enters a conversation (a tainted turn, a tainted result or schedule run, an A2A task, a message a tainted run delivered to the chat) pauses its rules until your next message there. Work a tainted turn sets up, a schedule or a board card, runs tainted, and so do runs of cards waiting on it.
 - **Never past the hardline.** Commands on the blocklist never run, whatever a rule says.
-- **Never for the agent's instructions.** Writes to `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `USER.md` and the saved rules file always ask, in every mode. Names are compared without regard to case, and a file with a second name (a hard link) asks too.
-- **Never Habakkuk's own folders.** A file rule doesn't cover agent homes, skills, plugins, hooks, channel credentials, backups or the folders scheduled scripts run from. Hidden files and folders still ask.
+- **Never for the agent's instructions.** Writes to `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `USER.md`, the saved rules file and its lock always ask, in every mode. Names are compared without regard to case (Unicode folding included). A command that names one, or whose arguments lead to one through a symlink or a hard link, gets no rule.
+- **Never Habakkuk's own folders.** Neither a file rule nor an exec rule covers anything in agent homes, skills, plugins, hooks, channel credentials, backups or the folders scheduled scripts run from. Hidden files and folders still ask.
 
-Command patterns only match a program and its arguments. Anything a shell would expand or chain is left to a person. That covers `;`, `&&`, pipes, redirects, `$`, backquotes, wildcards and `~`. A `*` never takes options, and it's refused on shells and interpreters. A command that names files by relative path gets a rule for that one folder. Keep rules narrow all the same: `git log *` is fine, a rule on a build script is a rule on whatever that script says. `hk approvals list` shows every rule, where it applies and who saved it, and `hk approvals rm ID` removes a saved one.
+`hk approvals list` shows every rule, where it applies and who saved it, and `hk approvals rm ID` removes a saved one.
 
 These limits are known:
 
-- **Files a tainted turn wrote.** A tainted turn can still write files in the workspace without asking. If a later, clean run then executes one of them under a rule, such as a script, a `Makefile` or a `package.json` that a rule's command reads, the rule has run what the page wrote. Rules on commands that run workspace files carry that risk. Keep such rules off agents that read the web, or allow those commands once.
+- **Files a tainted turn wrote.** A tainted turn can still write files in the workspace without asking. If your next turn then runs a command under a rule, and that command runs one of those files (a script, a `Makefile`, a `package.json`), the rule has run what the page wrote. The command line is the one you approved; what it runs may not be. Keep rules on commands that run workspace files off agents that read the web, or allow those commands once.
+- **Names made later.** The link check looks at the files a command names as they are when it starts. A command that creates a link and then writes through it in the same line isn't caught, and neither is a program that picks its own files. That's why exec rules are exact lines you approved.
 - **Commands in `full` mode.** `full` mode runs commands without asking and doesn't parse them, so a command can write an instruction file there. The file tools always ask.
 - **Hard links on Windows.** Windows doesn't report a file's other names, so the hard-link check runs on macOS and Linux only.
+- **Delivered messages after a restart.** Whether a delivered message came from a tainted run is known while `hk serve` runs. A message from a run that ended just before a restart is treated as clean.
 
 ## Skills and plugins from outside
 

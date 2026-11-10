@@ -22,6 +22,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 	"github.com/habakkuk-ai/habakkuk/internal/core/state"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
+	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/i18n"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
 	"github.com/habakkuk-ai/habakkuk/internal/tools/media"
@@ -113,6 +114,9 @@ type deliverPayload struct {
 	Session string `json:"session,omitempty"`
 	Agent   string `json:"agent,omitempty"`
 	What    string `json:"what,omitempty"`
+	// Tainted: outside content may have steered the turn that wrote it
+	// (agent.Runner.Untrusted); its chat note says so.
+	Tainted bool `json:"tainted,omitempty"`
 }
 
 func (g *Gateway) now() time.Time {
@@ -699,6 +703,13 @@ func (g *Gateway) enqueueDelivery(ctx context.Context, id string, to Address, te
 // key, so a file sent during a turn goes out before the turn's reply.
 func (g *Gateway) enqueue(ctx context.Context, id string, p deliverPayload) error {
 	p.poster(ctx)
+	if g.Runner != nil {
+		turn := llm.CallerFrom(ctx).Turn
+		if turn == "" {
+			turn = p.Draft // a turn's reply, queued after it ended
+		}
+		p.Tainted = p.Tainted || (turn != "" && g.Runner.Untrusted(turn))
+	}
 	_, err := g.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: id, Kind: KindDeliver, SerialKey: "dlv:" + p.To.key(), Priority: 20, MaxAttempts: 20,
 		Payload: p,
@@ -957,7 +968,7 @@ func (g *Gateway) canOfferRule(to Address, req tools.ApprovalRequest) bool {
 	if ch := g.Channels[to.Account]; ch != nil && ch.Type == "email" {
 		return false
 	}
-	text := req.Rule.Exact + req.Rule.Command + req.Rule.Path + req.Rule.In
+	text := req.Rule.Exact + req.Rule.Path + req.Rule.In
 	return g.redact(text) == text
 }
 

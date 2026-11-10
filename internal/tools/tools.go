@@ -219,9 +219,14 @@ type Env struct {
 	// Rules are the agent's approval rules ("always allow", allow.go);
 	// nil means none, and "Always allow" is not offered.
 	Rules RuleSet
-	// RulesPaused stops the rules for this turn: an earlier turn of the
-	// session read outside content and nobody has sent a fresh message
-	// since (agent.pauseRules).
+	// RulesOff: approval rules never answer for this kind of turn: it is
+	// not the owner's own message nor the run of a schedule the owner made
+	// (agent.limitRules).
+	RulesOff bool
+	// RulesPaused: outside content entered this turn another way than a
+	// tool (a chat note from a tainted turn, a paused parent), so rules
+	// wait for the owner's next message, and work this turn sets up is
+	// marked tainted.
 	RulesPaused bool
 }
 

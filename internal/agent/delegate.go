@@ -328,7 +328,7 @@ func (t *turn) finishSubturn(p TurnPayload, err error) error {
 			return err
 		}
 	}
-	untrusted := sub.Tainted || sub.RulesPaused || (t.untrusted != nil && t.untrusted())
+	untrusted := sub.Tainted || sub.RulesPaused || t.r.Untrusted(t.job.ID)
 	if nerr := t.r.notifyParent(t.ctx, t.job.ID, t.spec.Name, sub, t.final, err, untrusted); nerr != nil {
 		t.r.Log.Warn("background result not handed back", "job", t.job.ID, "err", nerr)
 		if err == nil {

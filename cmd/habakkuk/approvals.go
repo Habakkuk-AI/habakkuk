@@ -94,7 +94,7 @@ func listApprovals(w io.Writer, cfg *config.Config, names []string) error {
 		fmt.Fprintln(w, `No approval rules. Answer "Always allow" in a chat, or add agents.<name>.allow to config.yaml.`)
 		return nil
 	}
-	fmt.Fprintln(w, "\nRules never cover a turn that read outside content (or that followed one with no new message\nfrom you), a guest's turn, an inbound A2A task, a write to an agent's instruction files, or a\ncommand on the hardline blocklist. A rule saved in a chat applies in that chat only.")
+	fmt.Fprintln(w, "\nRules answer only for your own messages and the schedules you made: never for board cards,\nsub-agents, notices, the API, MCP, A2A, webhooks or guests, never after outside content until\nyou write again, and never for an agent's instruction files or the hardline blocklist. An exec\nrule is one command line in one folder. A rule saved in a chat applies in that chat only.")
 	return nil
 }
 

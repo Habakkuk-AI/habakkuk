@@ -286,7 +286,7 @@ func (b *AppBackend) btw(ctx context.Context, id, question string) (string, erro
 	if history := b.renderContext(ctx, id); history != "" {
 		text += "\n\n<main_conversation>\n" + history + "\n</main_conversation>"
 	}
-	return b.A.Runner.Ask(ctx, agent.Turn{Session: side.ID, Text: text + "\n\nQuestion: " + question}, nil)
+	return b.A.Runner.Ask(ctx, agent.Turn{Session: side.ID, Text: text + "\n\nQuestion: " + question, Local: true}, nil)
 }
 
 // renderContext renders what the model sees of a session (the latest

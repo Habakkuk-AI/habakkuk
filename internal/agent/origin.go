@@ -51,32 +51,48 @@ type ChatNotes interface {
 	// NotesSeen records that the job's user message, notes and all, is in
 	// the transcript, so no later turn shows them again.
 	NotesSeen(ctx context.Context, jobID string)
+	// NotesTainted reports whether a note the job took came from a turn
+	// that outside content may have steered (Runner.Untrusted).
+	NotesTainted(ctx context.Context, jobID string) bool
 }
 
-type sourceKey struct{}
+type turnInfoKey struct{}
 
-type source struct{ source, task string }
+// TurnInfo says what started the running turn, for approvers and the
+// turn policy (approval rules answer only for the owner's own turns).
+type TurnInfo struct {
+	Source string // SourceSchedule, SourceBoard, SourceA2A, or "" (TurnPayload.Source)
+	Task   string // names that work in one line (`scheduled task "inbox"`)
+	// Local: the owner started it on this machine (the CLI, the TUI, hk
+	// talk); TurnPayload.Local.
+	Local bool
+	// Background: nobody sent it a fresh message (TurnPayload.Background);
+	// Delegated: a sub-agent's task; Tainted: it starts tainted.
+	Background, Delegated, Tainted bool
+}
 
-// WithSource notes what started the running turn (TurnPayload.Source and
-// Task), so an approver can tell a scheduled run from a chat message. The
-// runner sets it on every turn.
-func WithSource(ctx context.Context, src, task string) context.Context {
-	if src == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, sourceKey{}, source{src, task})
+// OwnerMessage reports whether the turn answers a fresh message: not
+// background work, a delegated task, or another system's request.
+func (i TurnInfo) OwnerMessage() bool {
+	return i.Source == "" && !i.Background && !i.Delegated
+}
+
+// WithTurnInfo notes what started the running turn. The runner sets it on
+// every turn.
+func WithTurnInfo(ctx context.Context, i TurnInfo) context.Context {
+	return context.WithValue(ctx, turnInfoKey{}, i)
+}
+
+// TurnInfoFrom is what started the turn running in ctx.
+func TurnInfoFrom(ctx context.Context) TurnInfo {
+	i, _ := ctx.Value(turnInfoKey{}).(TurnInfo)
+	return i
 }
 
 // SourceFrom is what started the turn running in ctx (SourceSchedule,
 // SourceBoard, SourceA2A), or "" for a chat message or a local client.
-func SourceFrom(ctx context.Context) string {
-	s, _ := ctx.Value(sourceKey{}).(source)
-	return s.source
-}
+func SourceFrom(ctx context.Context) string { return TurnInfoFrom(ctx).Source }
 
 // TaskFrom names the work that started the turn (`scheduled task
 // "inbox"`), or "".
-func TaskFrom(ctx context.Context) string {
-	s, _ := ctx.Value(sourceKey{}).(source)
-	return s.task
-}
+func TaskFrom(ctx context.Context) string { return TurnInfoFrom(ctx).Task }

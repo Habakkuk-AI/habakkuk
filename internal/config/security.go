@@ -46,10 +46,10 @@ type AgentSecurity struct {
 	Allow []AllowRule `yaml:"allow"`
 }
 
-// AllowRule is one entry of agents.<name>.allow: a command (a program and
-// its arguments; a final * takes any further ones) or an exact command
-// line, run in the workspace or the folder in names; or a file tool
-// writing inside a folder.
+// AllowRule is one entry of agents.<name>.allow: an exact command line,
+// run in the workspace or exactly in the folder in names; or a file tool
+// writing inside a folder. Command (a pattern) is refused for now:
+// wildcard rules may come later, with a reviewed list of programs.
 type AllowRule struct {
 	Command string `yaml:"command"`
 	Exact   string `yaml:"exact"`
@@ -60,9 +60,9 @@ type AllowRule struct {
 
 // Rule is the entry as a tools.Rule, with ~/ expanded.
 func (r AllowRule) Rule() tools.Rule {
-	out := tools.Rule{Tool: r.Tool, Command: strings.TrimSpace(r.Command), Exact: strings.TrimSpace(r.Exact),
+	out := tools.Rule{Tool: r.Tool, Exact: strings.TrimSpace(r.Exact),
 		In: expandHome(strings.TrimSpace(r.In)), Path: expandHome(strings.TrimSpace(r.Path)), Source: "config"}
-	if out.Tool == "" && (out.Command != "" || out.Exact != "") {
+	if out.Tool == "" && out.Exact != "" {
 		out.Tool = "exec"
 	}
 	return out
@@ -106,8 +106,12 @@ func (a *Agent) validateSecurity(name string) []error {
 		}
 	}
 	for i, r := range a.Allow {
-		if r.Tool == "" && r.Command == "" && r.Exact == "" {
-			errs = append(errs, fmt.Errorf("agent %s: allow entry %d needs command, exact, or tool and path", name, i+1))
+		if r.Command != "" {
+			errs = append(errs, fmt.Errorf("agent %s: allow entry %d: command patterns are not supported yet; write the whole command line as exact (and in, if it runs outside the workspace)", name, i+1))
+			continue
+		}
+		if r.Tool == "" && r.Exact == "" {
+			errs = append(errs, fmt.Errorf("agent %s: allow entry %d needs exact, or tool and path", name, i+1))
 			continue
 		}
 		if err := r.Rule().Validate(); err != nil {

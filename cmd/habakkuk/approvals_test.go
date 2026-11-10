@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -13,9 +12,6 @@ import (
 )
 
 func TestApprovalsCLI(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("command patterns are refused on Windows; this test lists them")
-	}
 	home := writeHome(t, "")
 	var out bytes.Buffer
 	if err := approvalsCmd(home, nil, &out); err != nil || !strings.Contains(out.String(), "No approval rules") {
@@ -25,13 +21,13 @@ func TestApprovalsCLI(t *testing.T) {
 	// A rule from config.yaml and one saved from a chat.
 	home = writeHome(t, "")
 	cfgText := strings.Replace(readFile(t, filepath.Join(home, "config.yaml")), "    permission: workspace",
-		"    allow:\n      - command: git status\n    permission: workspace", 1)
+		"    allow:\n      - exact: git status\n    permission: workspace", 1)
 	writeFile(t, filepath.Join(home, "config.yaml"), cfgText)
 	cfg, err := config.Load(home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := ruleFile(cfg, "habakkuk").Save(tools.Rule{Tool: "exec", Command: "git log *", Source: "chat",
+	saved, err := ruleFile(cfg, "habakkuk").Save(tools.Rule{Tool: "exec", Exact: "git log -1", Source: "chat",
 		Place: tools.ChatPlace("telegram", "100"), SavedBy: "7 (Sam)"})
 	if err != nil {
 		t.Fatal(err)
@@ -40,9 +36,9 @@ func TestApprovalsCLI(t *testing.T) {
 	if err := approvalsCmd(home, []string{"list"}, &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"habakkuk:", "config-1", "exec `git status` in the workspace", saved.ID, "chat",
-		"exec `git log` with any further arguments", "applies in chat telegram:100, saved by 7 (Sam)",
-		"applies everywhere rules apply", "never cover a turn that read outside content"} {
+	for _, want := range []string{"habakkuk:", "config-1", "exec exactly `git status` in the workspace", saved.ID, "chat",
+		"exec exactly `git log -1`", "applies in chat telegram:100, saved by 7 (Sam)",
+		"applies everywhere rules apply", "Rules answer only for your own messages"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("list lacks %q:\n%s", want, out.String())
 		}

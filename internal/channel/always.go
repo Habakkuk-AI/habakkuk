@@ -34,25 +34,17 @@ func (g *Gateway) ruleText(lang string, to Address, req tools.ApprovalRequest) s
 	if r == nil {
 		return ""
 	}
-	where := func(dir string, below bool) string {
+	where := func(dir string) string {
 		if dir == "" {
 			dir = req.Workspace
 		}
-		w := "`" + tildePath(dir) + "`"
 		if p := g.place(lang, dir, req.Workspace); p != "" && dir == req.Workspace {
-			w = p
+			return p
 		}
-		if below {
-			w = i18n.T(lang, "approval.or_below", w)
-		}
-		return w
+		return "`" + tildePath(dir) + "`"
 	}
 	if r.Tool != "exec" {
 		return i18n.T(lang, "approval.always_write", g.scope(lang, to)) + "\n```\n" + r.Path + "\n```"
 	}
-	cmd := r.Exact
-	if cmd == "" {
-		cmd = r.Command
-	}
-	return i18n.T(lang, "approval.always_command", g.scope(lang, to), where(r.In, !r.Here)) + "\n```\n" + cmd + "\n```"
+	return i18n.T(lang, "approval.always_command", g.scope(lang, to), where(r.In)) + "\n```\n" + r.Exact + "\n```"
 }

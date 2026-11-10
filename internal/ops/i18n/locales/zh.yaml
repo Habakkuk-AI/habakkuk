@@ -244,5 +244,4 @@ approval.always_command: "**始终允许** 会为%[1]s保存一条规则。以�
 approval.always_write: "**始终允许** 会为%[1]s保存一条规则。以后在这个文件夹中进行类似的文件更改时，我不再询问："
 approval.scope.chat: "此对话"
 approval.scope.local: "这台电脑"
-approval.or_below: "%s 或其中的文件夹"
 approval.always_saved: "已批准。我已为%s保存规则，以后不再询问此事。"

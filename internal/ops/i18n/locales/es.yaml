@@ -243,5 +243,4 @@ approval.always_command: "**Permitir siempre** guarda una regla para %[1]s. No v
 approval.always_write: "**Permitir siempre** guarda una regla para %[1]s. No volveré a preguntar antes de cambiar archivos como este en esta carpeta:"
 approval.scope.chat: "este chat"
 approval.scope.local: "este ordenador"
-approval.or_below: "%s o una carpeta dentro"
 approval.always_saved: "Aprobado. Guardé una regla para %s y no volveré a preguntar por esto."

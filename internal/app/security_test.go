@@ -141,7 +141,7 @@ func TestTurnPlaceForRules(t *testing.T) {
 		origin json.RawMessage
 		want   string
 	}{
-		"local":                     {nil, tools.PlaceLocal},
+		"no reply address":          {nil, ""},
 		"web chat":                  {origin("web", ""), tools.PlaceLocal},
 		"owner on telegram":         {origin("tg", channel.TrustOwner), tools.ChatPlace("tg", "c")},
 		"schedule to a closed chat": {origin("tg", ""), tools.ChatPlace("tg", "c")},
@@ -155,11 +155,22 @@ func TestTurnPlaceForRules(t *testing.T) {
 			t.Errorf("%s: place %q, want %q", name, p.Place, c.want)
 		}
 	}
-	// An inbound A2A task has no origin, but it is not the owner's.
+	// With no reply address, only a turn the owner typed here, or a
+	// schedule with no chat, is local; the API, MCP and A2A are not.
 	a := &App{Cfg: cfg}
-	env := &tools.Env{Taint: tools.NewTaint(false)}
-	a.applyPolicy(agent.WithSource(context.Background(), agent.SourceA2A, ""), &agent.Spec{Name: "main"}, nil, env)
-	if env.Policy.Place != "" {
-		t.Fatalf("A2A place %q", env.Policy.Place)
+	for name, c := range map[string]struct {
+		info agent.TurnInfo
+		want string
+	}{
+		"typed here":         {agent.TurnInfo{Local: true}, tools.PlaceLocal},
+		"schedule, no chat":  {agent.TurnInfo{Source: agent.SourceSchedule, Background: true}, tools.PlaceLocal},
+		"API or MCP request": {agent.TurnInfo{}, ""},
+		"A2A task":           {agent.TurnInfo{Source: agent.SourceA2A}, ""},
+	} {
+		env := &tools.Env{Taint: tools.NewTaint(false)}
+		a.applyPolicy(agent.WithTurnInfo(context.Background(), c.info), &agent.Spec{Name: "main"}, nil, env)
+		if env.Policy.Place != c.want {
+			t.Errorf("%s: place %q, want %q", name, env.Policy.Place, c.want)
+		}
 	}
 }

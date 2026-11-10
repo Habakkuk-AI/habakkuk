@@ -243,5 +243,4 @@ approval.always_command: "**常に許可** すると %[1]s 用のルールが保
 approval.always_write: "**常に許可** すると %[1]s 用のルールが保存され、今後このフォルダでこのようなファイル変更をするときは確認しません："
 approval.scope.chat: "このチャット"
 approval.scope.local: "このコンピューター"
-approval.or_below: "%s またはその中のフォルダ"
 approval.always_saved: "承認しました。%s 用のルールを保存したので、今後これについては確認しません。"

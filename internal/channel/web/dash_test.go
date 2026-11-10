@@ -771,9 +771,9 @@ hooks:
 func TestDashApprovalRules(t *testing.T) {
 	r := newDashRig(t)
 	cfg := r.s.Dash.Config
-	cfg.Agents["habakkuk"].Allow = []config.AllowRule{{Command: "git status"}}
+	cfg.Agents["habakkuk"].Allow = []config.AllowRule{{Exact: "git status"}}
 	rf := &tools.RuleFile{Path: filepath.Join(cfg.AgentDir("habakkuk"), tools.RulesFileName)}
-	saved, err := rf.Save(tools.Rule{Tool: "exec", Command: "npm test", Source: "chat"})
+	saved, err := rf.Save(tools.Rule{Tool: "exec", Exact: "npm test", Source: "chat"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -782,7 +782,7 @@ func TestDashApprovalRules(t *testing.T) {
 		t.Fatalf("rules: %v", l)
 	}
 	first, second := l[0].(map[string]any), l[1].(map[string]any)
-	if first["source"] != "config" || first["text"] != "exec `git status` in the workspace" || second["id"] != saved.ID || second["agent"] != "habakkuk" {
+	if first["source"] != "config" || first["text"] != "exec exactly `git status` in the workspace" || second["id"] != saved.ID || second["agent"] != "habakkuk" {
 		t.Fatalf("rules: %v", l)
 	}
 	r.send(t, "DELETE", "/api/approval-rules/habakkuk/config-1", "", http.StatusNotFound)

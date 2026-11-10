@@ -245,5 +245,4 @@ approval.always_command: "**Gbà á nígbà gbogbo** máa fi òfin kan pamọ́ 
 approval.always_write: "**Gbà á nígbà gbogbo** máa fi òfin kan pamọ́ fún %[1]s. Èmi kò ní béèrè mọ́ kí n tó yí àwọn fáìlì bí èyí padà nínú fódà yìí:"
 approval.scope.chat: "ìjíròrò yìí"
 approval.scope.local: "kọ̀ǹpútà yìí"
-approval.or_below: "%s tàbí fódà kan nínú rẹ̀"
 approval.always_saved: "A ti fọwọ́ sí i. Mo ti fi òfin kan pamọ́ fún %s, èmi kò sì ní béèrè mọ́ fún èyí."

@@ -67,7 +67,7 @@ func TestAlwaysAllowButton(t *testing.T) {
 		t.Fatalf("rows = %+v", rows)
 	}
 	prompts, _, _ := a.snapshot()
-	want := "**Always allow** saves a rule for this chat. I won't ask again before running exactly this command in your workspace or a folder inside it:\n```\necho approved-run\n```"
+	want := "**Always allow** saves a rule for this chat. I won't ask again before running exactly this command in your workspace:\n```\necho approved-run\n```"
 	if !strings.Contains(prompts[0], want) {
 		t.Fatalf("prompt does not show the rule:\n%s", prompts[0])
 	}
@@ -75,7 +75,7 @@ func TestAlwaysAllowButton(t *testing.T) {
 	waitFor(t, "tool output", hasText(r.a, "tool said: approved-run"))
 	waitFor(t, "ack", hasText(r.a, "Approved. I saved a rule for this chat and won't ask again for this."))
 	saved := savedRules(t, rules())
-	if len(saved) != 1 || saved[0].Command+saved[0].Exact != "echo approved-run" || saved[0].Place != tools.ChatPlace("tg", "100") ||
+	if len(saved) != 1 || saved[0].Exact != "echo approved-run" || saved[0].Place != tools.ChatPlace("tg", "100") ||
 		saved[0].SavedBy != "7" || saved[0].Source != "chat" {
 		t.Fatalf("saved %+v", saved)
 	}
@@ -343,4 +343,106 @@ func TestTaintedScheduledRunNeedsAPerson(t *testing.T) {
 	}
 	send(r, "m1", "no")
 	waitFor(t, "denial result", hasText(r.a, "the user declined exec"))
+}
+
+// A chat holds one prompt at a time; a request that cannot get its turn
+// within the approval timeout is denied without being asked, so a busy
+// chat never holds a worker for good.
+func TestBusyChatTimesOut(t *testing.T) {
+	ctx := context.Background()
+	r := newStateRig(t, &config.Channel{AllowFrom: []string{"7"}})
+	to := Address{Account: "tg", Conversation: "100"}
+	conv, err := r.g.conversation(ctx, r.g.Channels["tg"], to, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.g.ApprovalTimeout = 80 * time.Millisecond
+	release, ok := r.g.holdChat(ctx, to)
+	if !ok {
+		t.Fatal("an idle chat was busy")
+	}
+	start := time.Now()
+	allowed, err := r.g.ApproverFor(conv.SessionID).Approve(ctx, tools.ApprovalRequest{Tool: "exec", Summary: "echo hi"})
+	if allowed || err != nil || time.Since(start) < 70*time.Millisecond || time.Since(start) > 2*time.Second {
+		t.Fatalf("busy chat: allowed=%v err=%v after %v", allowed, err, time.Since(start))
+	}
+	if len(r.a.texts()) != 0 {
+		t.Fatalf("asked in a busy chat: %q", r.a.texts())
+	}
+	// A stopped turn does not wait at all.
+	stopped, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, ok := r.g.holdChat(stopped, to); ok {
+		t.Fatal("a stopped turn got the chat")
+	}
+	release()
+	if release, ok := r.g.holdChat(ctx, to); !ok {
+		t.Fatal("the chat stayed busy after release")
+	} else {
+		release()
+	}
+}
+
+// A message a steered run delivered to the chat is a tainted note: the
+// owner's next turn there, which takes it in, gets no rules. A clean
+// run's message does not pause them.
+func TestTaintedDeliveryPausesRulesForTheNextTurn(t *testing.T) {
+	for _, tainted := range []bool{false, true} {
+		prep, rules := withRules()
+		r := openStateRig(t, t.TempDir(), &config.Channel{AllowFrom: []string{"7"}}, prep,
+			func(r *rig) { r.g.Runner.Notes = r.g }) // as the app wires it
+		if _, err := rules().Save(tools.Rule{Tool: "exec", Exact: "echo approved-run", Place: tools.ChatPlace("tg", "100")}); err != nil {
+			t.Fatal(err)
+		}
+		send(r, "m0", "hello first") // the chat's own session
+		waitFor(t, "first reply", hasText(r.a, "echo: hello first"))
+		scheduledTurn(t, r, agent.SourceSchedule, "report", tainted)
+		waitFor(t, "scheduled report", hasText(r.a, "echo: report"))
+		send(r, "m1", "run it")
+		if tainted {
+			waitFor(t, "a prompt", hasText(r.a, "I'd like to run a command on your computer."))
+			send(r, "m2", "no")
+			waitFor(t, "denial", hasText(r.a, "the user declined exec"))
+		} else {
+			waitFor(t, "the rule answered", hasText(r.a, "saved approval rule"))
+		}
+	}
+}
+
+// A schedule that delivers to an email conversation is never offered
+// Always allow there either.
+func TestNoAlwaysForAScheduleToEmail(t *testing.T) {
+	prep, rules := withRules()
+	r := openStateRig(t, t.TempDir(), &config.Channel{Type: "email", AllowFrom: []string{"7"}}, prep)
+	scheduledTurn(t, r, agent.SourceSchedule, "run it", false)
+	waitFor(t, "prompt", hasText(r.a, "I'd like to run a command on your computer."))
+	if hasText(r.a, "**always**")() {
+		t.Fatal("offered a rule in email")
+	}
+	send(r, "m2", "always")
+	waitFor(t, "refusal", hasText(r.a, "I can't save a rule for this one."))
+	send(r, "m3", "no")
+	waitFor(t, "denial", hasText(r.a, "the user declined exec"))
+	if saved := savedRules(t, rules()); len(saved) != 0 {
+		t.Fatalf("saved %+v", saved)
+	}
+}
+
+// In the chat a schedule delivers to, only the owner answers its request.
+func TestNonOwnerCannotAnswerAScheduledRun(t *testing.T) {
+	r, a, rules := richRulesRig(t, &config.Channel{AllowFrom: []string{"7", "*"}})
+	scheduledTurn(t, r, agent.SourceSchedule, "run it", false)
+	waitFor(t, "buttons", func() bool { return a.lastRows() != nil })
+	press(r, "9", a.lastRows()[0][1].Data)
+	for i, word := range []string{"always", "yes"} {
+		m := dm("g"+string(rune('0'+i)), word)
+		m.Sender = "9"
+		r.g.Handle(context.Background(), m)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if hasText(r.a, "tool said: approved-run")() || len(savedRules(t, rules())) != 0 {
+		t.Fatal("someone other than the owner answered the scheduled run")
+	}
+	send(r, "m4", "no")
+	waitFor(t, "denial", hasText(r.a, "the user declined exec"))
 }

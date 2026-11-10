@@ -14,38 +14,38 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/platform"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 )
 
-// Approval rules ("always allow"). A rule answers yes for an agent in
-// place of a person, for one kind of call the person has already said
-// yes to:
+// Approval rules ("always allow"). A rule answers yes in place of a
+// person, for one call the person has already said yes to:
 //
-//   - a command: a program and its arguments ("git status"), where a final
-//     "*" in the config takes any further arguments that are not options
-//     ("git log *"), run in a folder (the workspace unless the rule names
-//     one);
-//   - an exact command line, for commands with pipes, redirects or other
-//     shell syntax a pattern cannot judge;
+//   - an exec rule: one command line, exactly, run in one folder exactly
+//     (the workspace unless the rule names another). Quoting may differ
+//     ("echo 'a b'" is "echo "a b""), nothing else may. Wildcard rules may
+//     come later, with a reviewed list of programs they are safe for;
 //   - a file tool (write_file, edit_file, apply_patch) writing inside a
 //     folder.
 //
 // Rules come from the config (agents.<name>.allow), which apply wherever
-// rules apply, and from "Always allow" answers, which are saved in the
-// agent's folder and apply only where they were given: in that chat, or
-// on this machine (Policy.Place). A rule never answers:
+// rules apply, and from "Always allow" answers, saved in the agent's folder,
+// which apply only where they were given: in that chat, or on this machine
+// (Policy.Place). They answer only for the owner's own turns: a message the
+// owner sent in a chat or typed here, and the run of a schedule the owner
+// made (agent.limitRules). A rule never answers:
 //
-//   - for a turn that has read outside content (it is tainted), nor for a
-//     turn nobody sent a fresh message after an earlier tainted turn in
-//     its session (Env.RulesPaused): the same text that steered the agent
-//     could have written the command;
-//   - for a turn that is not the owner's: a guest's, an inbound A2A task's
-//     or a webhook's (Policy.Place is "");
+//   - for any other turn: a board card's run, a sub-agent's task, a
+//     background result or notice, an API, MCP or A2A request, a guest's or
+//     a webhook's turn (Env.RulesOff, or Policy.Place "");
+//   - for a turn that has read outside content (it is tainted), or that
+//     took in a chat note from such a turn (Env.RulesPaused);
 //   - for a call that always needs a person: a ConfirmTool's, or a write
-//     to the agent's instruction files or to its saved rules;
+//     to the agent's instruction files or to its saved rules, by name or
+//     through a link;
 //   - for a command on the hardline blocklist, which never runs at all.
 
 // Rule is one "always allow".
@@ -53,18 +53,11 @@ type Rule struct {
 	ID string `json:"id"`
 	// Tool is exec, or the file tool the rule covers.
 	Tool string `json:"tool"`
-	// Command is a program and its arguments, as you would type them; a
-	// final "*" takes any further arguments that are not options. Exact is
-	// a command line that must match character for character. An exec rule
-	// has one of the two.
-	Command string `json:"command,omitempty"`
-	Exact   string `json:"exact,omitempty"`
-	// In is the folder an exec rule's command must run in, or below; ""
-	// is the agent's workspace. Here makes it that folder exactly: a
-	// command that names files by relative path means other files in
-	// another folder.
-	In   string `json:"in,omitempty"`
-	Here bool   `json:"here,omitempty"`
+	// Exact is the command line an exec rule allows.
+	Exact string `json:"exact,omitempty"`
+	// In is the folder an exec rule's command must run in, exactly; ""
+	// is the agent's workspace.
+	In string `json:"in,omitempty"`
 	// Program is where the command's program was when the rule was saved
 	// (a resolved, absolute path); a call whose program resolves elsewhere
 	// is not covered. "" compares the program as written.
@@ -85,68 +78,30 @@ type Rule struct {
 // RuleTools are the file tools a rule can cover, besides exec.
 var RuleTools = []string{"write_file", "edit_file", "apply_patch"}
 
-// exactOnly is set where commands run in PowerShell (Windows): patterns
-// split words the way a POSIX shell does, so until there is a PowerShell
-// tokenizer only exact command lines are covered there.
+// exactOnly is set where commands run in PowerShell (Windows): words are
+// split the way a POSIX shell does, so there a command line must match
+// character for character.
 var exactOnly = runtime.GOOS == "windows"
 
-// maxOffered is the longest command "Always allow" is offered for: longer
-// ones do not fit clearly in a chat prompt.
+// maxOffered is the longest command or folder "Always allow" is offered
+// for: longer ones do not fit clearly in a chat prompt.
 const maxOffered = 300
-
-// starRefused are programs a "*" rule may not name: with any arguments they
-// run any code (shells, interpreters, package runners, wrappers).
-var starRefused = []string{"sh", "bash", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "pwsh", "powershell", "cmd",
-	"python", "python2", "python3", "node", "deno", "bun", "ruby", "perl", "php", "osascript", "lua", "tclsh",
-	"npx", "bunx", "pnpx", "uvx", "env", "sudo", "doas", "xargs", "nohup", "nice", "time", "exec", "command",
-	"busybox", "eval", "ssh"}
-
-func refusesStar(program string) bool {
-	base := strings.ToLower(strings.TrimSuffix(filepath.Base(program), ".exe"))
-	if slices.Contains(starRefused, base) {
-		return true
-	}
-	for _, p := range []string{"python", "pwsh", "ruby", "perl", "php", "node"} { // python3.12, perl5.30
-		if strings.HasPrefix(base, p) {
-			return true
-		}
-	}
-	return false
-}
 
 // Validate checks that the rule says one clear thing.
 func (r Rule) Validate() error {
 	switch {
 	case r.Tool == "exec":
-		if (r.Command == "") == (r.Exact == "") {
-			return errors.New("an exec rule needs exactly one of command or exact")
+		if strings.TrimSpace(r.Exact) == "" {
+			return errors.New("an exec rule needs exact: the whole command line")
 		}
 		if r.Path != "" {
 			return errors.New("path is for file tools; an exec rule takes in")
 		}
-		if r.Command != "" {
-			if exactOnly {
-				return errors.New("on Windows only exact command lines can be allowed for now: use exact")
-			}
-			words, any, ok := parsePattern(r.Command)
-			if !ok {
-				return fmt.Errorf("command %q is not a plain program and arguments (no pipes, redirects, variables, wildcards or ~; a final * takes any further arguments)", r.Command)
-			}
-			if any && refusesStar(words[0]) {
-				return fmt.Errorf("command %q: a rule ending in * may not name %s, which would then run anything; allow the exact commands instead", r.Command, filepath.Base(words[0]))
-			}
-			if relativePath(words[0]) && (r.Program == "" || !r.Here) {
-				return fmt.Errorf("command %q: give the program's full path", r.Command)
-			}
-		}
 		if r.In != "" && !absOrHome(r.In) {
 			return fmt.Errorf("in %q must be an absolute path or start with ~/", r.In)
 		}
-		if r.Here && r.In == "" {
-			return errors.New("here needs in")
-		}
 	case slices.Contains(RuleTools, r.Tool):
-		if r.Command != "" || r.Exact != "" || r.In != "" || r.Here || r.Program != "" {
+		if r.Exact != "" || r.In != "" || r.Program != "" {
 			return fmt.Errorf("a %s rule takes only path", r.Tool)
 		}
 		if !absOrHome(r.Path) {
@@ -163,18 +118,10 @@ func (r Rule) Validate() error {
 
 // String says in a few words what the rule covers.
 func (r Rule) String() string {
-	switch {
-	case r.Exact != "":
+	if r.Tool == "exec" {
 		return fmt.Sprintf("exec exactly `%s` in %s", r.Exact, r.folder())
-	case r.Command != "":
-		cmd, more := r.Pattern()
-		if more {
-			return fmt.Sprintf("exec `%s` with any further arguments (not options), in %s", cmd, r.folder())
-		}
-		return fmt.Sprintf("exec `%s` in %s", cmd, r.folder())
-	default:
-		return fmt.Sprintf("%s in %s", r.Tool, r.Path)
 	}
+	return fmt.Sprintf("%s in %s", r.Tool, r.Path)
 }
 
 // Where says where the rule applies.
@@ -188,30 +135,16 @@ func (r Rule) Where() string {
 	return "in chat " + strings.TrimPrefix(r.Place, "chat:")
 }
 
-// Pattern is an exec rule's command as a program and arguments, with more
-// set when it takes any further arguments.
-func (r Rule) Pattern() (cmd string, more bool) {
-	words, more, ok := parsePattern(r.Command)
-	if !ok {
-		return r.Command, false
-	}
-	return joinWords(words), more
-}
-
 func (r Rule) folder() string {
-	switch {
-	case r.In == "":
+	if r.In == "" {
 		return "the workspace"
-	case r.Here:
-		return r.In + " (that folder only)"
 	}
 	return r.In
 }
 
 // same reports whether two rules cover the same calls in the same place.
 func (r Rule) same(o Rule) bool {
-	return r.Tool == o.Tool && r.Command == o.Command && r.Exact == o.Exact && r.Here == o.Here &&
-		r.Program == o.Program && r.Place == o.Place &&
+	return r.Tool == o.Tool && r.Exact == o.Exact && r.Program == o.Program && r.Place == o.Place &&
 		filepath.Clean(expandHome(r.In)) == filepath.Clean(expandHome(o.In)) &&
 		filepath.Clean(expandHome(r.Path)) == filepath.Clean(expandHome(o.Path))
 }
@@ -397,7 +330,7 @@ func turnPlace(env *Env) string {
 // never for a tainted turn, one whose rules are paused, or one that is not
 // the owner's.
 func rulesApply(env *Env) bool {
-	if env.Rules == nil || env.Untrusted() || turnPlace(env) == "" {
+	if env.Rules == nil || env.RulesOff || env.Untrusted() || turnPlace(env) == "" {
 		return false
 	}
 	return env.Policy == nil || !env.Policy.Guest
@@ -432,18 +365,11 @@ func matchRule(env *Env, t Tool, call llm.Block, rules []Rule) (Rule, bool) {
 			return Rule{}, false
 		}
 		cwd, ok := realPath(env.Resolve(in.Cwd))
-		if !ok {
+		if !ok || namesGuarded(env, in.Command, cwd) {
 			return Rule{}, false
 		}
-		words, simple := shellWords(in.Command)
 		for _, r := range rules {
-			if r.Tool != "exec" || !runsIn(env, r, cwd) {
-				continue
-			}
-			if r.Exact != "" && strings.TrimSpace(r.Exact) == strings.TrimSpace(in.Command) {
-				return r, true
-			}
-			if r.Command != "" && simple && !exactOnly && matchWords(r.Command, words) && sameProgram(env, r, words[0], cwd) {
+			if r.Tool == "exec" && runsIn(env, r, cwd) && sameLine(r.Exact, in.Command) && sameProgram(env, r, in.Command, cwd) {
 				return r, true
 			}
 		}
@@ -487,30 +413,44 @@ func allUnder(env *Env, targets, roots, protected []string) bool {
 	return len(targets) > 0
 }
 
-// runsIn reports whether a command run in cwd (resolved) is in the rule's
-// folder.
+// runsIn reports whether a command runs (in cwd, resolved) in the rule's
+// folder exactly: the same words in another folder mean other files.
 func runsIn(env *Env, r Rule, cwd string) bool {
 	dir := env.Workspace
 	if r.In != "" {
 		dir = expandHome(r.In)
 	}
 	root, ok := realPath(dir)
-	if !ok {
+	return ok && root == cwd
+}
+
+// sameLine reports whether a command is the rule's line: the same words,
+// however they are quoted, when both are plain commands a POSIX shell
+// would split the same way; otherwise the same text.
+func sameLine(rule, cmd string) bool {
+	rule, cmd = strings.TrimSpace(rule), strings.TrimSpace(cmd)
+	if rule == cmd {
+		return true
+	}
+	if exactOnly {
 		return false
 	}
-	if r.Here {
-		return root == cwd
-	}
-	return underAny([]string{root}, cwd)
+	a, aok := shellWords(rule)
+	b, bok := shellWords(cmd)
+	return aok && bok && slices.Equal(a, b)
 }
 
 // sameProgram reports whether a command's program is the one the rule was
 // saved for: the same resolved file, when the rule recorded it.
-func sameProgram(env *Env, r Rule, program, cwd string) bool {
+func sameProgram(env *Env, r Rule, cmd, cwd string) bool {
 	if r.Program == "" {
-		return !relativePath(program)
+		return true
 	}
-	got := resolveProgram(env, program, cwd)
+	words, ok := shellWords(cmd)
+	if !ok {
+		return false
+	}
+	got := resolveProgram(env, words[0], cwd)
 	return got != "" && got == r.Program
 }
 
@@ -546,38 +486,55 @@ func resolveProgram(env *Env, program, cwd string) string {
 	return real
 }
 
-// relativePath reports whether a word names a path relative to where the
-// command runs ("./run.sh", "src/x", "..").
-func relativePath(w string) bool {
-	if w == "" || filepath.IsAbs(w) || strings.HasPrefix(w, "~") {
-		return false
+// namesGuarded reports whether a command line names, by any path that
+// exists now, a guarded file (an instruction file, the rules file or its
+// lock, a file with a second name) or something in a protected folder:
+// a symlink "notes.md" to SOUL.md counts. Words are taken loosely, quotes
+// dropped, at every pipe, ;, && and substitution, after = and after a
+// redirect; a word with a wildcard is expanded in cwd. A command that
+// writes through a name made later is beyond this; that is why exec rules
+// are exact lines in one folder.
+func namesGuarded(env *Env, cmd, cwd string) bool {
+	var protected []string
+	if env.Policy != nil {
+		protected = realPaths(env.Policy.Protected)
 	}
-	return strings.ContainsAny(w, `/\`) || w == "." || w == ".." || strings.HasPrefix(w, "./") || strings.HasPrefix(w, "../")
-}
-
-// namesRelative reports whether a command names something relative to the
-// folder it runs in: a program by path, or an argument that is a relative
-// path or a file there. Such a command means other files elsewhere, so its
-// rule is pinned to the folder.
-func namesRelative(words []string, cwd string) bool {
-	for i, w := range words {
-		v := w
-		if i > 0 && strings.HasPrefix(w, "-") {
-			_, val, ok := strings.Cut(w, "=")
-			if !ok {
-				continue
-			}
-			v = val
+	check := func(p string) bool {
+		if _, err := os.Lstat(p); err != nil {
+			return false
 		}
-		if v == "" || filepath.IsAbs(v) {
-			continue
-		}
-		if relativePath(v) || strings.HasPrefix(v, ".") {
+		if guardedTarget(env, p) != "" {
 			return true
 		}
-		if i > 0 {
-			if _, err := os.Lstat(filepath.Join(cwd, v)); err == nil {
-				return true
+		real, ok := realPath(p)
+		return !ok || underAny(protected, real) || underAny(protected, p)
+	}
+	for _, seg := range segments(strings.NewReplacer(">", " ", "<", " ").Replace(cmd)) {
+		for _, w := range seg {
+			cands := []string{w}
+			if _, after, ok := strings.Cut(w, "="); ok {
+				cands = append(cands, after)
+			}
+			for _, c := range cands {
+				c = strings.TrimLeft(c, "0123456789&")
+				if c == "" || strings.HasPrefix(c, "-") && !strings.Contains(c, "=") {
+					continue
+				}
+				c = expandHome(c)
+				if !filepath.IsAbs(c) {
+					c = filepath.Join(cwd, c)
+				}
+				paths := []string{c}
+				if strings.ContainsAny(c, "*?[") {
+					if m, err := filepath.Glob(c); err == nil {
+						paths = m
+					}
+				}
+				for _, p := range paths {
+					if check(p) {
+						return true
+					}
+				}
 			}
 		}
 	}
@@ -611,35 +568,19 @@ func ProposeRule(env *Env, t Tool, call llm.Block) *Rule {
 	case "exec":
 		in, err := decode[execInput](call.Input)
 		cmd := strings.TrimSpace(in.Command)
-		if err != nil || cmd == "" || len(cmd) > maxOffered || strings.ContainsAny(cmd, "`\n\r") ||
-			mentionsGuarded(cmd) || Hardline(cmd) != nil {
+		if err != nil || !showsPlainly(cmd) || mentionsGuarded(cmd) || Hardline(cmd) != nil {
 			return nil
 		}
 		cwd, ok := realPath(env.Resolve(in.Cwd))
 		if !ok {
 			return nil
 		}
-		ws, wok := realPath(env.Workspace)
-		r = Rule{Tool: "exec"}
-		words, plain := shellWords(cmd)
-		switch {
-		case plain && !exactOnly:
-			r.Command = joinWords(words)
-			if prog := resolveProgram(env, words[0], cwd); prog != "" {
-				r.Program = prog
-			} else if relativePath(words[0]) {
-				return nil
-			}
-			if namesRelative(words, cwd) {
-				r.In, r.Here = cwd, true
-			}
-		default:
-			// An exact line may name files by relative path in ways no
-			// parser here can see: it stays in the folder it ran in.
-			r.Exact, r.In, r.Here = cmd, cwd, true
-		}
-		if r.In == "" && (!wok || !underAny([]string{ws}, cwd)) {
+		r = Rule{Tool: "exec", Exact: cmd}
+		if ws, ok := realPath(env.Workspace); !ok || ws != cwd {
 			r.In = cwd
+		}
+		if words, plain := shellWords(cmd); plain && !exactOnly {
+			r.Program = resolveProgram(env, words[0], cwd)
 		}
 	case "write_file", "edit_file", "apply_patch":
 		targets, ok := fileTargets(t, call.Input)
@@ -655,7 +596,7 @@ func ProposeRule(env *Env, t Tool, call llm.Block) *Rule {
 			dirs = append(dirs, filepath.Dir(real))
 		}
 		dir := commonDir(dirs)
-		if broadFolder(dir) {
+		if broadFolder(dir) || !showsPlainly(dir) {
 			return nil
 		}
 		r = Rule{Tool: call.ToolName, Path: dir}
@@ -669,6 +610,12 @@ func ProposeRule(env *Env, t Tool, call llm.Block) *Rule {
 		return nil
 	}
 	return &r
+}
+
+// showsPlainly reports whether text can be shown whole and as it is in a
+// chat: no backquote or line break, and short enough to read.
+func showsPlainly(text string) bool {
+	return text != "" && len(text) <= maxOffered && !strings.ContainsAny(text, "`\n\r")
 }
 
 // commonDir is the deepest folder that holds every one of dirs.
@@ -794,33 +741,36 @@ func guardedWrite(env *Env, t Tool, call llm.Block) string {
 }
 
 // mentionsGuarded reports whether a command names an instruction file or
-// the rules file, however it is quoted or cased; no rule covers such a
-// command.
+// the rules file, however it is quoted, escaped or cased (Unicode case
+// folding included: "ſOUL.md" is SOUL.md on a disk that ignores case); no
+// rule covers such a command.
 func mentionsGuarded(cmd string) bool {
-	plain := strings.ToLower(strings.NewReplacer(`'`, "", `"`, "", `\`, "").Replace(cmd))
-	names := append(slices.Clone(InstructionFiles), RulesFileName)
-	for _, name := range names {
-		if strings.Contains(plain, strings.ToLower(name)) {
+	plain := fold(strings.NewReplacer(`'`, "", `"`, "", `\`, "").Replace(cmd))
+	for _, name := range append(slices.Clone(InstructionFiles), RulesFileName) {
+		if strings.Contains(plain, fold(name)) {
 			return true
-		}
-	}
-	if words, ok := shellWords(cmd); ok {
-		for _, w := range words {
-			for _, name := range names {
-				if strings.EqualFold(filepath.Base(w), name) {
-					return true
-				}
-			}
 		}
 	}
 	return false
 }
 
-// Shell words. Patterns judge only plain commands: a program and its
-// arguments. Anything a shell would expand or that joins commands (pipes,
-// ;, &&, redirects, $ and backquotes, globs, ~, braces, comments) makes
-// the command one no pattern covers, and so does quoting that does not
-// close: when in doubt, a person is asked.
+// fold maps each letter to one of its case forms, the same for all of
+// them, so two strings that differ only in case fold to the same text.
+func fold(s string) string {
+	return strings.Map(func(r rune) rune {
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		return least
+	}, s)
+}
+
+// Shell words. Two command lines are the same when a POSIX shell would
+// split both into the same words: a program and its arguments, quoted
+// either way. Anything a shell would expand or that joins commands (pipes,
+// ;, &&, redirects, $ and backquotes, globs, ~, braces, comments), and
+// quoting that does not close, is compared as text instead.
 
 // unsafeChars are the characters that, unquoted, make a command more than
 // a program and its arguments.
@@ -895,52 +845,4 @@ func shellWords(s string) ([]string, bool) {
 		return nil, false // nothing to run, or a variable set for the command
 	}
 	return words, true
-}
-
-// parsePattern splits a rule's command into its words; any is true when
-// it ends in "*", which takes any further arguments.
-func parsePattern(p string) (words []string, any bool, ok bool) {
-	p = strings.TrimSpace(p)
-	if rest, cut := strings.CutSuffix(p, " *"); cut {
-		p, any = strings.TrimSpace(rest), true
-	}
-	words, ok = shellWords(p)
-	return words, any, ok
-}
-
-// matchWords reports whether a command's words fit a rule's pattern. The
-// words a final "*" takes may not be options (start with "-"), unless
-// they come after "--".
-func matchWords(pattern string, words []string) bool {
-	want, any, ok := parsePattern(pattern)
-	if !ok || len(words) < len(want) || (!any && len(words) != len(want)) {
-		return false
-	}
-	if !slices.Equal(words[:len(want)], want) {
-		return false
-	}
-	endOfOptions := slices.Contains(want, "--")
-	for _, w := range words[len(want):] {
-		switch {
-		case w == "--" && !endOfOptions:
-			endOfOptions = true
-		case strings.HasPrefix(w, "-") && !endOfOptions:
-			return false
-		}
-	}
-	return true
-}
-
-// joinWords writes words back as a command, quoting any word a shell
-// would not take as it is.
-func joinWords(words []string) string {
-	out := make([]string, len(words))
-	for i, w := range words {
-		if w != "" && !strings.ContainsAny(w, unsafeChars+" \t'\"\\") {
-			out[i] = w
-			continue
-		}
-		out[i] = "'" + strings.ReplaceAll(w, "'", `'\''`) + "'"
-	}
-	return strings.Join(out, " ")
 }

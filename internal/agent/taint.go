@@ -43,28 +43,28 @@ func (t *turn) restoreTaint(env *tools.Env, recs []session.Record) {
 	}
 }
 
-// pauseRules stops approval rules (tools.Env.RulesPaused) for a turn that
-// nobody sent a fresh message, in a session where an earlier turn read
-// outside content: that text is still in the context, and only the
-// owner's next message re-arms the rules. A delegated task whose parent
-// had them paused has them paused too.
-func (t *turn) pauseRules(env *tools.Env, recs []session.Record) {
+// limitRules decides whether approval rules may answer for the turn.
+// They answer only for the owner's own message (in a chat, or typed on
+// this machine) and for the run of a schedule a clean owner turn made
+// (TurnPayload.Tainted is unset). Every other turn, a board card's run, a
+// sub-agent's task, a background result or notice, an API, MCP or A2A
+// request, asks a person (tools.Env.RulesOff). The policy's Place then
+// says where the turn stands, and "" (a guest's, a webhook's) means none.
+//
+// Rules are also paused (tools.Env.RulesPaused) for a turn whose message
+// carries a chat note from a turn outside content steered: it entered the
+// session with this message, so only the owner's next message re-arms
+// them.
+func (t *turn) limitRules(env *tools.Env) {
+	i := t.info
+	scheduled := i.Source == SourceSchedule && !i.Tainted && !i.Delegated
+	if !i.OwnerMessage() && !scheduled {
+		env.RulesOff = true
+	}
 	if t.sub != nil && t.sub.RulesPaused {
 		env.RulesPaused = true
-		return
 	}
-	if !t.background && t.sub == nil {
-		return
-	}
-	for _, rec := range recs {
-		if rec.JobID == t.job.ID || rec.Message.Role != llm.Assistant {
-			continue
-		}
-		for _, b := range rec.Message.Blocks {
-			if b.Type == llm.Opaque || (b.Type == llm.ToolUse && t.r.Tools != nil && t.r.Tools.MayTaint(b.ToolName)) {
-				env.RulesPaused = true
-				return
-			}
-		}
+	if t.r.Notes != nil && t.r.Notes.NotesTainted(t.ctx, t.job.ID) {
+		env.RulesPaused = true
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/events"
@@ -81,6 +82,10 @@ type TurnPayload struct {
 	// Tainted: the work was set up by a turn that had read outside content
 	// (a schedule or board card it created), so this turn starts tainted.
 	Tainted bool `json:"tainted,omitempty"`
+	// Local: the owner typed this on this machine (the CLI, the TUI, hk
+	// talk). A turn with no reply address is not local without it: the
+	// API, MCP clients and editors send none either.
+	Local bool `json:"local,omitempty"`
 }
 
 // Attachment is a file that came with a user message. The bytes live in the
@@ -143,6 +148,8 @@ type Turn struct {
 	Background bool
 	// Tainted: set up by a turn that had read outside content (TurnPayload).
 	Tainted bool
+	// Local: the owner typed it on this machine (TurnPayload.Local).
+	Local bool
 }
 
 // Sender is the model call. *llm.Router implements it; tests use fakes.
@@ -181,6 +188,8 @@ type Runner struct {
 	Policy PolicyFunc
 
 	approvers sync.Map // session id -> tools.Approver
+	trust     sync.Map // turn job id -> func() bool while it runs, true after if it ended untrusted (Untrusted)
+	trustN    atomic.Int64
 	textOnly  sync.Map // session id -> true once the model rejected its media
 	routes    sync.Map // session id -> time of its last turn on the main model (route.go)
 
@@ -247,8 +256,10 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 
 // Submit queues a user message as a turn. The message is written by the turn
 // itself so that it can never interleave with a turn already in progress.
+// Submit queues a message the owner typed on this machine (the CLI and the
+// TUI use it), so the turn is Local.
 func (r *Runner) Submit(ctx context.Context, sessionID, text string) (string, error) {
-	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text})
+	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text, Local: true})
 }
 
 func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
@@ -263,7 +274,7 @@ func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
 	return r.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: t.ID, Kind: kind, Agent: sess.Agent, SerialKey: t.Session, Priority: 10,
 		Payload: TurnPayload{Session: t.Session, Text: t.Text, Media: t.Media, Origin: t.Origin, Compact: t.Compact, Sub: t.Sub,
-			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted},
+			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted, Local: t.Local},
 	})
 }
 
@@ -291,10 +302,12 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	ctx = llm.WithCaller(ctx, caller)
 	ctx = withOrigin(ctx, p.Origin)
-	ctx = WithSource(ctx, p.Source, p.Task)
+	info := TurnInfo{Source: p.Source, Task: p.Task, Local: p.Local, Background: p.Background || p.Compact,
+		Delegated: p.Sub != nil, Tainted: p.Tainted || p.Source == SourceA2A}
+	ctx = WithTurnInfo(ctx, info)
 	chain, overridden := r.chainFor(ctx, sess.ID, spec)
-	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden,
-		background: p.Background, tainted: p.Tainted || p.Source == SourceA2A}
+	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden, info: info}
+	defer r.settleTrust(j.ID)
 	t.useSub(p.Sub)
 	hook := TurnHookPayload{Event: HookTurnStart, Agent: spec.Name, Session: sess.ID, Job: j.ID, Text: p.Text}
 	r.Fire(ctx, HookTurnStart, spec.Name, hook)
@@ -353,15 +366,11 @@ type turn struct {
 	onFast     bool
 	mainChain  []llm.Target
 	sub        *SubturnSpec // a delegated task's options, or nil
-	// background: nobody sent this turn a fresh message (a schedule, a
-	// notice); tainted: it starts tainted (TurnPayload.Tainted, or an
-	// inbound A2A task, which is outside content).
-	background, tainted bool
-	// untrusted: by the end, outside content may have steered the turn
-	// (tools.Env.Untrusted); a background result it hands back carries it.
-	untrusted func() bool
-	msgs      []llm.Message
-	final     string
+	// info says what started the turn (TurnInfo): whether approval rules
+	// may answer for it, and whether it starts tainted.
+	info  TurnInfo
+	msgs  []llm.Message
+	final string
 
 	// Compaction state (compact.go). msgs is always the whole transcript;
 	// the model sees summary plus msgs[base:].
@@ -421,12 +430,12 @@ func (t *turn) run(userText string, media []Attachment) error {
 		env.Approver = t.r.Approvers(t.sess.ID)
 	}
 	t.applyPolicy(env)
-	if t.tainted {
+	if t.info.Tainted {
 		env.Taint.Mark()
 	}
 	t.restoreTaint(env, recs)
-	t.pauseRules(env, recs)
-	t.untrusted = env.Untrusted
+	t.limitRules(env)
+	t.r.trackTrust(t.job.ID, env)
 	var pending []string
 	if t.r.ToolsPending != nil {
 		pending = t.r.ToolsPending(t.ctx, t.toolsets())
@@ -638,4 +647,50 @@ func preview(s string) string {
 		s = s[:120] + "..."
 	}
 	return s
+}
+
+// trackTrust lets Untrusted answer for the turn while it runs.
+func (r *Runner) trackTrust(jobID string, env *tools.Env) {
+	r.trust.Store(jobID, env.Untrusted)
+}
+
+// settleTrust keeps, once the turn ends, only whether it ended untrusted.
+// The record is in memory: it is what the turn's deliveries and board
+// result carry right after it, and a few thousand are kept.
+func (r *Runner) settleTrust(jobID string) {
+	v, ok := r.trust.Load(jobID)
+	if !ok {
+		return
+	}
+	f, running := v.(func() bool)
+	if !running {
+		return
+	}
+	if !f() {
+		r.trust.Delete(jobID)
+		return
+	}
+	r.trust.Store(jobID, true)
+	if r.trustN.Add(1) > 5000 {
+		r.trustN.Store(0)
+		r.trust.Range(func(k, v any) bool {
+			if _, done := v.(bool); done && k != jobID {
+				r.trust.Delete(k)
+			}
+			return true
+		})
+	}
+}
+
+// Untrusted reports whether outside content may have steered the turn job
+// jobID (tools.Env.Untrusted): what it delivers to a chat is a tainted
+// note there, and a board card it ran is marked tainted.
+func (r *Runner) Untrusted(jobID string) bool {
+	switch v, _ := r.trust.Load(jobID); f := v.(type) {
+	case func() bool:
+		return f()
+	case bool:
+		return f
+	}
+	return false
 }
