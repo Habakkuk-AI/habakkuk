@@ -24,9 +24,18 @@ habakkuk schedules pause|resume|rm|run ID
 |---|---|
 | A cron expression | `"0 9 * * 1-5"` (9:00 on weekdays) |
 | An interval | `"@every 30m"` |
-| One time | `"at 2026-12-24 18:00"` |
+| One time | `"at 2026-12-24 18:00"`, or with a zone: `"at 2026-12-24T23:00:00Z"` |
 
-Times are in the config's `timezone` (default the server's). `-to` takes a `CHANNEL:CHAT[:THREAD]` target, as `habakkuk send` does. `habakkuk schedules run ID` queues an extra run now.
+Times are in the config's `timezone` (default the server's). `schedules add` prints the first run with its zone, and the UTC time when that zone is another one:
+
+```
+sch_4f1c scheduled; first run Mon 2026-11-09 17:57 America/Toronto (22:57 UTC)
+The time was read in America/Toronto, the config timezone. For another zone, give an offset: at 2026-11-09T17:57:00Z is UTC.
+```
+
+`-to` takes a `CHANNEL:CHAT[:THREAD]` target, as `habakkuk send` does. `habakkuk schedules run ID` queues an extra run now.
+
+`habakkuk schedules` shows each schedule's last result: `started` while a run is going, then `done`, `failed: <reason>`, or a script's own status. A one-off that has run shows as `ran once`.
 
 ## How runs work
 

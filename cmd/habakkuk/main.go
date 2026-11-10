@@ -980,6 +980,9 @@ func schedules(ctx context.Context, home string, args []string) error {
 	st := a.Schedules
 	switch sub {
 	case "list", "ls":
+		if err := a.Scheduler.Settle(ctx); err != nil {
+			return err
+		}
 		list, err := st.List(ctx, "")
 		if err != nil {
 			return err
@@ -1047,7 +1050,10 @@ func schedules(ctx context.Context, home string, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s scheduled; first run %s\n", created.ID, created.NextRun.Format("Mon 2006-01-02 15:04 MST"))
+		fmt.Printf("%s scheduled; first run %s\n", created.ID, schedule.When(created.NextRun, st.Location()))
+		if note := schedule.ZoneNote(created.Spec, st.Location()); note != "" {
+			fmt.Println(note)
+		}
 	case "rm", "delete":
 		if len(args) != 1 {
 			return errors.New("usage: habakkuk schedules rm ID")
