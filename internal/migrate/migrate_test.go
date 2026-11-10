@@ -798,3 +798,45 @@ func TestJSON5(t *testing.T) {
 		}
 	}
 }
+
+// Facts in the memory store database become notes, tagged with their
+// category and tags; a fact that repeats a MEMORY.md entry is not doubled.
+func TestHermesFactStore(t *testing.T) {
+	src := fixture(t, Hermes)
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(src, "memory_store.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE facts (fact_id INTEGER PRIMARY KEY, content TEXT, category TEXT, tags TEXT, trust_score REAL, created_at TEXT)`,
+		`INSERT INTO facts (content, category, tags, created_at) VALUES ('Ada wants a phone call, not a message, for anything before 8am.', 'user_pref', 'Ada,mornings', '2026-09-01 07:00:00')`,
+		`INSERT INTO facts (content, category, tags, created_at) VALUES ('The home server runs Debian 13 and is reached as nas.local.', 'general', '', '2026-09-02 07:00:00')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	h, err := Read(options(Hermes, src, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := h.Agents[0]
+	if len(main.Notes) != 5 {
+		t.Fatalf("notes = %d (%v); want the 4 MEMORY.md entries plus 1 new fact", len(main.Notes), names(main.Notes, func(n Note) string { return n.Title }))
+	}
+	var got *Note
+	for i := range main.Notes {
+		if strings.HasPrefix(main.Notes[i].Body, "Ada wants a phone call") {
+			got = &main.Notes[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("the fact was not imported")
+	}
+	for _, want := range []string{"imported", "user_pref", "ada", "mornings"} {
+		if !slices.Contains(got.Tags, want) {
+			t.Errorf("tags = %v, want %q among them", got.Tags, want)
+		}
+	}
+}

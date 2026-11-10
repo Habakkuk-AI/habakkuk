@@ -1,15 +1,21 @@
 package migrate
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
 )
 
 // Hermes Agent keeps one home (~/.hermes, or $HERMES_HOME) with
@@ -119,6 +125,7 @@ func (r *hermesReader) read() error {
 	if err := r.memories(); err != nil {
 		return err
 	}
+	r.facts()
 	if err := r.skills(); err != nil {
 		return err
 	}
@@ -302,6 +309,77 @@ func (r *hermesReader) memories() error {
 		r.agent.Profile = "## About you\n\n" + strings.Join(lines, "\n") + "\n"
 	}
 	return nil
+}
+
+// facts imports the fact store Hermes Agent keeps beside its memory files
+// (memory_store.db, written by its memory store plugin): one note per fact,
+// tagged with its category and tags. Facts already imported from
+// MEMORY.md are not repeated.
+func (r *hermesReader) facts() {
+	path := filepath.Join(r.h.dir, "memory_store.db")
+	if _, err := os.Stat(path); err != nil {
+		return
+	}
+	facts, err := readFacts(path)
+	if err != nil {
+		r.f.skip("the facts in %s: %v", path, err)
+		return
+	}
+	seen := map[string]bool{}
+	for _, n := range r.agent.Notes {
+		seen[strings.Join(strings.Fields(n.Body), " ")] = true
+	}
+	for _, f := range facts {
+		key := strings.Join(strings.Fields(f.content), " ")
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		tags := []string{"imported"}
+		if f.category != "" && f.category != "general" {
+			tags = append(tags, f.category)
+		}
+		tags = append(tags, strings.Split(f.tags, ",")...)
+		r.agent.Notes = append(r.agent.Notes, Note{Title: titleOf(f.content), Body: strings.TrimSpace(f.content), Tags: memory.NormalizeTags(tags)})
+	}
+	dedupeTitles(r.agent.Notes)
+}
+
+type fact struct{ content, category, tags string }
+
+// readFacts reads memory_store.db's facts table, oldest first.
+func readFacts(path string) ([]fact, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	q := url.Values{}
+	q.Add("mode", "ro")
+	q.Add("_pragma", "busy_timeout(5000)")
+	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'facts'`).Scan(&n); err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, nil
+	}
+	rows, err := db.QueryContext(ctx, `SELECT COALESCE(content, ''), COALESCE(category, ''), COALESCE(tags, '') FROM facts ORDER BY created_at, rowid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []fact
+	for rows.Next() {
+		var f fact
+		if err := rows.Scan(&f.content, &f.category, &f.tags); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }
 
 // splitEntries splits a memory file on lines holding only "§".
