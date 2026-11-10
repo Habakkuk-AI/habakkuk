@@ -173,6 +173,9 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 	if !m.Direct && m.SenderName != "" {
 		text = m.SenderName + ": " + text
 	}
+	if q := quoteLine(m.Quote); q != "" {
+		text = strings.TrimSpace(q + "\n" + text)
+	}
 	media := g.ingest(ctx, conv.Agent, m.Attachments)
 	from := to
 	from.Trust = TrustGuest
@@ -193,6 +196,28 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 	if g.Wake != nil {
 		g.Wake()
 	}
+}
+
+// maxQuote is how much of a quoted message the agent sees.
+const maxQuote = 500
+
+// quoteLine tells the agent which message a reply quotes, or "".
+func quoteLine(q *Quote) string {
+	if q == nil {
+		return ""
+	}
+	text := shorten(q.Text, maxQuote)
+	if text == "" {
+		return ""
+	}
+	who := strings.TrimSpace(q.From)
+	switch {
+	case q.Self:
+		who = "you"
+	case who == "":
+		who = "an earlier message"
+	}
+	return fmt.Sprintf("[Replying to %s: \"%s\"]", who, text)
 }
 
 // ingest downloads a message's attachments into the blob store, saves a copy
