@@ -12,6 +12,9 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 )
 
+// DryRunID is the id of a retro that is only shown, never stored.
+const DryRunID = "dry-run"
+
 // Markdown is a retro's readable report.
 func Markdown(ret *Retro, loc *time.Location) string {
 	if loc == nil {
@@ -54,7 +57,9 @@ func Markdown(ret *Retro, loc *time.Location) string {
 		line("")
 		line("## Proposals")
 		line("")
-		line("Approve with `habakkuk retro apply %s N`, or `/retro apply N` in a chat; reject with `reject`. Skill and memory changes can also be applied on their own with `retro: {apply: safe}`. SOUL.md, config, schedule changes and questions always wait for you.", ret.ID)
+		if ret.ID != DryRunID {
+			line("Approve with `habakkuk retro apply %s N`, or `/retro apply N` in a chat; reject with `reject`. Skill and memory changes can also be applied on their own with `retro: {apply: safe}`. SOUL.md, config, schedule changes and questions always wait for you.", ret.ID)
+		}
 		for _, a := range ret.Actions {
 			line("")
 			line("### %d. %s `%s` [%s]", a.N, a.Kind, a.Target, a.Status)

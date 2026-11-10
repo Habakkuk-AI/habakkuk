@@ -125,6 +125,13 @@ func JobID(agent string, from, to time.Time) string {
 	return "retro_" + agent + "_" + from.UTC().Format(f) + "_" + to.UTC().Format(f)
 }
 
+// Recent is the period of an on-demand retro: the last days up to the end
+// of the current minute, so asking twice in a minute gets the same retro.
+func Recent(days int, now time.Time) (from, to time.Time) {
+	to = now.Truncate(time.Minute).Add(time.Minute)
+	return to.AddDate(0, 0, -days), to
+}
+
 type payload struct {
 	From  int64 `json:"from"` // unix ms
 	To    int64 `json:"to"`

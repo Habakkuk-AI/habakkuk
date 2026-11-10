@@ -116,8 +116,8 @@ func (a *App) RunRetro(ctx context.Context, agentName string, days int) (*retro.
 	if days <= 0 {
 		days = 7
 	}
-	to := time.Now().Truncate(time.Minute)
-	id, err := a.Retro.Enqueue(ctx, agentName, to.AddDate(0, 0, -days), to, true)
+	from, to := retro.Recent(days, time.Now())
+	id, err := a.Retro.Enqueue(ctx, agentName, from, to, true)
 	if err != nil {
 		return nil, err
 	}
