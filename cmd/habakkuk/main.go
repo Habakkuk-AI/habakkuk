@@ -137,8 +137,8 @@ Usage:
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Print(usage)
-		os.Exit(2)
+		noArgs(os.Stdout, config.DefaultHome(), cliName(), time.Now())
+		return
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
