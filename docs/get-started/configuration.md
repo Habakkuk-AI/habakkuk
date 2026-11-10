@@ -96,7 +96,7 @@ For a description of each file, see [Architecture: storage](../reference/archite
 
 ## What reloads without a restart
 
-Habakkuk reads `SOUL.md`, `AGENTS.md`, `USER.md` and the memory and skill listings when a session starts. It reads persona files on every turn. So your edits to them reach every new session (start one with `/new`) without a restart. A session that's already open keeps its frozen prompt, the one it started with.
+Habakkuk reads `SOUL.md`, `AGENTS.md`, `USER.md`, the workspace's [project instruction files](../agents/agents.md#project-instruction-files) and the memory and skill listings when a session starts. It reads persona files on every turn. So your edits to them reach every new session (start one with `/new`) without a restart. A session that's already open keeps its frozen prompt, the one it started with.
 
 While it runs, `hk serve` checks `$HABAKKUK_HOME` every 3 seconds. What it does depends on what changed:
 

@@ -10,6 +10,7 @@ import (
 // automatic titles from its config. It runs after the spec's chain is built.
 func agentFeatures(ac *config.Agent, spec *agent.Spec) {
 	spec.ToolSearchOver = max(ac.ToolSearchOver, 0) // -1 (off) becomes 0
+	spec.ProjectFiles = ac.ProjectFiles
 	// Loop guard thresholds: -1 (off) becomes 0.
 	if g := ac.LoopGuard; g != nil {
 		spec.Loop = agent.LoopLimits{RepeatWarn: max(g.RepeatWarn, 0), RepeatStop: max(g.RepeatStop, 0),

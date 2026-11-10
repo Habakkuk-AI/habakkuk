@@ -50,6 +50,8 @@ The taint stays with the turn across a restart. Say a turn reads a web page and 
 
 Setting `allow_tainted_exec: true` on an agent turns this off. The audit flags it.
 
+Files in a project on your disk don't taint a turn, whether the agent reads them with its tools or Habakkuk puts the project's `AGENTS.md`, `CLAUDE.md` and `.cursorrules` in the prompt. Those three go in marked as untrusted unless the folder is the agent's own workspace, and the agent is told to use them for conventions only, never as a reason to act. See [Project instruction files](../agents/agents.md#project-instruction-files).
+
 ## Trusted folders for notes
 
 `trusted_write_paths` lets an agent write notes to named folders outside its workspace without approval. That applies from a chat, and after the agent has read outside content. See [how it works](../agents/approvals.md#trusted-folders-for-notes).

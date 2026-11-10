@@ -59,6 +59,10 @@ type Spec struct {
 	ReportHome string
 	// Loop ends turns that keep repeating themselves (loopguard.go).
 	Loop LoopLimits
+	// ProjectFiles is on (default when ""), trusted or off: whether new
+	// sessions read the workspace's AGENTS.md, CLAUDE.md and .cursorrules
+	// (projectfiles.go).
+	ProjectFiles string
 }
 
 type TurnPayload struct {
@@ -227,6 +231,14 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 	var snap Snapshot
 	if r.Snapshot != nil {
 		snap = r.Snapshot(ctx, spec)
+	}
+	snap.Project = LoadProjectFiles(spec.Dir, spec.Workspace, spec.ProjectFiles)
+	if n := len(snap.Project.Files); n > 0 && r.Log != nil {
+		paths := make([]string, 0, n)
+		for _, f := range snap.Project.Files {
+			paths = append(paths, f.Path)
+		}
+		r.Log.Info("project instruction files read", "agent", agent, "files", paths, "trusted", snap.Project.Files[0].Trusted)
 	}
 	switch {
 	case opts.Onboard:

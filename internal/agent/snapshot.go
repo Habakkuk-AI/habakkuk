@@ -20,6 +20,8 @@ type Snapshot struct {
 	Language string
 	// Onboarding puts the welcome for a new user in the prompt.
 	Onboarding bool
+	// Project is the workspace's instruction files (projectfiles.go).
+	Project ProjectFiles
 }
 
 type MemoryRef struct {

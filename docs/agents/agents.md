@@ -30,6 +30,7 @@ agents:
 | `permission`, `approvals`, `reviewer_model` | What the agent may do without asking, and who decides when it must ask. See [Permissions and approvals](approvals.md) |
 | `trust`, `channel_allow`, `allow_tainted_exec` | Lift the extra checks on chat-driven and tainted turns. See [Security](../deploy/security.md) |
 | `workspace` | The folder its file tools and commands work in (default `$HABAKKUK_HOME/agents/<name>/workspace`) |
+| `project_files` | Read the workspace's `AGENTS.md`, `CLAUDE.md` and `.cursorrules` into new sessions: `on` (default), `trusted` or `off`. See [Project instruction files](#project-instruction-files) |
 | `toolsets` | The tools it gets. Without the setting: `core`, `memory`, `skills`, `schedule`, `delegate` and `board`. A list replaces the default. See [Tools](../tools/index.md) |
 | `web` | Use the provider's hosted web search and fetch where the model supports it (default `true`) |
 | `compact_at` | Summarize older messages once a prompt reaches this many tokens (default 600000 on `anthropic` providers, 150000 otherwise; `-1` turns it off) |
@@ -75,6 +76,26 @@ Each agent keeps its files in `$HABAKKUK_HOME/agents/<name>/`:
 | `USER.md` | The agent's profile of the user. See [Memory](memory.md#the-user-profile) |
 
 Habakkuk reads these files when a session starts. Your edits reach every new session (`/new`), and you don't need to restart. A session that's already open keeps the prompt it started with, so the provider's prompt cache stays valid.
+
+### Project instruction files
+
+Point an agent's `workspace` at a code project and it picks up the instructions that project keeps for coding agents. When a session starts, Habakkuk looks for `AGENTS.md`, `CLAUDE.md` and `.cursorrules` in the workspace and in each folder above it, up to the root of its git repository. They go into the prompt in that order, from the repository root down, so the rules closest to the workspace come last. Outside a repository, only the workspace itself is read.
+
+- **Size.** Each file is cut at 16 KB, and all of them together stop at 32 KB. Files past the limit are left out.
+- **What was read.** The prompt names every file it read, cut or left out, and the log has a `project instruction files read` line with the paths.
+- **Links.** A `CLAUDE.md` that links to `AGENTS.md` is read once. A file that links to somewhere outside the project is left out, so a project can't pull another file on your computer into the prompt.
+- **When edits show up.** Like the files above, they're read when a session starts. Send `/new` after you change one.
+
+Who wrote the files decides how far the agent trusts them. The workspace Habakkuk makes for the agent, `$HABAKKUK_HOME/agents/<name>/workspace`, holds what you and the agent wrote, so its files count as instructions. Any other folder is a project that anyone with a commit could have written to. Those files are marked as untrusted. The agent uses them for the project's conventions, such as code style and how to build and test, but it won't run a command, send anything or change a setting because one of them says so. If a file asks for that, the agent tells you instead. This is the same rule it follows for web pages and tool output.
+
+```yaml
+agents:
+  coder:
+    workspace: ~/code/corner-bakery
+    project_files: trusted   # on (default) | trusted | off
+```
+
+Use `trusted` only for a project where you know everyone who can change those files. Use `off` to stop reading them.
 
 ### Personas
 
