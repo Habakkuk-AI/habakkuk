@@ -195,6 +195,9 @@ type Runner struct {
 	CheckModel func(ref string) error
 	// Budget is the spending limits (budget.go); nil means none.
 	Budget Budget
+	// Notes puts messages a chat got from outside its own turns before the
+	// next user message of that chat's session (origin.go); nil means none.
+	Notes ChatNotes
 }
 
 // Attach registers an approver for a session while a client is present.
@@ -379,9 +382,15 @@ func (t *turn) run(userText string, media []Attachment) error {
 		if t.r.Sessions.SetTitle(t.ctx, t.sess.ID, title(userText)) != nil {
 			t.r.Log.Warn("set title failed", "session", t.sess.ID)
 		}
-		if err := t.append(userMessage(t.stamp(userText+t.r.preamble(t.ctx, t.sess.ID)), media), "", nil); err != nil {
+		notes := t.r.takeNotes(t.ctx, t.sess.ID, t.job.ID)
+		if err := t.append(userMessage(t.stamp(notes+userText+t.r.preamble(t.ctx, t.sess.ID)), media), "", nil); err != nil {
 			return err
 		}
+	}
+	// Written now or by an earlier attempt: either way the notes are in
+	// the transcript, and no later turn may show them again.
+	if t.r.Notes != nil {
+		t.r.Notes.NotesSeen(t.ctx, t.job.ID)
 	}
 
 	env := t.r.Env(t.spec, t.sess.ID)
@@ -544,6 +553,18 @@ func (t *turn) onModelEvent(e llm.Event) {
 	case llm.EventRetry:
 		t.r.publish(t.sess.ID, events.Retry, e.Text, false)
 	}
+}
+
+// takeNotes is the chat notes for a turn's user message, followed by a
+// blank line, or "".
+func (r *Runner) takeNotes(ctx context.Context, sessionID, jobID string) string {
+	if r.Notes == nil {
+		return ""
+	}
+	if notes := strings.TrimSpace(r.Notes.TakeNotes(ctx, sessionID, jobID)); notes != "" {
+		return notes + "\n\n"
+	}
+	return ""
 }
 
 // stamp puts the time in the user turn rather than the system prompt, so the
