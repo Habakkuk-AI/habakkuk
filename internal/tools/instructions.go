@@ -2,15 +2,16 @@ package tools
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 )
 
-// InstructionFileNames are the project files whose text goes into an
-// agent's prompt as instructions when they sit in its own workspace. (The
+// InstructionFileNames are the project files Habakkuk reads into new
+// sessions. Whether one is followed depends on its exact content having
+// been trusted by the owner (hk projects trust); refusing a tainted turn's
+// file tools here is a cheap extra, not what keeps them safe. (The
 // agent's own SOUL.md and AGENTS.md are in its folder, which is protected:
 // a tainted turn's write there already needs a human.)
 var InstructionFileNames = []string{"AGENTS.md", "CLAUDE.md", ".cursorrules"}
@@ -20,25 +21,15 @@ var InstructionFileNames = []string{"AGENTS.md", "CLAUDE.md", ".cursorrules"}
 // is: text planted in a web page must not become standing instructions
 // for every later session, the way it cannot set the identity or write
 // trusted memory. The name is checked as written and after symlinks, so a
-// link named notes.md cannot reach AGENTS.md. The shell is not covered
-// here; in such a turn it needs a human anyway.
+// link named notes.md cannot reach AGENTS.md. Other tools that save files
+// are not covered: a file they leave is untrusted anyway, because its
+// exact content was never trusted (hk projects trust).
 func instructionWrite(env *Env, t Tool, call llm.Block) error {
 	guest := env.Policy != nil && env.Policy.Guest
 	if !env.Taint.Marked() && !guest {
 		return nil
 	}
-	var paths []string
-	if pt, ok := t.(PathTool); ok {
-		if p, err := pt.TargetPath(call.Input); err == nil {
-			paths = append(paths, p)
-		}
-	}
-	if pt, ok := t.(PathsTool); ok {
-		if ps, err := pt.TargetPaths(call.Input); err == nil {
-			paths = append(paths, ps...)
-		}
-	}
-	for _, p := range paths {
+	for _, p := range targetPaths(t, call) {
 		abs := env.Resolve(p)
 		names := []string{filepath.Base(abs)}
 		if real, err := filepath.EvalSymlinks(abs); err == nil {
@@ -66,109 +57,37 @@ func isInstructionFile(name string) bool {
 	return false
 }
 
-// fileState is what an instruction file in the workspace was before a
-// call, so the call's change can be undone.
-type fileState struct {
-	exists  bool
-	info    os.FileInfo
-	link    string // symlink target
-	content []byte // a regular file's bytes, up to maxRestore
-}
-
-// maxRestore is the largest instruction file guardInstructionFiles keeps
-// a copy of; the prompt reads 16 KB of each.
-const maxRestore = 1 << 20
-
-func instructionState(path string) fileState {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return fileState{}
-	}
-	st := fileState{exists: true, info: info}
-	switch {
-	case info.Mode()&os.ModeSymlink != 0:
-		st.link, _ = os.Readlink(path)
-	case info.Mode().IsRegular() && info.Size() <= maxRestore:
-		st.content, _ = os.ReadFile(path)
-	}
-	return st
-}
-
-func (a fileState) same(b fileState) bool {
-	if a.exists != b.exists {
-		return false
-	}
-	if !a.exists {
-		return true
-	}
-	return a.info.Mode() == b.info.Mode() && a.info.Size() == b.info.Size() && a.info.ModTime().Equal(b.info.ModTime()) && a.link == b.link
-}
-
-// restore puts the file back as it was.
-func (a fileState) restore(path string) error {
-	cur, err := os.Lstat(path)
-	if err == nil && cur.IsDir() {
-		return fmt.Errorf("%s is now a folder; remove it by hand", path)
-	}
-	if err == nil {
-		if err := os.Remove(path); err != nil {
-			return err
+// targetPaths are the paths a file tool's call would write.
+func targetPaths(t Tool, call llm.Block) []string {
+	var paths []string
+	if pt, ok := t.(PathTool); ok {
+		if p, err := pt.TargetPath(call.Input); err == nil {
+			paths = append(paths, p)
 		}
 	}
-	switch {
-	case !a.exists:
-		return nil
-	case a.link != "":
-		return os.Symlink(a.link, path)
-	case a.info.Mode().IsRegular() && a.content != nil:
-		if err := os.WriteFile(path, a.content, a.info.Mode().Perm()); err != nil {
-			return err
+	if pt, ok := t.(PathsTool); ok {
+		if ps, err := pt.TargetPaths(call.Input); err == nil {
+			paths = append(paths, ps...)
 		}
-		return os.Chtimes(path, a.info.ModTime(), a.info.ModTime())
 	}
-	return fmt.Errorf("%s changed and its old content was too large to keep", path)
+	return paths
 }
 
-// guardInstructionFiles covers every tool, not only the file tools that
-// instructionWrite understands: a browser download, a generated image, a
-// received attachment or an MCP tool can also save a file under a name it
-// was given. In a turn that read outside content or came from a guest,
-// and for any call that brings outside content in, it notes the
-// workspace's instruction files before the call; the function it returns
-// puts back anything the call created or changed there and says so. The
-// shell is left out: in such a turn it needs a human, who sees the
-// command. It returns nil when there is nothing to guard.
-func guardInstructionFiles(env *Env, t Tool) func() string {
-	guest := env.Policy != nil && env.Policy.Guest
-	if env.Workspace == "" || env.remote() || t.Risk() == RiskExec || (!env.Taint.Marked() && !guest && !taints(t)) {
+// lockedWrite refuses a file tool's write under one of the turn's locked
+// folders (Policy.Locked), in any turn and any mode: the owner's record of
+// trusted project files must only change through hk projects. The path is
+// checked as written and after symlinks.
+func lockedWrite(env *Env, t Tool, call llm.Block) error {
+	if env.Policy == nil || len(env.Policy.Locked) == 0 {
 		return nil
 	}
-	before := map[string]fileState{}
-	for _, n := range InstructionFileNames {
-		p := filepath.Join(env.Workspace, n)
-		before[p] = instructionState(p)
+	locked := realPaths(env.Policy.Locked)
+	for _, p := range targetPaths(t, call) {
+		abs := env.Resolve(p)
+		real, ok := realPath(abs)
+		if underAny(locked, abs) || (ok && underAny(locked, real)) || underAny(env.Policy.Locked, abs) {
+			return fmt.Errorf("%w: %s is kept by Habakkuk itself (the owner's list of trusted project files); only the owner changes it, with hk projects", ErrDenied, p)
+		}
 	}
-	return func() string {
-		var put, failed []string
-		for _, n := range InstructionFileNames {
-			p := filepath.Join(env.Workspace, n)
-			was := before[p]
-			if was.same(instructionState(p)) {
-				continue
-			}
-			if err := was.restore(p); err != nil {
-				failed = append(failed, err.Error())
-				continue
-			}
-			put = append(put, n)
-		}
-		var notes []string
-		if len(put) > 0 {
-			notes = append(notes, fmt.Sprintf("this call wrote %s in the workspace; those files hold instructions for future sessions and this turn has outside content in it, so Habakkuk put them back as they were. Save it under another name, or ask the user to make the change.", strings.Join(put, ", ")))
-		}
-		if len(failed) > 0 {
-			notes = append(notes, "could not put back an instruction file: "+strings.Join(failed, "; "))
-		}
-		return strings.Join(notes, "\n")
-	}
+	return nil
 }

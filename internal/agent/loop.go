@@ -204,6 +204,9 @@ type Runner struct {
 	// Notes puts messages a chat got from outside its own turns before the
 	// next user message of that chat's session (origin.go); nil means none.
 	Notes ChatNotes
+	// ProjectTrust is the owner's record of trusted project instruction
+	// files (projtrust.Store); nil trusts none (projectfiles.go).
+	ProjectTrust ProjectTrust
 	// ToolsPending waits briefly for tool sources a turn's toolsets need
 	// that are still starting (MCP servers connecting in the background)
 	// and names those still not ready; nil means none ever are.
@@ -232,14 +235,7 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 	if r.Snapshot != nil {
 		snap = r.Snapshot(ctx, spec)
 	}
-	snap.Project = LoadProjectFiles(spec.Dir, spec.Workspace, spec.ProjectFiles)
-	if n := len(snap.Project.Files); n > 0 && r.Log != nil {
-		paths := make([]string, 0, n)
-		for _, f := range snap.Project.Files {
-			paths = append(paths, f.Path)
-		}
-		r.Log.Info("project instruction files read", "agent", agent, "files", paths, "trusted", snap.Project.Trusted)
-	}
+	snap.Project = r.projectFiles(spec, spec.Workspace)
 	switch {
 	case opts.Onboard:
 		snap.Onboarding = true
@@ -406,6 +402,12 @@ func (t *turn) run(userText string, media []Attachment) error {
 		t.guard = g
 		g.replay(recs, t.job.ID)
 	}
+	// The environment comes first: its workspace is the folder this
+	// session works in (a worktree, an editor's project), whose project
+	// files a new session reads.
+	env := t.r.Env(t.spec, t.sess.ID)
+	env.Session, env.Agent = t.sess.ID, t.spec.Name
+	t.equip(env)
 	if !started {
 		if t.r.Sessions.SetTitle(t.ctx, t.sess.ID, title(userText)) != nil {
 			t.r.Log.Warn("set title failed", "session", t.sess.ID)
@@ -414,7 +416,7 @@ func (t *turn) run(userText string, media []Attachment) error {
 		if len(t.msgs) == 0 {
 			// A new session in an untrusted project: its instruction
 			// files start the first message, as data (projectfiles.go).
-			notes = untrustedProjectMessage(LoadProjectFiles(t.spec.Dir, t.spec.Workspace, t.spec.ProjectFiles)) + notes
+			notes = untrustedProjectMessage(LoadProjectFiles(t.spec.Dir, env.Workspace, t.spec.ProjectFiles, t.r.ProjectTrust)) + notes
 		}
 		if err := t.append(userMessage(t.stamp(notes+userText+t.r.preamble(t.ctx, t.sess.ID)), media), "", nil); err != nil {
 			return err
@@ -426,9 +428,6 @@ func (t *turn) run(userText string, media []Attachment) error {
 		t.r.Notes.NotesSeen(t.ctx, t.job.ID)
 	}
 
-	env := t.r.Env(t.spec, t.sess.ID)
-	env.Session, env.Agent = t.sess.ID, t.spec.Name
-	t.equip(env)
 	env.Approvals, env.Reviewer, env.Task = t.spec.Approvals, t.spec.Reviewer, userText
 	if a, ok := t.r.approvers.Load(t.sess.ID); ok {
 		env.Approver = a.(tools.Approver)
@@ -669,4 +668,22 @@ func preview(s string) string {
 		s = s[:120] + "..."
 	}
 	return s
+}
+
+// projectFiles reads the instruction files of the folder a new session
+// works in, and logs which were read and which are trusted.
+func (r *Runner) projectFiles(spec *Spec, folder string) ProjectFiles {
+	p := LoadProjectFiles(spec.Dir, folder, spec.ProjectFiles, r.ProjectTrust)
+	if len(p.Files) > 0 && r.Log != nil {
+		var trusted, untrusted []string
+		for _, f := range p.Files {
+			if f.Trusted {
+				trusted = append(trusted, f.Path)
+			} else {
+				untrusted = append(untrusted, f.Path)
+			}
+		}
+		r.Log.Info("project instruction files read", "agent", spec.Name, "trusted", trusted, "untrusted", untrusted)
+	}
+	return p
 }

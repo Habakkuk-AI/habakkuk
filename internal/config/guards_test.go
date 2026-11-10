@@ -18,12 +18,12 @@ func TestGuardDefaults(t *testing.T) {
 		t.Fatalf("project_files default: %q", a.ProjectFiles)
 	}
 	cfg, err = Parse([]byte(strings.Replace(mediaBase, "{model: p/m}",
-		"{model: p/m, loop_guard: {repeat_stop: 9, idle_warn: -1, idle_stop: -1}, project_files: trusted}", 1)))
+		"{model: p/m, loop_guard: {repeat_stop: 9, idle_warn: -1, idle_stop: -1}, project_files: off}", 1)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	a = cfg.Agents["habakkuk"]
-	if g := a.LoopGuard; g.RepeatWarn != 3 || g.RepeatStop != 9 || g.IdleWarn != -1 || g.IdleStop != -1 || a.ProjectFiles != "trusted" {
+	if g := a.LoopGuard; g.RepeatWarn != 3 || g.RepeatStop != 9 || g.IdleWarn != -1 || g.IdleStop != -1 || a.ProjectFiles != "off" {
 		t.Fatalf("explicit: %+v %q", g, a.ProjectFiles)
 	}
 }
@@ -32,6 +32,7 @@ func TestGuardValidation(t *testing.T) {
 	for agent, want := range map[string]string{
 		"{model: p/m, loop_guard: {repeat_stop: -2}}":                "loop_guard.repeat_stop",
 		"{model: p/m, project_files: maybe}":                         "project_files",
+		"{model: p/m, project_files: trusted}":                       "hk projects trust",
 		"{model: p/m, loop_guard: {repeat_warn: 5, repeat_stop: 5}}": "repeat_warn (5) must be below repeat_stop (5)",
 		"{model: p/m, loop_guard: {idle_stop: 4}}":                   "idle_warn (8) must be below idle_stop (4)",
 	} {

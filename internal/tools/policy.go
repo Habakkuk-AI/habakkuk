@@ -73,6 +73,9 @@ type Policy struct {
 	// scheduled scripts run from.
 	TrustedWrite []string
 	Protected    []string
+	// Locked are folders the file tools never write, in any turn and any
+	// mode: the owner's record of trusted project files.
+	Locked []string
 }
 
 // capability is the Capability a call uses, or "".

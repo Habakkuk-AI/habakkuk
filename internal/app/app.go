@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
+	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
 	"github.com/habakkuk-ai/habakkuk/internal/channel/discord"
 	"github.com/habakkuk-ai/habakkuk/internal/channel/matrix"
@@ -222,6 +223,7 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 	}
 	a.Runner.Snapshot = a.snapshot
 	a.Runner.Policy = a.applyPolicy
+	a.Runner.ProjectTrust = &projtrust.Store{Home: home}
 	a.Runner.ToolsPending = func(ctx context.Context, toolsets []string) []string {
 		return a.MCP.Pending(ctx, toolsets, MCPTurnWait)
 	}

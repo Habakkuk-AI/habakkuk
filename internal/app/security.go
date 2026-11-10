@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
+	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
@@ -65,6 +66,8 @@ func (a *App) applyPolicy(ctx context.Context, spec *agent.Spec, origin json.Raw
 	if len(p.TrustedWrite) > 0 {
 		p.Protected = append(p.Protected, a.scheduledScriptDirs(ctx)...)
 	}
+	// The owner's record of trusted project files is never a tool's to write.
+	p.Locked = append(p.Locked, (&projtrust.Store{Home: a.Cfg.Home}).Folder())
 	env.Policy = p
 	if external {
 		env.Taint.Mark()

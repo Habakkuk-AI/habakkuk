@@ -23,13 +23,12 @@ const (
 	DefaultIdleStop   = 12
 )
 
-// Project instruction files (project_files): on loads them, untrusted
-// unless they sit in the agent's own workspace; trusted loads them as the
-// owner's own instructions; off skips them.
+// Project instruction files (project_files): on reads them (followed only
+// when the owner trusted their exact content with hk projects trust, else
+// given as untrusted data); off skips them.
 const (
-	ProjectFilesOn      = "on"
-	ProjectFilesTrusted = "trusted"
-	ProjectFilesOff     = "off"
+	ProjectFilesOn  = "on"
+	ProjectFilesOff = "off"
 )
 
 // applyGuardDefaults fills the loop guard and project file defaults.
@@ -70,9 +69,11 @@ func (a *Agent) validateGuards(name string) []error {
 		}
 	}
 	switch a.ProjectFiles {
-	case "", ProjectFilesOn, ProjectFilesTrusted, ProjectFilesOff:
+	case "", ProjectFilesOn, ProjectFilesOff:
+	case "trusted":
+		errs = append(errs, fmt.Errorf("agent %s: project_files: trusted is gone; trust each file's exact content with hk projects trust PATH instead, and set project_files to on or off", name))
 	default:
-		errs = append(errs, fmt.Errorf("agent %s: project_files %q must be on, trusted or off", name, a.ProjectFiles))
+		errs = append(errs, fmt.Errorf("agent %s: project_files %q must be on or off", name, a.ProjectFiles))
 	}
 	return errs
 }

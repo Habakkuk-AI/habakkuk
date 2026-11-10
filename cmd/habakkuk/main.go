@@ -132,6 +132,11 @@ Usage:
   hk computer view                    how to watch the agents' virtual desktops (computer backend xvfb)
   hk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
                                     print habakkuk.log readably (-f keeps following it)
+  hk projects trust [-y] [PATH] | list | untrust [PATH]
+                                    trust the exact content of a project's AGENTS.md, CLAUDE.md and
+                                    .cursorrules, so agents follow them; any change untrusts a file
+  hk skills held | approve AGENT/NAME   skills an agent saved after reading outside content wait here;
+                                    approve one to put it in use
   hk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
   hk expose tailscale [-port 443] [-print] | status | off
@@ -259,6 +264,8 @@ func main() {
 		err = logsCmd(ctx, home, args, os.Stdout)
 	case "security":
 		err = securityCmd(home, args, os.Stdout)
+	case "projects":
+		err = projectsCmd(home, args, os.Stdin, os.Stdout)
 	case "expose":
 		err = exposeCmd(ctx, home, args, os.Stdout, nil)
 	case "auth":
