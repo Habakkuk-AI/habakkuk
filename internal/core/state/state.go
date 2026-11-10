@@ -80,6 +80,12 @@ CREATE TABLE chat_notes (
 );
 CREATE INDEX chat_notes_open ON chat_notes (conversation, seen);
 CREATE INDEX chat_notes_turn ON chat_notes (turn);
+`}, {Version: 3, SQL: `
+CREATE TABLE asked_approvals (
+	conversation TEXT PRIMARY KEY,
+	hash         TEXT NOT NULL,
+	created_at   INTEGER NOT NULL
+) WITHOUT ROWID;
 `}}
 
 type Store struct {
@@ -367,6 +373,37 @@ func (s *Store) DeleteDraft(ctx context.Context, turnID string) error {
 	return err
 }
 
+// An approval prompt that is waiting in a chat. The answer itself is held
+// in memory by the process that asked; this row is what survives a restart,
+// so the next process knows a "yes" in that chat answers a prompt nobody is
+// waiting on any more, and can say so instead of taking it as a new message.
+
+// SaveAsked records that the conversation has an approval prompt waiting,
+// for the call with the given hash. A newer prompt replaces the record.
+func (s *Store) SaveAsked(ctx context.Context, conversation, hash string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO asked_approvals (conversation, hash, created_at) VALUES (?, ?, ?)
+		ON CONFLICT (conversation) DO UPDATE SET hash = excluded.hash, created_at = excluded.created_at`,
+		conversation, hash, s.now().UnixMilli())
+	return err
+}
+
+// Asked returns the hash of the call the conversation's waiting prompt is
+// about, and whether there is one.
+func (s *Store) Asked(ctx context.Context, conversation string) (hash string, ok bool, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT hash FROM asked_approvals WHERE conversation = ?`, conversation).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return hash, err == nil, err
+}
+
+// ForgetAsked drops the conversation's record: its prompt was answered,
+// timed out, or the turn that asked is over.
+func (s *Store) ForgetAsked(ctx context.Context, conversation string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM asked_approvals WHERE conversation = ?`, conversation)
+	return err
+}
+
 // Prune drops session state not touched since the cutoff, following
 // transcript retention. A conversation's chosen agent is kept.
 func (s *Store) Prune(ctx context.Context, olderThan time.Time) (int64, error) {
@@ -378,6 +415,7 @@ func (s *Store) Prune(ctx context.Context, olderThan time.Time) (int64, error) {
 		`DELETE FROM steers WHERE created_at < ?`,
 		`DELETE FROM todos WHERE session_id IN (SELECT session_id FROM todos GROUP BY session_id HAVING MAX(updated_at) < ?)`,
 		`DELETE FROM drafts WHERE created_at < ?`,
+		`DELETE FROM asked_approvals WHERE created_at < ?`,
 		`DELETE FROM chat_notes WHERE created_at < ?`,
 	} {
 		res, err := s.db.ExecContext(ctx, q, cut)

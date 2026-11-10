@@ -141,13 +141,13 @@ func gate(ctx context.Context, env *Env, cp Capability, risk Risk, call llm.Bloc
 		if confirm != "" {
 			why = confirm + "; " + why
 		}
-		return "", true, confirmByHuman(ctx, env, call, why)
+		return "", true, confirmByHuman(ctx, env, call, why, CauseTainted)
 	}
 	if p.Channel != "" && !p.Allowed[cp] {
 		if confirm != "" {
-			return "", true, confirmByHuman(ctx, env, call, confirm)
+			return "", true, confirmByHuman(ctx, env, call, confirm, CauseConfirm)
 		}
-		note, err := Ask(ctx, env, ApprovalRequest{Tool: call.ToolName,
+		note, err := Ask(ctx, env, ApprovalRequest{Tool: call.ToolName, Cause: CauseChannel,
 			Summary: fmt.Sprintf("[%s via channel %s] %s", cp, p.Channel, summarize(call.Input)), Input: call.Input})
 		return note, true, err
 	}

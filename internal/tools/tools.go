@@ -103,7 +103,19 @@ type ApprovalRequest struct {
 	// Tainted: the turn has read content from outside (a web page, an
 	// email). Shortcuts in review are off for such calls.
 	Tainted bool
+	// Cause says why a human is asked, for approvers that explain it in
+	// their own words (a chat prompt); "" is the permission mode.
+	Cause Cause
 }
+
+// Cause is why a call needs a human's approval.
+type Cause string
+
+const (
+	CauseTainted Cause = "tainted" // the turn read outside content, so the risky capabilities need a human
+	CauseChannel Cause = "channel" // the turn came from a messaging channel that may not use the capability unasked
+	CauseConfirm Cause = "confirm" // the tool always asks for this call (ConfirmTool)
+)
 
 // Approver decides calls the mode does not allow outright. Unattended runs
 // have no approver, and such calls are denied. An approver that finds no one
@@ -378,7 +390,7 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 		return "", fmt.Errorf("%w: %s is not allowed in read-only mode", ErrDenied, call.ToolName)
 	}
 	if confirm != "" {
-		return "", confirmByHuman(ctx, env, call, confirm)
+		return "", confirmByHuman(ctx, env, call, confirm, CauseConfirm)
 	}
 	if env.Mode == ModeWorkspace {
 		switch risk {
@@ -446,13 +458,14 @@ func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
 
 // confirmByHuman asks the attached human about a call a ConfirmTool marked;
 // no mode, and no reviewer, allows it alone.
-func confirmByHuman(ctx context.Context, env *Env, call llm.Block, why string) error {
+func confirmByHuman(ctx context.Context, env *Env, call llm.Block, why string, cause Cause) error {
 	unattended := fmt.Errorf("%w: %s needs a human's approval (%s) and no one is attending this run", ErrDenied, call.ToolName, why)
 	if env.Approver == nil {
 		return unattended
 	}
 	ok, err := env.Approver.Approve(ctx, ApprovalRequest{Tool: call.ToolName, Summary: "[" + why + "] " + summarize(call.Input),
-		Input: call.Input, Session: env.Session, Task: env.Task, Workspace: env.Workspace, Review: why})
+		Input: call.Input, Session: env.Session, Task: env.Task, Workspace: env.Workspace, Review: why, Cause: cause,
+		Tainted: env.Taint.Marked()})
 	switch {
 	case errors.Is(err, ErrNoApprover):
 		return unattended

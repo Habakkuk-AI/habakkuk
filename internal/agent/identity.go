@@ -172,6 +172,11 @@ func ResetOnboarding(dir string) error {
 	return err
 }
 
+// DisplayName is the name the agent goes by in what Habakkuk writes about
+// it (a chat's "Handing this to ..." line): its identity's, else its
+// configured name with a capital letter.
+func DisplayName(agentName, dir string) string { return displayName(agentName, dir) }
+
 // displayName is the name the agent goes by: its identity's, else its
 // configured name with a capital letter.
 func displayName(agentName, dir string) string {
