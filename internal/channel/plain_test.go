@@ -327,7 +327,7 @@ func TestDetailsReplyShowsTheExactCall(t *testing.T) {
 		t.Fatal("the command ran or was declined before an answer")
 	}
 	send(r, "m3", "yes")
-	waitFor(t, "tool output", hasText(r.a, "approved-run\n"))
+	waitFor(t, "tool output", hasText(r.a, "tool said: approved-run"))
 }
 
 // approvals_detail: full puts the exact call in the prompt.

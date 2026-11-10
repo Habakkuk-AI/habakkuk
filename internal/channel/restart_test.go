@@ -14,6 +14,12 @@ import (
 // the memory of the process that asked. These tests stop that process the
 // way SIGTERM does and start a new one on the same databases.
 
+// printed reports whether a command's output line reached the chat. The
+// shell ends the line with \n, or with \r\n on Windows.
+func printed(r *recorder, line string) func() bool {
+	return func() bool { return hasText(r, line+"\n")() || hasText(r, line+"\r\n")() }
+}
+
 // asker asks to run a command, and asks again when its call comes back
 // interrupted, as a model does after a restart. Once the call has a real
 // result it reports it.
@@ -73,16 +79,16 @@ func TestApprovalIsAskedAgainAfterARestart(t *testing.T) {
 	if fresh[0][0].Data == old[0][0].Data {
 		t.Fatal("the fresh prompt reuses the old prompt's button data")
 	}
-	if hasText(r2.a, "approved-run\n")() {
+	if printed(r2.a, "approved-run")() {
 		t.Fatal("the command ran after the restart without an answer")
 	}
 	press(r2, "8", old[0][0].Data) // not allowed to talk: ignored, as ever
 	time.Sleep(50 * time.Millisecond)
-	if hasText(r2.a, "approved-run\n")() {
+	if printed(r2.a, "approved-run")() {
 		t.Fatal("a stranger's press approved the command")
 	}
 	press(r2, "7", old[0][0].Data)
-	waitFor(t, "the old button to approve the same call", hasText(r2.a, "approved-run\n"))
+	waitFor(t, "the old button to approve the same call", printed(r2.a, "approved-run"))
 	waitFor(t, "the acknowledgement", hasText(r2.a, "Approved."))
 	// The fresh prompt's own button now finds it answered, and says so.
 	press(r2, "7", fresh[0][1].Data)
@@ -97,7 +103,7 @@ func TestOldButtonDoesNotAnswerADifferentCall(t *testing.T) {
 	press(r2, "7", old[0][0].Data)
 	waitFor(t, "the expired notice", hasText(r2.a, "That request has expired. Please answer my latest request instead."))
 	time.Sleep(50 * time.Millisecond)
-	if hasText(r2.a, "something-else\n")() || hasText(r2.a, "Approved.")() {
+	if printed(r2.a, "something-else")() || hasText(r2.a, "Approved.")() {
 		t.Fatalf("an old button approved a different call: %q", r2.a.texts())
 	}
 	to := Address{Account: "tg", Conversation: "100"}
@@ -108,11 +114,11 @@ func TestOldButtonDoesNotAnswerADifferentCall(t *testing.T) {
 	nonce := strings.Split(old[0][0].Data, "|")[1]
 	press(r2, "7", callbackPrefix+nonce+"|0")
 	time.Sleep(50 * time.Millisecond)
-	if hasText(r2.a, "something-else\n")() {
+	if printed(r2.a, "something-else")() {
 		t.Fatal("a button without a hash approved the call")
 	}
 	send(r2, "m2", "yes")
-	waitFor(t, "the new call to run on a typed yes", hasText(r2.a, "something-else\n"))
+	waitFor(t, "the new call to run on a typed yes", printed(r2.a, "something-else"))
 }
 
 // With nothing waiting, a press or a typed yes for the old prompt is
@@ -125,7 +131,7 @@ func TestAnswersToAPromptFromBeforeTheRestartAreNotDropped(t *testing.T) {
 	send(r2, "m2", "Yes.")
 	waitFor(t, "a notice for the typed yes", hasText(r2.a, "That request expired when I restarted. If I still need it, I'll ask again."))
 	time.Sleep(50 * time.Millisecond)
-	if a2.lastRows() != nil || hasText(r2.a, "approved-run\n")() {
+	if a2.lastRows() != nil || printed(r2.a, "approved-run")() {
 		t.Fatal("the old answer approved something")
 	}
 	// The yes was not queued as a message for the agent.
@@ -149,7 +155,7 @@ func TestYesIsAnOrdinaryMessageWhenNothingWasAsked(t *testing.T) {
 	send(r, "m1", "please run it")
 	waitFor(t, "prompt", hasText(r.a, "I'd like to run a command on your computer."))
 	send(r, "m2", "yes")
-	waitFor(t, "tool output", hasText(r.a, "approved-run\n"))
+	waitFor(t, "tool output", printed(r.a, "approved-run"))
 	send(r, "m3", "yes")
 	waitFor(t, "the yes to reach the agent", hasText(r.a, "echo: yes"))
 	if hasText(r.a, "expired")() {
