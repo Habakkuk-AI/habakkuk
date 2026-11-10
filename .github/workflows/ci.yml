@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
   pull_request:
+
+# Nothing here writes to the repository, and pull requests from forks run it.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
