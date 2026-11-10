@@ -4,9 +4,9 @@ description: "What Habakkuk is, how it stays up, and where to go first for what 
 order: 1
 ---
 
-Habakkuk is a personal AI agent in one Go binary. It talks to you over the terminal, a web dashboard, a desktop app and chat apps (WhatsApp, Telegram, Slack, Discord, Signal, Matrix, email, SMS, Microsoft Teams, Google Chat, iMessage and more). It uses tools, remembers what matters, runs work on a schedule, and can run several agents that hand each other work.
+Habakkuk is an AI agent you run on your own computer or server. You talk to it in a chat app (WhatsApp, Telegram, Slack, Discord, Signal, Matrix, email, SMS, Microsoft Teams, Google Chat, iMessage and more), in the terminal, on a web dashboard or in the desktop app. It uses tools, remembers what matters, runs work on a schedule, and can be one of several agents that hand each other work.
 
-Every turn is a job with a lease in a SQLite queue. A `kill -9` at any moment loses nothing: a restart picks up where it stopped.
+It's one program, with nothing else to install. It's also built so that a crash doesn't cost you anything. Every message is saved as a job in a SQLite queue before the agent starts on it, so a restart picks up where it stopped, even after a `kill -9`.
 
 ## Pick your goal
 
@@ -16,7 +16,7 @@ Every turn is a job with a lease in a SQLite queue. A `kill -9` at any moment lo
 | Install it on macOS, Linux, Windows or Docker | [Installation](installation.md) |
 | Talk to it on WhatsApp | [WhatsApp](../channels/whatsapp.md) |
 | Talk to it on Telegram, Slack, Discord or another app | [Channels](../channels/index.md) |
-| See what people set up with it | [Use cases](use-cases.md) |
+| See what you can set up with it | [Use cases](use-cases.md) |
 | Bring my setup over from another agent | [Move from another agent](migrate.md) |
 | Use a local model, or a cheap one for quick messages | [Providers](../models/providers.md) and [routing](../models/routing.md) |
 | Run a team of agents | [Multi-agent teams](../agents/multi-agent.md) |
@@ -25,13 +25,13 @@ Every turn is a job with a lease in a SQLite queue. A `kill -9` at any moment lo
 
 ## Why Habakkuk
 
-- **One binary.** One static binary, no CGO and no runtime to install.
-- **Crash-proof by design.** Every turn is a leased job. A dead process's work is reclaimed on restart, and interrupted tool calls are repaired, never blindly repeated.
-- **Storage that stays small.** A hot `control.db`, a cold `transcripts.db` and content-addressed blobs, with retention on by default.
-- **Channels that stay connected.** Every adapter runs under a supervisor with a heartbeat watchdog. A stuck socket is torn down and reconnected, not left hanging.
-- **Never answers twice.** Redelivered messages are dropped, replies are delivered once, and a long reply resumes at the first unsent chunk after a crash.
+- **One program.** A single static binary. There's no runtime to install and nothing to compile (no CGO).
+- **A crash doesn't lose work.** Every turn is a job that a worker holds a lease on. If the process dies, the next start reclaims the job. A tool call that was cut off is repaired, so it isn't blindly run again.
+- **Storage that stays small.** Live state sits in a small `control.db`, old conversations in `transcripts.db`, and files in a content-addressed store that keeps one copy of each. Old data is cleaned up by default.
+- **Chat apps that stay connected.** Every connection runs under a supervisor that watches its heartbeat. A stuck connection is torn down and opened again.
+- **One reply per message.** A message that arrives twice is answered once. A long reply that a crash interrupted resumes at the first part you haven't received.
 - **Any model.** Claude, GPT, Gemini, DeepSeek, Grok, Mistral, Qwen, Bedrock, OpenRouter, local models and more, with a cheap model for quick messages if you want one.
-- **Config that catches typos.** Keys Habakkuk does not know are reported, not silently accepted.
+- **Config that catches typos.** A key Habakkuk doesn't know is reported, so a misspelt setting can't sit there doing nothing.
 
 ## How it stays up
 

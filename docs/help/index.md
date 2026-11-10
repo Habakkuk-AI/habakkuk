@@ -4,7 +4,7 @@ description: "Answers to common questions, and fixes for common errors."
 order: 9
 ---
 
-Start with `habakkuk doctor`: it checks the config, keys, storage, channels and MCP servers, and names what is wrong. `habakkuk status` and `habakkuk logs -f` show what a running `serve` is doing.
+Something not working? Run `habakkuk doctor` first. It checks the config, keys, storage, channels and MCP servers, and tells you what's wrong by name. `habakkuk status` and `habakkuk logs -f` show what a running `serve` is doing.
 
 <!-- cards -->
 - [FAQ](faq.md): which models, what it costs, where data lives, Windows, privacy and more.

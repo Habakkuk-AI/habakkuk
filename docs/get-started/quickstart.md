@@ -4,6 +4,8 @@ description: "Install Habakkuk, run the setup wizard, get your first reply in ab
 order: 1
 ---
 
+This page takes you from nothing to an agent that answers you, in three steps: install, run setup, say hi. It takes a few minutes. The rest of the page covers the commands you'll use every day.
+
 ## 1. Install
 
 ```bash tab="macOS / Linux"
@@ -24,7 +26,7 @@ Not sure what to run? Type `hk` (or `habakkuk`) on its own: on a new computer it
 habakkuk setup
 ```
 
-About a minute from download to your agent's first reply, and no YAML to edit. The wizard has three steps.
+It takes about a minute from download to your agent's first reply, and there's no YAML to edit. The wizard has three steps.
 
 1. **Pick a model.** It finds API keys already in your environment or `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` and the other [presets](../models/index.md#provider-directory)), ChatGPT or GitHub Copilot sign-ins, and model servers running on this computer (Ollama, LM Studio, vLLM, llama.cpp, LiteLLM). It recommends the best one, paired with the same provider's cheaper model for quick messages ([routing](../models/routing.md)). Any provider works; nothing assumes Claude. You can also paste a key (it is not shown as you type) or sign in. One tiny live call checks it, with a timeout and a plain error if it fails.
 2. **Pick where to talk.** The recommended one is a **WhatsApp agent**: in WhatsApp, open Settings > Agents > Create agent and send it "hi". Then in its chat open Chat info > API key, and paste the key. Setup checks the key with one poll that skips no messages, finds your "hi" and lets only you in. It can also connect a Telegram bot (token checked with `getMe`), WhatsApp as a linked device (it runs the QR or pairing-code link), the web chat on this computer, Slack or Discord (tokens checked), or just the terminal.

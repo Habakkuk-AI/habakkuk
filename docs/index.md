@@ -4,7 +4,9 @@ description: "Install Habakkuk, connect it to your chat apps, and run agents tha
 order: 0
 ---
 
-Habakkuk is an open-source AI agent you run yourself, shipped as one Go binary. It talks to you on WhatsApp, Telegram, Slack and two dozen other channels, uses tools, remembers what matters, and keeps every turn in a durable job queue so a crash loses nothing.
+Habakkuk is an open-source AI agent you run yourself. You message it on WhatsApp, Telegram, Slack or one of two dozen other chat apps, and it does the work with real tools: your files, the shell, a browser and the services you connect. It remembers what matters, and if the machine restarts halfway through a job, it picks the job back up.
+
+New here? Start with the [quickstart](get-started/quickstart.md). It takes a few minutes and ends with your agent replying on your phone.
 
 ## Start here
 
