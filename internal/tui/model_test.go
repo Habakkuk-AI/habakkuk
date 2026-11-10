@@ -290,6 +290,20 @@ func TestStartOpensNewSession(t *testing.T) {
 	}
 }
 
+// TestEmptyChatSuggestsStarters: a new chat is not a blank screen; it
+// offers things to try, and they go once the conversation starts.
+func TestEmptyChatSuggestsStarters(t *testing.T) {
+	h := newHarness(t, Options{})
+	if v := h.view(); !strings.Contains(v, "Every weekday at 8, send me a short brief of my day.") {
+		t.Fatalf("no starters in an empty chat:\n%s", v)
+	}
+	h.typ("hello there")
+	h.key("enter")
+	if v := h.view(); strings.Contains(v, "Say hi, or try one of these") {
+		t.Fatalf("starters stayed after the first message:\n%s", v)
+	}
+}
+
 func TestSendAndStream(t *testing.T) {
 	h := newHarness(t, Options{})
 	h.typ("hello there")

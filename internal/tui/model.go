@@ -1185,6 +1185,12 @@ func height(s string) int {
 	return strings.Count(s, "\n") + 1
 }
 
+// starterNotice fills an empty chat with things that work out of the box.
+const starterNotice = `A new chat. Say hi, or try one of these:
+  Every weekday at 8, send me a short brief of my day.
+  Remember that I like short, direct answers.
+  What can you do for me?`
+
 // refresh rebuilds the transcript when it changed.
 func (m *Model) refresh() {
 	if !m.dirty || m.width == 0 {
@@ -1202,6 +1208,9 @@ func (m *Model) refresh() {
 		m.offsets = append(m.offsets, line)
 		b.WriteString(s)
 		line += strings.Count(s, "\n") + 2
+	}
+	if len(m.entries) == 0 && m.sess.ID != "" {
+		b.WriteString(m.t.Dim.Render(starterNotice))
 	}
 	atBottom := m.vp.AtBottom()
 	m.vp.SetContent(b.String())
