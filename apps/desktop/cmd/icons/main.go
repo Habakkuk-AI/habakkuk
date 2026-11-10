@@ -131,7 +131,7 @@ func writeSyso(file, arch, ver, manifestFile string) error {
 		version.OriginalFilename: "habakkuk-desktop.exe",
 		version.ProductVersion:   ver,
 		version.FileVersion:      ver,
-		version.LegalCopyright:   "MIT License",
+		version.LegalCopyright:   "Copyright 2026 Ayobami Joseph and the Habakkuk contributors. Apache License 2.0.",
 	} {
 		if err := vi.Set(version.LangDefault, k, val); err != nil {
 			return err

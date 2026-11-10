@@ -27,6 +27,6 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>The dashboard's chat can send voice messages to Habakkuk.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>MIT License</string>
+	<string>Copyright 2026 Ayobami Joseph and the Habakkuk contributors. Apache License 2.0.</string>
 </dict>
 </plist>
