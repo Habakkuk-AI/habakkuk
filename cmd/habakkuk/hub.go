@@ -90,10 +90,34 @@ func skillsCmd(ctx context.Context, home string, args []string) error {
 		if len(args) != 1 {
 			return errors.New("usage: hk skills approve NAME")
 		}
+		// A skill an agent saved in a turn with outside content waits
+		// in its held folder (skills/held.go).
+		if held, ok, err := lib.FindHeld(args[0]); err != nil {
+			return err
+		} else if ok {
+			s, err := lib.ApproveHeld(ctx, held)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("approved %s for agent %s; it is in %s and new sessions list it\n", s.Name, held.Agent, s.Dir)
+			return nil
+		}
 		if err := h.Set(args[0], func(e *hub.Entry) { e.Trusted = true }); err != nil {
 			return err
 		}
 		fmt.Printf("approved %s\n", args[0])
+	case "held":
+		held, err := lib.Held()
+		if err != nil {
+			return err
+		}
+		if len(held) == 0 {
+			fmt.Println("No skills are held.")
+		}
+		for _, x := range held {
+			fmt.Printf("%-32s %s\n  %s\n  read %s, then: hk skills approve %s/%s (or delete the folder)\n",
+				x.Agent+"/"+x.Name, x.Saved.Local().Format("2006-01-02 15:04"), x.Description, x.Dir, x.Agent, x.Name)
+		}
 	case "restore":
 		return restoreBackups(h.Backups(), h.Restore, "skills", args)
 	case "curate":

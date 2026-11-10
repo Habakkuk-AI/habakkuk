@@ -127,6 +127,15 @@ func (t saveTool) Run(ctx context.Context, env *tools.Env, input json.RawMessage
 	if err != nil {
 		return "", err
 	}
+	// Planted text must not become a procedure later prompts list: a turn
+	// with outside content in it, or a guest's, saves the skill held.
+	if env.Taint.Marked() || (env.Policy != nil && env.Policy.Guest) {
+		h, err := t.l.SaveHeld(env.Agent, in.Name, in.Description, in.Body)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("saved skill %s, but it is held and not in use yet: outside content entered this turn, so the owner has to look at it first. Tell the user they can approve it with hk skills approve %s/%s (it is in %s).", h.Name, h.Agent, h.Name, h.Dir), nil
+	}
 	ctx = history.WithActor(ctx, history.Actor{By: history.ByAgent, Tool: "skill_save", Session: env.Session, Tainted: env.Taint.Marked()})
 	s, created, err := t.l.SaveContext(ctx, env.Agent, in.Name, in.Description, in.Body)
 	if err != nil {
