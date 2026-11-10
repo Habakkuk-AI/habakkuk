@@ -1226,7 +1226,7 @@ func TestInternalsAreNeverUserData(t *testing.T) {
 			"gateway-starts.log", "gateway_state.json", "hermes-agent", "hermes-setup", "hooks", "image_cache", "logs", "memories",
 			"models_dev_cache.etag", "models_dev_cache.json", "node", "ollama_cloud_models_cache.json", "pairing", "pending_messages",
 			"pets", "platforms", "plugins", "profile.yaml", "profiles", "projects.db", "provider_models_cache.json", "sessions",
-			"skills", "state.db", "state.db-wal", "node_modules", "gateway.pid", "agent.sock"},
+			"skills", "state.db", "state.db-wal", "node_modules", "gateway.pid", "agent.sock", "tools", "local-patches", "locales"},
 		OpenClaw: {".env", "openclaw.json", "openclaw.json.bak", "credentials", "agents", "state", "logs", "skills", "cron",
 			"extensions", "node_modules", "gateway.sock", "cache"},
 	} {

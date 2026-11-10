@@ -192,7 +192,10 @@ const (
 // hermesInternals: what a Hermes Agent home keeps for itself. Any entry
 // with "cache" in its name is a cache too (see internalWhy).
 var hermesInternals = []internals{
-	{whyProgram, []string{"hermes-agent", "hermes-setup", "bin", "node", "node_modules", "venv", ".venv"}},
+	// tools holds the runtimes it downloads for itself (node, a browser,
+	// ffmpeg); local-patches and locales change its own program and wording.
+	{whyProgram, []string{"hermes-agent", "hermes-setup", "bin", "node", "node_modules", "venv", ".venv",
+		"tools", "local-patches", "locales"}},
 	{whyApp, []string{"assets", "desktop", "desktop-plugins", "pets"}},
 	{whyCache, []string{"browser_screenshots", "tmp", ".update_check", ".skills_prompt_snapshot.json"}},
 	{whyLogs, []string{"logs", "interrupt_debug.log", "gateway-starts.log"}},
