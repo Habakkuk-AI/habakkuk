@@ -125,6 +125,7 @@ func (g *Gateway) now() time.Time {
 // Run supervises every adapter until ctx ends.
 func (g *Gateway) Run(ctx context.Context) {
 	sup := &Supervisor{Store: g.Store, Log: g.Log, OnState: g.OnChannelState}
+	sup.defaults() // once, here: the adapters' goroutines share it and only read
 	var wg sync.WaitGroup
 	for name, a := range g.Adapters {
 		wg.Add(1)
