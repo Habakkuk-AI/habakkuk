@@ -94,7 +94,7 @@ func permissionsDoctor(home string, cfg *config.Config, w io.Writer) int {
 	if n == 0 {
 		fmt.Fprintln(w, "permissions: ok (chats, memory and credentials are owner-only)")
 	} else {
-		fmt.Fprintln(w, "permissions: fix with hk security -fix")
+		fmt.Fprintln(w, "permissions: fix with hk doctor --fix (or hk security -fix)")
 	}
 	return n
 }

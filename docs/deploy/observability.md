@@ -12,6 +12,7 @@ There are several ways to see what Habakkuk is doing: status and health checks, 
 hk status                                # version, serve uptime, channels, queue, recent errors, today's cost
 hk channels                              # channel health
 hk doctor                                # config, credentials, storage, channels, MCP servers
+hk doctor --fix                          # the same, after making the safe fixes for you
 curl -s localhost:8484/healthz           # no token: channel states and queue depth
 ```
 
@@ -19,6 +20,7 @@ curl -s localhost:8484/healthz           # no token: channel states and queue de
 - Send `/status` in a chat to see the agent, session and channel health from where you are.
 - When `hk doctor` finds nothing wrong, it ends by telling you the next step. If `serve` is already running, still starting, or alive but quiet, it says so instead of telling you to start it.
 - When `hk doctor` finds a problem, it exits non-zero and names the problem. That can be a missing key (`MISSING ...`), an unknown config key, a provider that isn't logged in, or a database that fails its check.
+- `hk doctor --fix` first makes the fixes that need no decision from you: an older config format, missing folders, files other users can read, and a background service that points at a binary that's gone. It prints a `fixed:` line for each. See [Troubleshooting](../help/troubleshooting.md).
 
 ## Logs
 
