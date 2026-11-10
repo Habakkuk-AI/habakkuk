@@ -28,7 +28,7 @@ const skillsUsage = `usage: hk skills [list] [-agent A]
        hk skills install [-y] [-force] [-name N] SOURCE
        hk skills update [-y] [-force] [NAME]
        hk skills remove NAME
-       hk skills approve NAME
+       hk skills approve [-agent A] NAME
        hk skills audit
        hk skills restore [-id ID] NAME | restore -list [NAME]
        hk skills curate [-dry-run] [-agent A]
@@ -87,13 +87,22 @@ func skillsCmd(ctx context.Context, home string, args []string) error {
 			fmt.Printf("removed %s from the lock file\n", args[0])
 		}
 	case "approve", "trust":
-		if len(args) != 1 {
-			return errors.New("usage: hk skills approve NAME")
-		}
-		if err := h.Set(args[0], func(e *hub.Entry) { e.Trusted = true }); err != nil {
+		fs := flag.NewFlagSet("skills approve", flag.ContinueOnError)
+		agentName := fs.String("agent", "", "approve that agent's own skill (one brought in from a project) instead of a shared one")
+		if err := fs.Parse(args); err != nil {
 			return err
 		}
-		fmt.Printf("approved %s\n", args[0])
+		if fs.NArg() != 1 {
+			return errors.New("usage: hk skills approve [-agent A] NAME")
+		}
+		if *agentName != "" {
+			if err := lib.Approve(*agentName, fs.Arg(0)); err != nil {
+				return err
+			}
+		} else if err := h.Set(fs.Arg(0), func(e *hub.Entry) { e.Trusted, e.Held = true, false }); err != nil {
+			return err
+		}
+		fmt.Printf("approved %s\n", fs.Arg(0))
 	case "restore":
 		return restoreBackups(h.Backups(), h.Restore, "skills", args)
 	case "curate":
@@ -179,6 +188,16 @@ func listSkills(cfg *config.Config, lib *skills.Library, args []string) error {
 		s := skills.Skill{Name: name, Dir: filepath.Join(lib.SharedDir(), name), Shared: true}
 		if !e.Trusted && lib.Disabled(s) {
 			fmt.Printf("%-24s shared  disabled: ships scripts and is not approved (hk skills approve %s)\n", name, name)
+		}
+	}
+	own, err := hub.ReadLock(filepath.Join(lib.AgentDir(name), hub.LockName))
+	if err != nil {
+		return err
+	}
+	for skill, e := range own.Packages {
+		s := skills.Skill{Name: skill, Dir: filepath.Join(lib.AgentDir(name), skill)}
+		if !e.Trusted && lib.Disabled(s) {
+			fmt.Printf("%-24s agent   disabled: from %s, needs your approval (hk skills approve -agent %s %s)\n", skill, e.Source, name, skill)
 		}
 	}
 	return nil

@@ -35,7 +35,7 @@ type ocReader struct {
 }
 
 func readOpenClaw(dir string, o Options) (*Found, error) {
-	r := &ocReader{f: &Found{}, o: o, dir: dir, used: map[string]bool{}, names: map[string]string{}}
+	r := &ocReader{f: &Found{Dir: dir, userHome: o.userHome()}, o: o, dir: dir, used: map[string]bool{}, names: map[string]string{}}
 	path := filepath.Join(dir, "openclaw.json")
 	if p := o.getenv("OPENCLAW_CONFIG_PATH"); p != "" && o.Source == "" {
 		path = expandHome(p, o.userHome())
@@ -427,9 +427,6 @@ func (r *ocReader) mcp() {
 		if on, ok := m["enabled"].(bool); ok && !on {
 			r.f.skip("MCP server %s: turned off in %s", raw, Label(OpenClaw))
 			continue
-		}
-		if t, _ := m["transport"].(string); t == "sse" {
-			r.f.skip("MCP server %s uses the older SSE transport; Habakkuk connects with Streamable HTTP, so check it with hk mcp", raw)
 		}
 		s := r.f.readMCP(raw, m, r.env, r.used)
 		if s == nil {

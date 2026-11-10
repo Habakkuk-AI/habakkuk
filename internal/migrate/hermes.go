@@ -34,7 +34,7 @@ type hermesHome struct {
 var hermesMarks = []string{"config.yaml", ".env", "SOUL.md", "profile.yaml", "auth.json", "state.db"}
 
 func readHermes(dir string, o Options) (*Found, error) {
-	f := &Found{}
+	f := &Found{Dir: dir, userHome: o.userHome()}
 	homes := []hermesHome{{name: "default", dir: dir, main: true}}
 	entries, err := os.ReadDir(filepath.Join(dir, "profiles"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

@@ -143,8 +143,8 @@ func (l *Library) List(agent string) ([]Skill, error) {
 	}
 	out := make([]Skill, 0, len(byName))
 	for _, s := range byName {
-		if s.Shared && !s.Plugin && l.Disabled(s) {
-			continue // ships scripts and is not approved yet
+		if !s.Plugin && l.Disabled(s) {
+			continue // held, or ships scripts, and is not approved yet
 		}
 		out = append(out, s)
 	}
@@ -217,8 +217,12 @@ func (l *Library) get(agent, name string) (Skill, string, error) {
 		s, body, err := load(filepath.Join(c.dir, name))
 		if err == nil {
 			s.Shared, s.Plugin = c.shared, c.plugin
-			if s.Shared && !s.Plugin && l.Disabled(s) {
-				return Skill{}, "", fmt.Errorf("skill %q is disabled: it was installed from outside, ships scripts and is not approved yet (the owner can run hk skills approve %s)", name, name)
+			if !s.Plugin && l.Disabled(s) {
+				how := "hk skills approve " + name
+				if !s.Shared {
+					how = "hk skills approve -agent " + agent + " " + name
+				}
+				return Skill{}, "", fmt.Errorf("skill %q is disabled: it came from outside and is not approved yet (the owner can run %s)", name, how)
 			}
 			return s, body, nil
 		}

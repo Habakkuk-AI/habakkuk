@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -277,6 +278,11 @@ func (b *AppBackend) btw(ctx context.Context, id, question string) (string, erro
 	sess, err := b.A.Sessions.Get(ctx, id)
 	if err != nil {
 		return "", err
+	}
+	if sess.Imported {
+		// Its text was never said to this agent and may come from anyone:
+		// it does not go into a new turn as the user's words.
+		return "", errors.New("/btw works in your own conversations; this one was imported from another agent. Start a new session and ask there; the agent can look it up with session_search")
 	}
 	side, err := b.A.Runner.NewSession(ctx, sess.Agent)
 	if err != nil {

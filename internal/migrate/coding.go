@@ -43,13 +43,11 @@ type codingReader struct {
 	agent *Agent
 	// instructions are the sections of AGENTS.md, in order.
 	instructions []string
-	// oauth are the servers the tool holds a sign-in for (names only).
-	oauth map[string]bool
 }
 
 func newCodingReader(dir, from string, o Options) *codingReader {
 	a := &Agent{From: from, Name: o.mainAgent(), Main: true, Files: map[string]string{}, Workspace: "~/habakkuk-workspace"}
-	return &codingReader{f: &Found{Agents: []*Agent{a}}, o: o, dir: dir, from: from, agent: a}
+	return &codingReader{f: &Found{Agents: []*Agent{a}, Dir: dir, userHome: o.userHome()}, o: o, dir: dir, from: from, agent: a}
 }
 
 // instruction adds an instruction file's text as a section of AGENTS.md.
@@ -117,14 +115,6 @@ func (r *codingReader) mcpServers(servers map[string]any, where, project string)
 			r.f.leftover(fmt.Sprintf("the tools turned off for MCP server %s (%s)", s.Name, strings.Join(off, ", ")),
 				"Habakkuk has no list of tools to hide, so they always ask for approval instead")
 		}
-		if s.URL != "" && !s.OAuth && len(s.Headers) == 0 {
-			if r.oauth[raw] {
-				s.OAuth = true
-				r.f.leftover("the sign-in to MCP server "+s.Name, "hk mcp login "+s.Name)
-			} else {
-				r.f.leftover("MCP server "+s.Name+" sends no key", "if it needs a sign-in, set auth: oauth for it in config.yaml and run hk mcp login "+s.Name)
-			}
-		}
 		name := r.f.mcp(s, r.agent.Name)
 		if !slices.Contains(r.agent.MCP, name) {
 			r.agent.MCP = append(r.agent.MCP, name)
@@ -133,7 +123,11 @@ func (r *codingReader) mcpServers(servers map[string]any, where, project string)
 }
 
 // skillsIn adds the skills under root.
-func (r *codingReader) skillsIn(root string) error {
+func (r *codingReader) skillsIn(root string) error { return r.skillsFrom(root, "") }
+
+// skillsFrom adds the skills under root; with project set they are a
+// project's own, held until approved (see Skill.Held).
+func (r *codingReader) skillsFrom(root, project string) error {
 	dirs, err := r.f.findSkills(root)
 	if err != nil {
 		return err
@@ -148,7 +142,7 @@ func (r *codingReader) skillsIn(root string) error {
 			r.f.skip("skill %s in %s: another skill has the same name", name, d)
 			continue
 		}
-		r.agent.Skills = append(r.agent.Skills, Skill{Name: name, Dir: d, Shared: true})
+		r.agent.Skills = append(r.agent.Skills, r.skill(Skill{Name: name, Dir: d}, project))
 	}
 	return nil
 }
@@ -163,7 +157,21 @@ type commandMeta struct {
 // skills: commands/review.md is /review, commands/git/commit.md is
 // /git:commit and becomes the skill git-commit. A command with a skill of
 // the same name is left out, and so is one with no text.
-func (r *codingReader) commandsIn(root, label string) error {
+func (r *codingReader) commandsIn(root, label string) error { return r.commandsFrom(root, label, "") }
+
+// skill places a skill: shared, or for a project's, the agent's own and
+// held until approved.
+func (r *codingReader) skill(s Skill, project string) Skill {
+	if project == "" {
+		s.Shared = true
+		return s
+	}
+	s.Held, s.Source = true, "project "+tilde(project, r.o.userHome())
+	return s
+}
+
+// commandsFrom is commandsIn for a project's commands when project is set.
+func (r *codingReader) commandsFrom(root, label, project string) error {
 	var files []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -224,7 +232,7 @@ func (r *codingReader) commandsIn(root, label string) error {
 		if err != nil {
 			return err
 		}
-		r.agent.Skills = append(r.agent.Skills, Skill{Name: name, Text: string(out), Shared: true})
+		r.agent.Skills = append(r.agent.Skills, r.skill(Skill{Name: name, Text: string(out)}, project))
 	}
 	return nil
 }
@@ -333,7 +341,6 @@ func readJSONFile(path string) (map[string]any, error) {
 // one is given.
 func readClaudeCode(dir string, o Options) (*Found, error) {
 	r := newCodingReader(dir, ClaudeCode, o)
-	r.oauth = claudeOAuthServers(dir)
 	a := r.agent
 	if err := r.instruction(filepath.Join(dir, "CLAUDE.md")); err != nil {
 		return nil, err
@@ -404,11 +411,17 @@ func readClaudeCode(dir string, o Options) (*Found, error) {
 		// Servers added for this folder in Claude Code itself (local scope).
 		local, _ := pm["mcpServers"].(map[string]any)
 		r.mcpServers(local, p, tilde(p, o.userHome()))
-		if err := r.skillsIn(filepath.Join(p, ".claude", "skills")); err != nil {
-			return nil, err
-		}
-		if err := r.commandsIn(filepath.Join(p, ".claude", "commands"), "slash command"); err != nil {
-			return nil, err
+		// The project's skills and commands only from a folder you trusted
+		// in Claude Code, and even then held until you approve each one.
+		if trusted, _ := pm["hasTrustDialogAccepted"].(bool); trusted {
+			if err := r.skillsFrom(filepath.Join(p, ".claude", "skills"), p); err != nil {
+				return nil, err
+			}
+			if err := r.commandsFrom(filepath.Join(p, ".claude", "commands"), "slash command", p); err != nil {
+				return nil, err
+			}
+		} else if exists(filepath.Join(p, ".claude", "skills")) || exists(filepath.Join(p, ".claude", "commands")) {
+			r.f.skip("the skills and commands in %s: you never trusted that folder in Claude Code", filepath.Join(p, ".claude"))
 		}
 	}
 	r.finishInstructions()
@@ -445,28 +458,6 @@ func claudeApprovedServers(state map[string]any) func(string) bool {
 		off[n] = true
 	}
 	return func(name string) bool { return !off[name] && (all || on[name]) }
-}
-
-// claudeOAuthServers lists the MCP servers Claude Code holds a sign-in
-// for. Only the names under "mcpOAuth" in .credentials.json are read
-// ("<server>|<id>"), never a token.
-func claudeOAuthServers(dir string) map[string]bool {
-	data, err := os.ReadFile(filepath.Join(dir, ".credentials.json"))
-	if err != nil {
-		return nil
-	}
-	var creds struct {
-		MCP map[string]json.RawMessage `json:"mcpOAuth"`
-	}
-	if json.Unmarshal(data, &creds) != nil {
-		return nil
-	}
-	out := map[string]bool{}
-	for k := range creds.MCP {
-		name, _, _ := strings.Cut(k, "|")
-		out[name] = true
-	}
-	return out
 }
 
 // claudeModel sets the model settings.json names, when it is a full model
@@ -560,9 +551,17 @@ func readCodex(dir string, o Options) (*Found, error) {
 		if err := r.projectInstructions(filepath.Join(p, name)); err != nil {
 			return nil, err
 		}
+		// The project's skills only from a folder you marked trusted in
+		// Codex, and even then held until you approve each one.
+		level, _ := dig(cfg, "projects", p, "trust_level").(string)
 		for _, d := range []string{filepath.Join(p, ".codex", "skills"), filepath.Join(p, ".agents", "skills")} {
-			if err := r.skillsIn(d); err != nil {
-				return nil, err
+			switch {
+			case strings.EqualFold(level, "trusted"):
+				if err := r.skillsFrom(d, p); err != nil {
+					return nil, err
+				}
+			case exists(d):
+				r.f.skip("the skills in %s: you never marked that folder trusted in Codex", d)
 			}
 		}
 	}

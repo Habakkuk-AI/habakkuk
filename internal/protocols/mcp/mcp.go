@@ -503,6 +503,8 @@ func (s *server) stdio() (sdk.Transport, *exec.Cmd, *tailBuffer, error) {
 		}
 		env = append(env, k+"="+v)
 	}
+	command, unset := s.expandRefs(s.cfg.Command)
+	missing = append(missing, unset...)
 	args := make([]string, len(s.cfg.Args))
 	for i, a := range s.cfg.Args {
 		v, unset := s.expandRefs(a)
@@ -512,7 +514,7 @@ func (s *server) stdio() (sdk.Transport, *exec.Cmd, *tailBuffer, error) {
 	if len(missing) > 0 {
 		return nil, nil, nil, fmt.Errorf("%s not set in the environment or .env", strings.Join(missing, ", "))
 	}
-	cmd := exec.Command(s.cfg.Command, args...)
+	cmd := exec.Command(command, args...)
 	cmd.Env = env
 	stderr := &tailBuffer{}
 	cmd.Stderr = stderr
@@ -568,8 +570,9 @@ func (s *server) headerValue(spec string) (string, []string) {
 	return v, missing
 }
 
-// expandRefs replaces the ${NAME} references in an argument or URL with
-// the variables' values, so a key never has to be written in config.yaml.
+// expandRefs replaces the ${NAME} references in a command, argument or URL
+// with the variables' values, so a key never has to be written in
+// config.yaml.
 // Text without a reference is used as it is.
 func (s *server) expandRefs(v string) (string, []string) {
 	if !strings.Contains(v, "${") {
@@ -594,10 +597,19 @@ func ServerVars(m *config.MCPServer) []string {
 	for _, spec := range slices.Sorted(maps.Values(m.Headers)) {
 		out = append(out, HeaderVars(spec)...)
 	}
-	for _, a := range append(slices.Clone(m.Args), m.URL) {
+	for _, a := range append([]string{m.Command, m.URL}, m.Args...) {
 		out = append(out, RefVars(a)...)
 	}
 	return out
+}
+
+// Expand fills the ${NAME} references in a command, argument or URL from
+// lookup, which reads the environment and .env.
+func Expand(v string, lookup func(string) string) string {
+	if !strings.Contains(v, "${") {
+		return v
+	}
+	return os.Expand(v, lookup)
 }
 
 // HeaderVars lists the variables a configured header value needs.

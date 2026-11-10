@@ -292,8 +292,8 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 	}
 	rows.Close()
 	q := `SELECT id, ` + col(sc, "source", "''") + `, ` + col(sc, "chat_id", "''") + `, ` + col(sc, "thread_id", "''") + `, ` +
-		col(sc, "chat_type", "''") + `, ` + col(sc, "title", "''") + `, ` + col(sc, "started_at", "0") +
-		` FROM sessions ORDER BY ` + col(sc, "started_at", "0") + `, id`
+		col(sc, "chat_type", "''") + `, ` + col(sc, "title", "''") + `, ` + col(sc, "started_at", "0") + `, ` +
+		col(sc, "parent_session_id", "''") + ` FROM sessions ORDER BY ` + col(sc, "started_at", "0") + `, id`
 	rows, err = db.QueryContext(ctx, q)
 	if err != nil {
 		f.skip("the conversations in %s: %v", path, err)
@@ -305,26 +305,61 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 		order = "id"
 	}
 	ts := col(mc, "timestamp", "0")
+	parents := map[string]string{} // a compaction's child session -> the session it continues
 	for rows.Next() {
-		var id, src, chat, thread, chatType, title string
+		var id, src, chat, thread, chatType, title, parent string
 		var started float64
-		if err := rows.Scan(&id, &src, &chat, &thread, &chatType, &title, &started); err != nil {
+		if err := rows.Scan(&id, &src, &chat, &thread, &chatType, &title, &started, &parent); err != nil {
 			f.skip("the conversations in %s: %v", path, err)
 			return
 		}
 		sid := id
+		if parent != "" {
+			parents[id] = parent
+		}
+		// Sessions the old agent, a scheduler or a tool started: their
+		// "user" messages were written by those, not by a person.
+		author := ""
+		switch strings.ToLower(src) {
+		case "cron":
+			author = "a scheduled task of the old agent"
+		case "subagent", "kanban", "curator", "tool", "delegate":
+			author = "the old agent itself"
+		}
 		f.conversation(a, &Conversation{
 			ID: a.From + "/" + id, Title: title, Started: unixTime(started), Platform: src, Chat: chat, Thread: thread,
-			Untrusted: slices.Contains(unvettedSources, strings.ToLower(src)) || !slices.Contains(directChats, strings.ToLower(chatType)),
+			Untrusted: slices.Contains(unvettedSources, strings.ToLower(src)) || !slices.Contains(directChats, strings.ToLower(chatType)) || author != "",
 			Count:     counts[id],
 			load: func() ([]session.ImportedMessage, bool, error) {
+				seen := map[string]bool{}
+				// Turns a compaction carried into this session from the one it
+				// continues are imported with that one.
+				if uid != "''" {
+					var chain []any
+					for p, n := parents[sid], 0; p != "" && n < 50; p, n = parents[p], n+1 {
+						chain = append(chain, p)
+					}
+					if len(chain) > 0 {
+						urows, err := db.Query(`SELECT message_uid FROM messages WHERE message_uid IS NOT NULL AND session_id IN (?`+
+							strings.Repeat(", ?", len(chain)-1)+`)`, chain...)
+						if err != nil {
+							return nil, false, err
+						}
+						for urows.Next() {
+							var u string
+							if urows.Scan(&u) == nil {
+								seen["u"+u] = true
+							}
+						}
+						urows.Close()
+					}
+				}
 				rows, err := db.Query(`SELECT role, content, `+ts+`, `+key+`, `+uid+` FROM messages WHERE session_id = ? AND `+shown+` ORDER BY `+order, sid)
 				if err != nil {
 					return nil, false, err
 				}
 				defer rows.Close()
 				var out []session.ImportedMessage
-				seen := map[string]bool{}
 				for rows.Next() {
 					var role, content, k, u string
 					var at float64
@@ -336,6 +371,9 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 					}
 					seen[k], seen["u"+u] = true, u != ""
 					if text := hermesText(content); text != "" && !summaryText(text) {
+						if author != "" && role == "user" {
+							text = "[Written by " + author + ", not by a person] " + text
+						}
 						out = append(out, session.ImportedMessage{Role: llm.Role(role), Text: text, At: unixTime(at)})
 					}
 				}
@@ -834,77 +872,96 @@ func transcriptLine(line []byte) (msg session.ImportedMessage, other, ok bool) {
 	return session.ImportedMessage{Role: llm.Role(role), Text: text, At: at}, other, true
 }
 
-// The context blocks the source's gateway puts around a user's message: a
-// label line, then a fenced JSON block (sender, forwarded and replied-to
-// messages and the like) or a list (untrusted context, the chat history
-// since the last reply). They are other people's words or metadata, so
-// they are taken out. Newer gateways add them after the user's text,
-// separated by a blank line; older ones put them first. A message that is
-// only observed room activity is not the user's at all.
+// The context blocks the source's gateway adds to a user's message. Each
+// block is one paragraph: a label line ("Sender (untrusted metadata):",
+// "Chat history since last reply:", a chat window's
+// "<label> (untrusted, ...):", "Context: ⟦openclaw:ctx⟧" and the like),
+// then a fenced JSON line or entry lines with no blank line inside (every
+// entry is one line, "#<id> <time> <sender>: <body>", with its whitespace
+// collapsed). Blocks about the message come before the user's text, joined
+// by blank lines (a Telegram reply's "Current message:" block by a space);
+// context a channel adds comes after it. They are other people's words or
+// metadata, so they are taken out. When the text does not fall apart that
+// way for certain, none of it is taken as the user's words.
 var (
-	reFencedLabel = regexp.MustCompile(`^(Conversation info|Sender|Thread starter|Reply chain of current user message|Reply target of current user message|Replied message|Forwarded message context|Forwarded message|Location|Structured object)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$`)
-	reBlockLabel  = regexp.MustCompile(`^(Untrusted context|Chat history since last reply|Recent chat history|Conversation context)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$|\(untrusted[^)]*\):\s*$|⟦[^⟧]*ctx⟧`)
-	reEntry       = regexp.MustCompile(`^(\[|\{|- |\* )`)
+	reLabelLine = regexp.MustCompile(`^(Conversation info|Sender|Thread starter|Reply chain of current user message|Reply target of current user message|Replied message|Forwarded message context|Forwarded message|Location|Structured object|Untrusted context|Chat history since last reply|Recent chat history|Conversation context|Current message|Context)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$|^[^\n]{1,80}\(untrusted[^)]*\):\s*(⟦[^⟧]*⟧)?\s*$|⟦[^⟧]*ctx⟧`)
+	reStamp     = regexp.MustCompile(`^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\] *`)
+	reReplying  = regexp.MustCompile(`^\[Replying to: "(?:[^"\\]|\\.)*"\] ?(.*)$`)
+	reMsgHeader = regexp.MustCompile(`^#\S+: ?(.*)$`)
 )
+
+// isLabel reports a context block's label line. A plain "Context:" line
+// counts only with the marker the gateway adds to it.
+func isLabel(line string) bool {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "Context") && !strings.Contains(line, "⟦") && !strings.Contains(line, "untrusted") {
+		return false
+	}
+	return reLabelLine.MatchString(line)
+}
 
 // stripInbound takes those context blocks out of a user's message and
 // reports whether it found any.
 func stripInbound(text string) (string, bool) {
-	if strings.HasPrefix(strings.TrimSpace(text), "[OpenClaw room event]") {
-		return "", true
+	t := strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
+	if strings.HasPrefix(t, "[OpenClaw room event]") {
+		return "", true // activity the agent watched, not a message to it
 	}
-	if !strings.Contains(text, "ntrusted") && !strings.Contains(text, "⟦") && !strings.Contains(text, "```") &&
-		!strings.Contains(text, "chat history") && !strings.Contains(text, "Conversation context") {
+	stamp := reStamp.FindString(t)
+	t = strings.TrimPrefix(t, stamp)
+	if !strings.ContainsFunc(t, func(r rune) bool { return r == '⟦' }) && !strings.Contains(t, "ntrusted") &&
+		!strings.Contains(t, "Current message:") && !strings.Contains(t, "Conversation context") && !strings.Contains(t, "chat history") {
 		return text, false
 	}
-	lines := strings.Split(text, "\n")
-	var keep []string
+	paras := strings.Split(t, "\n\n")
 	found := false
-	label := func(l string) bool {
-		return reBlockLabel.MatchString(l) || reFencedLabel.MatchString(l)
-	}
-	for i := 0; i < len(lines); i++ {
-		l := strings.TrimSpace(lines[i])
-		switch {
-		case reFencedLabel.MatchString(l) && i+1 < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[i+1]), "```"):
-			found = true
-			i += 2
-			for i < len(lines) && strings.TrimSpace(lines[i]) != "```" {
-				i++
+	i := 0
+	// Blocks before the user's text.
+	for ; i < len(paras); i++ {
+		lines := strings.Split(strings.TrimSpace(paras[i]), "\n")
+		if !isLabel(lines[0]) {
+			break
+		}
+		found = true
+		if strings.HasPrefix(strings.TrimSpace(lines[0]), "Current message") {
+			// A reply's block, joined to the user's text by a space on its
+			// last line.
+			last := strings.TrimSpace(lines[len(lines)-1])
+			body := ""
+			if m := reMsgHeader.FindStringSubmatch(last); m != nil {
+				body = m[1]
+			} else if m := reReplying.FindStringSubmatch(last); m != nil {
+				body = m[1]
+			} else {
+				return "", true
 			}
-		case reBlockLabel.MatchString(l):
-			found = true
-			if strings.TrimSpace(strings.Join(keep, "\n")) != "" {
-				// After the user's text: every block from here on is context.
-				i = len(lines)
-				continue
-			}
-			// Before it: the block runs on, across blank lines, while its
-			// lines look like entries.
-			for i+1 < len(lines) {
-				next := strings.TrimSpace(lines[i+1])
-				if next == "" {
-					j := i + 1
-					for j < len(lines) && strings.TrimSpace(lines[j]) == "" {
-						j++
-					}
-					if j < len(lines) && (reEntry.MatchString(strings.TrimSpace(lines[j])) && !label(strings.TrimSpace(lines[j]))) {
-						i = j
-						continue
-					}
-					break
-				}
-				if label(next) {
-					break
-				}
-				i++
-			}
-		default:
-			keep = append(keep, lines[i])
+			paras[i] = body
+			break
 		}
 	}
-	return strings.TrimSpace(strings.Join(keep, "\n")), found
+	rest := paras[i:]
+	// Blocks after it.
+	for j := 1; j < len(rest); j++ {
+		if isLabel(strings.Split(strings.TrimSpace(rest[j]), "\n")[0]) {
+			rest, found = rest[:j], true
+			break
+		}
+	}
+	// Anything left that looks like a block, or like other people's chat
+	// lines, means the text did not fall apart for certain.
+	for _, p := range rest {
+		for _, l := range strings.Split(p, "\n") {
+			if isLabel(l) || found && reChatLine.MatchString(strings.TrimSpace(l)) {
+				return "", true
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(rest, "\n\n")), found
 }
+
+// reChatLine is a chat window entry: "#<id> <time> <sender>: <body>", or
+// an older "[sender] body" line.
+var reChatLine = regexp.MustCompile(`^#\S+ \S.*: |^\[[^\]]{1,40}\] \S`)
 
 // planHistory decides which conversations are new: the ones the Habakkuk
 // home does not hold yet. It reads transcripts.db without changing it,

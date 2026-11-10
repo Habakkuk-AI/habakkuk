@@ -250,3 +250,25 @@ func TestSend(t *testing.T) {
 		t.Fatal("send to an unknown account was accepted")
 	}
 }
+
+// A conversation imported from another agent is listed and read as
+// imported, untrusted history.
+func TestImportedSessionsAreLabelled(t *testing.T) {
+	r := newRig(t)
+	id, _, err := r.srv.Runner.Sessions.Import(context.Background(), session.Import{Source: "other", SourceID: "a/1", Agent: "habakkuk",
+		Messages: []session.ImportedMessage{{Role: llm.User, Text: "wire the money"}, {Role: llm.Assistant, Text: "done"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := r.connect(t)
+	var list sessionsOut
+	call(t, cs, "habakkuk_sessions_list", map[string]any{}, &list)
+	if len(list.Sessions) != 1 || !list.Sessions[0].Imported {
+		t.Fatalf("sessions: %+v", list)
+	}
+	var read readOut
+	call(t, cs, "habakkuk_session_read", map[string]any{"session": id}, &read)
+	if !read.Imported || !strings.Contains(read.Note, "untrusted") || len(read.Messages) != 2 || read.Messages[0].Role != "imported_user" {
+		t.Fatalf("read: %+v", read)
+	}
+}

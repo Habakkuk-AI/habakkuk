@@ -129,7 +129,7 @@ func TestRead(t *testing.T) {
 		mcp:       []string{"github", "notion", "time"},
 		channels:  []string{"telegram", "whatsapp"},
 		schedules: []string{"Morning brief=CRON_TZ=America/Toronto 0 8 * * 1-5", "Inbox sweep=@every 30m", "Digest script=30 18 * * *"},
-		secrets:   []string{"ANTHROPIC_API_KEY", "GITHUB_PERSONAL_ACCESS_TOKEN", "NOTION_TOKEN", "OPENROUTER_API_KEY", "TELEGRAM_BOT_TOKEN"},
+		secrets:   []string{"ANTHROPIC_API_KEY", "GITHUB_PERSONAL_ACCESS_TOKEN", "MCP_NOTION_URL", "NOTION_TOKEN", "OPENROUTER_API_KEY", "TELEGRAM_BOT_TOKEN"},
 		leftovers: []string{"older sessions/ folder", "WhatsApp linked-device session", "board cards"},
 		skipped:   []string{"1 skill that came with", "MCP server retired", "One-off long past", "1 schedule of agent habakkuk: turned off"},
 	}, {
@@ -142,7 +142,7 @@ func TestRead(t *testing.T) {
 		mcp:       []string{"docs", "remote"},
 		channels:  []string{"discord-ops", "telegram", "whatsapp"},
 		schedules: []string{"Weekly money summary=CRON_TZ=Europe/Lisbon 0 9 * * 1", "Disk check=@every 1h0m0s"},
-		secrets:   []string{"ANTHROPIC_API_KEY", "DISCORD_BOT_TOKEN_OPS", "GROQ_API_KEY", "MCP_REMOTE_TOKEN", "STUDIO_KEY", "TELEGRAM_BOT_TOKEN"},
+		secrets:   []string{"ANTHROPIC_API_KEY", "DISCORD_BOT_TOKEN_OPS", "GROQ_API_KEY", "MCP_REMOTE_TOKEN", "MCP_REMOTE_URL", "STUDIO_KEY", "TELEGRAM_BOT_TOKEN"},
 		leftovers: []string{"heartbeat checklist", "imessage channel", "WhatsApp linked-device session"},
 		skipped:   []string{"MCP server parked", "1 schedule: turned off"},
 	}}

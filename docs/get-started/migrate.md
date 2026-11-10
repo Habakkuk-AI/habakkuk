@@ -44,7 +44,7 @@ The import looks for each source folder where that agent's own tools look. That'
 
 Each conversation you had with the old agent comes over as a session of the agent it belonged to. It keeps its title. It starts at its first message and ends at its last. Where the old agent noted the chat, such as a Telegram chat or a Discord thread, the session records that chat under the matching Habakkuk channel.
 
-Only what you and the agent said comes over, each message once. Tool calls, tool results and reasoning stay behind. So do the rows the old agent never showed as part of the chat: the summaries it wrote when it compacted a long chat, notices such as a model switch, group messages it only watched, answers that were rewound or never sent, and text meant for the model alone. When the old agent compacted a chat, it kept a copy of each turn it carried on with, and the import reads that turn once. Context the old gateway added to your messages, such as sender details, forwarded and replied-to messages, or the group's chat since the last reply, is taken out too, before or after your words. A message that was only activity the agent watched in a room is left out. A conversation with no words in it, only tool calls, is left out.
+Only what you and the agent said comes over, each message once. Tool calls, tool results and reasoning stay behind. So do the rows the old agent never showed as part of the chat: the summaries it wrote when it compacted a long chat, notices such as a model switch, group messages it only watched, answers that were rewound or never sent, and text meant for the model alone. When the old agent compacted a chat, it kept a copy of each turn it carried on with, and the import reads that turn once. Context the old gateway added to your messages is taken out too: sender details, forwarded and replied-to messages, the group's chat since the last reply. The gateway puts each of these in a paragraph of its own, with a label line, before or after your words. When a message doesn't split cleanly into those paragraphs and your words, none of it is imported as yours. A message that was only activity the agent watched in a room is left out. Conversations that the old agent, a scheduled task or one of its tools started are marked untrusted, and their prompts are marked as written by the agent or the scheduler, not by you. A long chat the old agent continued in a new session after compacting it comes over as two sessions, without the turns it carried over counted twice. A conversation with no words in it, only tool calls, is left out.
 
 The import only reads the old agent's databases. It opens them so that nothing is written beside them, not even the `-wal` and `-shm` files SQLite makes. When the old agent has changes in a `-wal` file still, the import reads a copy in a temporary folder and removes it after.
 
@@ -76,9 +76,8 @@ Keys and sign-ins never move from a coding tool, not even with `--secrets copy`.
 
 A few MCP servers need a closer look:
 
-- A server whose values might be keys is handled the same way from every source (see [MCP servers and keys](#mcp-servers-and-keys)). From a coding tool such a server is always left out, because no key moves from it.
+- Servers are handled the same way from every source (see [MCP servers and keys](#mcp-servers-and-keys)). From a coding tool, a remote server, or a local one with anything but program names, flags, a package name, paths and variables, is always left out, because no key moves from it. Add it with `hk mcp add NAME`, or in `mcp_servers` in `config.yaml`; a remote server that needs a sign-in takes `auth: oauth` and `hk mcp login NAME`.
 - A server that uses the older SSE transport is left out. If it also offers Streamable HTTP, often at `/mcp`, add that URL.
-- A remote server Claude Code signed in to gets `auth: oauth`. Run `hk mcp login NAME` for it. The plan names any other remote server that sends no key, in case it needs a sign-in too.
 - Codex's `enabled_tools` become the server's `allow` list. Habakkuk can't hide single tools, so its `disabled_tools` always ask for approval instead.
 - A server that runs a program inside a desktop app, such as Codex's `node_repl` in the ChatGPT app, is left out.
 
@@ -88,7 +87,7 @@ A project folder is read only when you name it with `--project DIR`. Running the
 
 - Its instruction files (`CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, or Codex's `AGENTS.md`) become a memory note about that project, marked untrusted because they come from a repository. They don't go into the agent's own `AGENTS.md`, which applies everywhere.
 - From its `.mcp.json`, only the servers you approved for that folder in Claude Code come along. The import reads that from your own `~/.claude.json`: you accepted the folder's trust prompt there, and then turned on all its servers or that one server, and didn't turn it off. Settings files inside the project don't count, because whoever wrote the repository wrote those. A repository you never opened in Claude Code brings no servers. The plan shows each project server's full command, so you can read what it runs before you say yes. Servers you added for the folder in Claude Code itself come along too.
-- Its skills (`.claude/skills` and `.claude/commands`, or `.codex/skills` and `.agents/skills`).
+- Its skills and commands (`.claude/skills` and `.claude/commands`, or `.codex/skills` and `.agents/skills`), only from a folder you trusted: in `~/.claude.json` for Claude Code, or as `trust_level = "trusted"` for that folder in Codex's `config.toml`. Even then they go to the agent's own skills, not the shared ones, and they don't load until you approve each one with `hk skills approve -agent NAME SKILL`. The plan marks them "needs your approval".
 
 The project doesn't become the agent's workspace.
 
@@ -98,16 +97,18 @@ When an agent's home and a coding tool are both on your computer, `hk migrate` i
 
 ## MCP servers and keys
 
-A key can hide anywhere in a server's setup: a short flag's value, a token in the URL's path, an ID in the query. So the import doesn't guess which values are keys. It copies a server as it is only when everything in it is plainly not a key:
+A key can hide anywhere in a server's setup: a short flag's value, a token in a URL's path or host name, an ID in the query. So the import doesn't guess which values are keys.
 
-- its command is a program name or a path;
-- each argument is a flag with no value (`-y`, `--stdio`), the package a runner starts (the name after `npx`, `uvx`, `bunx`, `pipx run` and the like) or a path;
-- its URL has no user, password, query or fragment, and its path is short plain words such as `/v1/mcp`;
-- each header is a variable, written as `${NAME}`, or `Bearer ${NAME}`, `Basic ${NAME}` or `Token ${NAME}`, with nothing else in it.
+A remote server, one with a URL, is never copied as it is. A local server is copied as it is only when everything in it is plainly not a key:
 
-Any other server is left out by default, and the plan says how to add it with `hk mcp add NAME`. Its values are never printed. With `--secrets copy` (or a yes when you're asked about the keys), the server comes along: each value that might be a key goes into `$HABAKKUK_HOME/.env` as a variable of its own, such as `MCP_SEARCH_ARG2`, `MCP_SEARCH_URL` or `MCP_SEARCH_HEADER_1`, and `config.yaml` names the variable. A literal value in a server's `env` was always kept as a variable, and moves into `.env` with the other keys. Literal values never land in `config.yaml` or the plan.
+- its command is a bare program name, or a path;
+- each argument is the package a runner starts (the first word after `npx`, `uvx`, `bunx`, `pipx run` and the like), a flag with nothing attached and no value after it (`-y`, `--stdio`), a path, or a variable such as `${NOTION_TOKEN}`.
 
-From Claude Code and Codex, no key moves, so these servers are always left out.
+A path here is absolute (or starts with `~/`), has no spaces, `@` or `:`, and exists on this computer or lies in the old agent's folder. A variable stays a variable in `config.yaml`, and its value moves the way keys do. A default, as in `${NAME:-value}`, becomes the variable's value when the old agent had none.
+
+Any other server is left out by default, and the plan says how to add it with `hk mcp add NAME`. With `--secrets copy` (or a yes when you're asked about the keys), the server comes along: each part that isn't plainly a key-free value goes into `$HABAKKUK_HOME/.env` as a variable of its own, such as `MCP_SEARCH_COMMAND`, `MCP_SEARCH_ARG2`, `MCP_SEARCH_URL` (a remote server's whole address) or `MCP_SEARCH_HEADER_1`, and `config.yaml` names the variable. A header written as `${NAME}`, or as `Bearer ${NAME}`, `Basic ${NAME}` or `Token ${NAME}`, stays a variable. A literal value in a server's `env` was always kept as a variable, and moves into `.env` with the other keys. So `config.yaml` and the plan show only program names, flags, package names, paths and variable names; every other value is in `.env`.
+
+From Claude Code and Codex, no key moves, so remote servers and servers with other values are always left out.
 
 ## Your files in the old folder
 

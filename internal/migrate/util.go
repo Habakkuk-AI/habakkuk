@@ -237,7 +237,9 @@ func (f *Found) findSkills(root string) ([]string, error) {
 				inSkill := d.Name() != skills.FileName && exists(filepath.Join(filepath.Dir(p), skills.FileName))
 				switch {
 				case inSkill:
-					// A link among a skill's own files: the copy handles it.
+					// A link among a skill's own files: the copy leaves links
+					// out, so say so.
+					f.skip("skill link %s: links inside a skill folder are not copied; copy the file it leads to into the skill if it needs it", p)
 				case err != nil || serr != nil:
 					f.skip("skill link %s: it leads nowhere", p)
 				case !info.IsDir():

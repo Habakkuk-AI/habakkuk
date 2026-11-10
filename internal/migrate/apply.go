@@ -15,6 +15,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/app"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
+	"github.com/habakkuk-ai/habakkuk/internal/knowledge/hub"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
 	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
 )
@@ -308,7 +309,25 @@ func (p *Plan) copySkill(it *Item) error {
 			return err
 		}
 	}
-	return os.Rename(staged, dest)
+	if err := os.Rename(staged, dest); err != nil {
+		return err
+	}
+	if it.skill.Held {
+		// Recorded in the agent's skills lock as not approved and held, so
+		// it does not load until the owner approves it.
+		path := filepath.Join(parent, hub.LockName)
+		lock, err := hub.ReadLock(path)
+		if err != nil {
+			return err
+		}
+		sum, err := treeHash(dest, nil)
+		if err != nil {
+			return err
+		}
+		lock.Packages[it.skill.Name] = &hub.Entry{Source: it.skill.Source, SHA256: sum, Installed: time.Now().UTC(), Held: true}
+		return lock.Write(path)
+	}
+	return nil
 }
 
 // applySchedules creates the schedules, each paused.

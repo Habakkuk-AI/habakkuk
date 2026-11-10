@@ -245,7 +245,7 @@ var claudeCodeInternals = []internals{
 // codexInternals: what a Codex folder (~/.codex) keeps for itself.
 var codexInternals = []internals{
 	{whyProgram, []string{"bin", "node_modules", "vendor_imports", "computer-use", "node_repl", "process_manager"}},
-	{whyRunning, []string{"ipc"}},
+	{whyRunning, []string{"ipc", "thread-writer-locks"}},
 	{whyPlugins, []string{"plugins"}},
 	{whyCache, []string{"tmp", ".tmp", "shell_snapshots"}},
 	{whyLogs, []string{"log", "logs"}},
@@ -291,6 +291,8 @@ func internalWhy(from, name string) string {
 		why = whyRunning
 	case strings.HasSuffix(low, "-wal"), strings.HasSuffix(low, "-shm"), strings.HasSuffix(low, "-journal"):
 		why = whySessions
+	case from == Codex && strings.HasPrefix(low, "chrome-native-hosts") && strings.HasSuffix(low, ".json"):
+		why = whyProgram
 	case IsCodingTool(from) && (strings.HasSuffix(low, ".sqlite") || strings.HasSuffix(low, ".sqlite3") || strings.HasSuffix(low, ".db") ||
 		strings.Contains(low, "browser")):
 		// In a coding tool's folder, a database or a browser profile the

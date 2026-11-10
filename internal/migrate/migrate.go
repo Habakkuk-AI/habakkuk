@@ -244,6 +244,8 @@ type Found struct {
 	// workspaces are the agents' workspace folders the import leaves where
 	// they are: folder -> agent.
 	workspaces map[string]string
+	// userHome is the user's home folder, for "~/" paths.
+	userHome string
 	// dbs are the read-only connections to source databases (and to the
 	// Habakkuk home's transcripts while planning); Close closes them.
 	dbs map[string]*sourceDB
@@ -318,8 +320,11 @@ type Skill struct {
 	Dir    string
 	Text   string // a skill made by the import: its SKILL.md, when Dir is ""
 	Shared bool   // into $HABAKKUK_HOME/skills rather than the agent's own folder
-	// Via is a symlink in the source that led to Dir, when it did.
-	Via string
+	// Held marks a skill from a project folder: it goes to the agent's own
+	// skills, recorded as from Source and held back until the owner
+	// approves it (hk skills approve -agent).
+	Held   bool
+	Source string
 }
 
 // Provider is one model provider for config.yaml.
@@ -497,7 +502,7 @@ func (f *Found) finish() {
 		}
 	}
 	slices.Sort(f.Missing)
-	f.Missing = slices.Compact(f.Missing)
+	f.Missing = slices.DeleteFunc(slices.Compact(f.Missing), func(k string) bool { return slices.Contains(systemVars, k) })
 	f.OtherEnv = slices.DeleteFunc(f.OtherEnv, func(k string) bool {
 		_, copied := f.Secrets[k]
 		return f.usedEnv[k] || copied

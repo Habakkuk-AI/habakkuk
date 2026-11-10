@@ -474,8 +474,11 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 		s := &a.Skills[i]
 		dest := p.skillDir(a.Name, s)
 		where := "agent " + a.Name
-		if s.Shared {
+		switch {
+		case s.Shared:
 			where = "shared"
+		case s.Held:
+			where = "agent " + a.Name + ", from the " + s.Source + "; it needs your approval before it loads: hk skills approve -agent " + a.Name + " " + s.Name
 		}
 		it := p.add(&Item{Kind: "skill", Agent: a.Name, Name: s.Name, Status: New, Detail: where, skill: s})
 		findings, err := skillScan(s)
@@ -806,10 +809,18 @@ func quoteAll(list []string) []string {
 // and those servers: a copy, so the same Found can be planned again with
 // another answer. Their variables leave the keys to copy and to set.
 func (f *Found) withoutKeyed(drop bool) (*Found, []*MCPServer) {
-	if !drop || !slices.ContainsFunc(f.MCP, func(m *MCPServer) bool { return len(m.Keyed) > 0 }) {
-		return f, nil
-	}
 	c := *f
+	c.Leftovers = slices.Clone(f.Leftovers) // the plan adds its own
+	defer func() {
+		for _, m := range c.MCP {
+			if m.OAuth {
+				c.leftover("the sign-in to MCP server "+m.Name, "hk mcp login "+m.Name)
+			}
+		}
+	}()
+	if !drop || !slices.ContainsFunc(f.MCP, func(m *MCPServer) bool { return len(m.Keyed) > 0 }) {
+		return &c, nil
+	}
 	var keyed []*MCPServer
 	gone := map[string]bool{}
 	needed := map[string]bool{}

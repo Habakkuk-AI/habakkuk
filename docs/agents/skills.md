@@ -41,7 +41,7 @@ hk skills install github:owner/repo/skill           # also URLs, local paths and
 hk skills approve NAME                               # after reading it
 ```
 
-An installed skill is untrusted until you run `hk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
+An installed skill is untrusted until you run `hk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. A skill `hk migrate` brought in from a project folder stays disabled until you run `hk skills approve -agent AGENT NAME`, scripts or not. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
 
 ## The curator
 

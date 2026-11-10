@@ -174,7 +174,7 @@ func TestMigrateAsks(t *testing.T) {
 	if err := runMigrate(context.Background(), home, nil, strings.NewReader("\nn\n"), &out, noEnv, user); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Copy the 5 keys and tokens into") {
+	if !strings.Contains(out.String(), "Copy the 6 keys and tokens into") {
 		t.Errorf("output:\n%s", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(home, ".env")); err == nil {
@@ -431,7 +431,7 @@ func TestMigrateKeyedServerFollowsKeysAnswer(t *testing.T) {
 			if got := strings.Contains(string(env), "MCP_SHORTFLAG_ARG2=shortsecretvalue94"); got != c.kept {
 				t.Errorf("the key in .env: %v, want %v", got, c.kept)
 			}
-			if c.name == "answer no" && !strings.Contains(out.String(), "Without the keys, these MCP servers are left out: shortflag.") {
+			if c.name == "answer no" && !strings.Contains(out.String(), "Without the keys, these MCP servers are left out: notion, shortflag.") {
 				t.Errorf("output:\n%s", out.String())
 			}
 		})
