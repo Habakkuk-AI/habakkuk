@@ -137,14 +137,18 @@ type message struct {
 		Length int    `json:"length"`
 		User   *user  `json:"user"`
 	} `json:"entities"`
-	ReplyTo   *message `json:"reply_to_message"`
-	Photo     []file   `json:"photo"`
-	Document  *file    `json:"document"`
-	Voice     *file    `json:"voice"`
-	Audio     *file    `json:"audio"`
-	Video     *file    `json:"video"`
-	VideoNote *file    `json:"video_note"`
-	Sticker   *file    `json:"sticker"`
+	ReplyTo *message `json:"reply_to_message"`
+	// Quote is the part of the replied-to message the user picked, if any.
+	Quote *struct {
+		Text string `json:"text"`
+	} `json:"quote"`
+	Photo     []file `json:"photo"`
+	Document  *file  `json:"document"`
+	Voice     *file  `json:"voice"`
+	Audio     *file  `json:"audio"`
+	Video     *file  `json:"video"`
+	VideoNote *file  `json:"video_note"`
+	Sticker   *file  `json:"sticker"`
 }
 
 type file struct {
@@ -240,6 +244,7 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 	if msg.ReplyTo != nil && msg.ReplyTo.From != nil && msg.ReplyTo.From.ID == a.botID {
 		m.Mentioned = true
 	}
+	m.Quote = a.quote(msg)
 	mention := "@" + a.username
 	if a.username != "" && strings.Contains(strings.ToLower(text), strings.ToLower(mention)) {
 		m.Mentioned = true
@@ -247,6 +252,44 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 	}
 	m.Text = text
 	return m, true
+}
+
+// quote is the message msg replies to: the part the user picked, or the
+// whole text. In a forum topic every message "replies" to the topic's
+// first message, which is not a quote.
+func (a *Adapter) quote(msg *message) *channel.Quote {
+	r := msg.ReplyTo
+	if r == nil || (msg.IsTopicMessage && r.MessageID == msg.MessageThreadID) {
+		return nil
+	}
+	q := &channel.Quote{Text: r.Text}
+	if msg.Quote != nil && msg.Quote.Text != "" {
+		q.Text = msg.Quote.Text
+	}
+	if q.Text == "" {
+		q.Text = r.Caption
+	}
+	if q.Text == "" {
+		switch {
+		case len(r.Photo) > 0:
+			q.Text = "(photo)"
+		case r.Voice != nil:
+			q.Text = "(voice note)"
+		case r.Video != nil || r.VideoNote != nil:
+			q.Text = "(video)"
+		case r.Document != nil:
+			q.Text = "(file " + r.Document.FileName + ")"
+		case r.Sticker != nil:
+			q.Text = "(sticker)"
+		default:
+			return nil
+		}
+	}
+	if r.From != nil {
+		q.Self = r.From.ID == a.botID
+		q.From = strings.TrimSpace(r.From.FirstName + " " + r.From.LastName)
+	}
+	return q
 }
 
 func (a *Adapter) attachments(msg *message) []channel.Attachment {
