@@ -13,21 +13,29 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/core/events"
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 	"github.com/habakkuk-ai/habakkuk/internal/core/state"
+	"github.com/habakkuk-ai/habakkuk/internal/ops/i18n"
 )
 
 // Live progress drafts. On a platform that can edit messages (Editor), a
 // turn that runs past ProgressAfter posts one "working" message and keeps
-// editing it with a line per tool call, at most once every ProgressEvery.
-// The draft is best effort and never carries the answer: the reply is still
-// a delivery job, which removes the draft before it sends. The draft's id is
-// kept in state.db under the turn, so a turn that reruns after a crash edits
-// the same message and its delivery still finds it.
+// editing it, at most once every ProgressEvery. What it says is the
+// channel's progress setting: plain (the default) is one short line in
+// everyday words, such as "Checking the web", that never names a tool, a
+// command, a path or an id; detailed is a line per tool call, for people
+// who want to watch the steps. The draft is best effort and never carries
+// the answer: the reply is still a delivery job, which removes the draft
+// before it sends. The draft's id is kept in state.db under the turn, so a
+// turn that reruns after a crash edits the same message and its delivery
+// still finds it.
 
 const (
 	defaultProgressAfter = 8 * time.Second
 	defaultProgressEvery = 3 * time.Second
 	maxProgressLines     = 8
 	workingText          = "_Working on it…_"
+	// plainElapsedAfter is how long a turn runs before the plain line says
+	// for how long ("Working on it… (40s)").
+	plainElapsedAfter = 20 * time.Second
 )
 
 // drafts reports whether the conversation's channel shows progress drafts.
@@ -38,7 +46,7 @@ func (g *Gateway) drafts(to Address) bool {
 	if _, ok := g.Adapters[to.Account].(Editor); !ok {
 		return false
 	}
-	return g.Channels[to.Account].ProgressMode() == config.ProgressDraft
+	return g.Display(to.Account).Progress != config.ProgressOff
 }
 
 // startProgress runs the turn's progress draft until the returned func is
@@ -67,14 +75,23 @@ type progress struct {
 	turnID string
 	to     Address
 	id     string   // the draft's message id once posted
-	lines  []string // tool lines, newest last
-	more   int      // lines dropped off the top
+	lines  []string // detailed: tool lines, newest last
+	more   int      // detailed: lines dropped off the top
 	shown  string   // text of the last post or edit
+	// Plain mode: the one line shown, in the chat's language, and when the
+	// turn started (for the elapsed time).
+	plain   bool
+	lang    string
+	phrase  string
+	started time.Time
 }
 
 func (g *Gateway) runProgress(ctx context.Context, turnID string, to Address, evs <-chan events.Event) {
 	a := g.Adapters[to.Account]
-	p := &progress{g: g, ed: a.(Editor), a: a, turnID: turnID, to: to}
+	// The setting is read once, when the turn starts: a change made while
+	// it runs applies from the next turn.
+	p := &progress{g: g, ed: a.(Editor), a: a, turnID: turnID, to: to, lang: g.lang(to), started: g.now(),
+		plain: g.Display(to.Account).Progress != config.ProgressDetailed}
 	to.ReplyTo = ""
 	p.to = to
 	if d, err := g.State.Draft(ctx, turnID); err == nil && d != nil {
@@ -101,7 +118,7 @@ func (g *Gateway) runProgress(ctx context.Context, turnID string, to Address, ev
 			return
 		case e := <-evs:
 			if e.Kind == events.ToolStart {
-				p.add(toolLine(e.Text))
+				p.tool(e)
 			}
 			continue
 		case <-wait.C:
@@ -114,6 +131,37 @@ func (g *Gateway) runProgress(ctx context.Context, turnID string, to Address, ev
 	}
 }
 
+// tool takes in a tool call that just started.
+func (p *progress) tool(e events.Event) {
+	if !p.plain {
+		p.add(toolLine(e.Text))
+		return
+	}
+	name := e.Tool
+	if name == "" {
+		name, _, _ = strings.Cut(e.Text, " ")
+	}
+	p.phrase = p.g.plainPhrase(p.lang, name, e.Input)
+}
+
+// plainText is the plain line: what the agent is doing in everyday words
+// and, once the turn has run a while, for how long. The time moves in steps
+// (tens of seconds, then minutes) so the message is not edited every tick.
+func (p *progress) plainText() string {
+	phrase := p.phrase
+	if phrase == "" {
+		phrase = i18n.T(p.lang, "progress.working")
+	}
+	line := i18n.T(p.lang, "progress.line", phrase)
+	switch el := p.g.now().Sub(p.started); {
+	case el >= time.Minute:
+		line = i18n.T(p.lang, "progress.elapsed_min", phrase, int(el/time.Minute))
+	case el >= plainElapsedAfter:
+		line = i18n.T(p.lang, "progress.elapsed_sec", phrase, int(el/(10*time.Second))*10)
+	}
+	return "_" + line + "_"
+}
+
 func (p *progress) add(line string) {
 	p.lines = append(p.lines, line)
 	if n := len(p.lines) - maxProgressLines; n > 0 {
@@ -122,6 +170,9 @@ func (p *progress) add(line string) {
 }
 
 func (p *progress) text() string {
+	if p.plain {
+		return p.plainText()
+	}
 	var b strings.Builder
 	b.WriteString(workingText)
 	if len(p.lines) > 0 {

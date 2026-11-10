@@ -454,7 +454,10 @@ func TestDashApprovals(t *testing.T) {
 		ok, _ := g.ApproverFor(sess.ID).Approve(ctx, tools.ApprovalRequest{Tool: "exec", Summary: "rm -rf build/", Review: "deletes files"})
 		answer <- ok
 	}()
-	if e := st.next(t); !strings.Contains(e.Text, "Approval needed") {
+	// The web chat is the owner's own screen: plain words first, and the
+	// exact call with them.
+	if e := st.next(t); !strings.HasPrefix(e.Text, "I'd like to run a command on your computer.\nI'm asking because my reviewer was not sure: deletes files") ||
+		!strings.Contains(e.Text, "rm -rf build/") || !strings.Contains(e.Text, "Reply **yes** or **no**.") {
 		t.Fatalf("prompt: %+v", e)
 	}
 	var id string

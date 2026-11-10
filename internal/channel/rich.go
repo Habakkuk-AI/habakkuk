@@ -21,8 +21,12 @@ import (
 // per adapter; without it the chat gets plain text, as before.
 
 // callbackPrefix starts the data of every button the gateway posts:
-// "fy|<nonce>|<index>". The nonce names one prompt, so a press on an old
-// prompt can never answer a newer one.
+// "fy|<nonce>|<index>", and for an approval "fy|<nonce>|<index>|<hash>".
+// The nonce names one prompt, so a press on an old prompt can never answer
+// a newer one by accident. The hash names the call an approval is about
+// (callHash): after a restart the nonce is forgotten, and the hash is what
+// lets a button from before it answer the same call asked again, and only
+// that call.
 const callbackPrefix = "fy|"
 
 // buttonHandler answers a press of button i. It returns a short notice
@@ -30,8 +34,9 @@ const callbackPrefix = "fy|"
 type buttonHandler func(i int) string
 
 // offer registers a prompt's buttons and returns them with their data, and
-// a func that withdraws them once the prompt is settled.
-func (g *Gateway) offer(labels []Button, h buttonHandler) ([][]Button, func()) {
+// a func that withdraws them once the prompt is settled. tag, when set, is
+// appended to each button's data (an approval's call hash).
+func (g *Gateway) offer(labels []Button, tag string, h buttonHandler) ([][]Button, func()) {
 	var b [6]byte
 	rand.Read(b[:])
 	nonce := hex.EncodeToString(b[:])
@@ -40,6 +45,9 @@ func (g *Gateway) offer(labels []Button, h buttonHandler) ([][]Button, func()) {
 	var row []Button
 	for i, l := range labels {
 		l.Data = fmt.Sprintf("%s%s|%d", callbackPrefix, nonce, i)
+		if tag != "" {
+			l.Data += "|" + tag
+		}
 		l.Text = buttonLabel(l.Text)
 		row = append(row, l)
 		// Approve and Deny sit side by side; choices go one per row, where
@@ -82,13 +90,17 @@ func (g *Gateway) sendChoice(ctx context.Context, to Address, markdown string, r
 }
 
 // callback handles a button press. Only senders who may talk to the bot
-// can press; a press on a prompt that is no longer waiting says so.
+// can press. A press is never dropped without a word: a button the gateway
+// no longer tracks (answered already, or posted before a restart) answers
+// the approval waiting now when it is for the same call, and otherwise the
+// chat is told the request expired and, when one is waiting, to use that.
 func (g *Gateway) callback(ctx context.Context, ch *config.Channel, m Message, to Address) {
 	if ok, err := g.allowed(ctx, ch, m); err != nil || !ok {
 		return
 	}
 	// A guest's press could be the owner's pending approval: refuse it.
-	if _, waiting := g.pending.Load(to.key()); waiting && !g.owner(ctx, ch, m) {
+	v, waiting := g.pending.Load(to.key())
+	if waiting && !g.owner(ctx, ch, m) {
 		return
 	}
 	to.ReplyTo = ""
@@ -96,26 +108,47 @@ func (g *Gateway) callback(ctx context.Context, ch *config.Channel, m Message, t
 	if !ok {
 		return
 	}
-	nonce, idx, _ := strings.Cut(rest, "|")
-	var i int
-	if _, err := fmt.Sscan(idx, &i); err != nil {
+	parts := strings.Split(rest, "|")
+	if len(parts) < 2 {
 		return
 	}
-	h, ok := g.buttons.LoadAndDelete(nonce)
-	if !ok {
+	var i int
+	if _, err := fmt.Sscan(parts[1], &i); err != nil {
+		return
+	}
+	if h, ok := g.buttons.LoadAndDelete(parts[0]); ok {
+		if notice := h.(buttonHandler)(i); notice != "" {
+			g.reply(to, notice)
+		}
+		return
+	}
+	if !waiting {
 		g.reply(to, g.t(to, "button.expired"))
 		return
 	}
-	if notice := h.(buttonHandler)(i); notice != "" {
-		g.reply(to, notice)
+	p := v.(*pendingApproval)
+	if len(parts) < 3 || parts[2] != p.hash || i < 0 || i > 1 {
+		g.reply(to, g.t(to, "button.expired_pending"))
+		return
+	}
+	switch {
+	case !p.resolve(i == 0):
+		g.reply(to, g.t(to, "button.expired")) // a second press on a prompt just answered
+	case i == 0:
+		g.reply(to, g.t(to, "approval.approved"))
+	default:
+		g.reply(to, g.t(to, "approval.denied"))
 	}
 }
 
-// approvalButtons are the Approve and Deny buttons of an approval prompt.
-func (g *Gateway) approvalButtons(to Address) ([][]Button, func()) {
+// approvalButtons are the Approve and Deny buttons of an approval prompt;
+// hash is the call's (callHash).
+func (g *Gateway) approvalButtons(to Address, hash string) ([][]Button, func()) {
 	buttons := []Button{{Text: g.t(to, "button.approve"), Style: ButtonPrimary}, {Text: g.t(to, "button.deny"), Style: ButtonDanger}}
-	return g.offer(buttons, func(i int) string {
-		g.resolveApproval(to, i == 0)
+	return g.offer(buttons, hash, func(i int) string {
+		if !g.resolveApproval(to, i == 0) {
+			return g.t(to, "button.expired")
+		}
 		if i == 0 {
 			return g.t(to, "approval.approved")
 		}
@@ -130,7 +163,7 @@ func (g *Gateway) choiceButtons(to Address, choices []string) ([][]Button, func(
 	for i, c := range choices {
 		labels[i] = Button{Text: strings.TrimSpace(c)}
 	}
-	return g.offer(labels, func(i int) string {
+	return g.offer(labels, "", func(i int) string {
 		if i < 0 || i >= len(choices) {
 			return ""
 		}

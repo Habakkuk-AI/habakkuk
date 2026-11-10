@@ -44,10 +44,10 @@ func (g *Gateway) Decide(id string, ok bool) bool {
 		if a.ID != id {
 			continue
 		}
-		if _, waiting := g.pending.Load(a.To.key()); !waiting {
+		if !g.resolveApproval(a.To, ok) {
 			return false
 		}
-		g.resolveApproval(a.To, ok)
+		g.forgetAsked(a.To)
 		to := a.To
 		to.ReplyTo = ""
 		if ok {

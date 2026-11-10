@@ -81,8 +81,17 @@ type Gateway struct {
 	// Language is the language of Habakkuk's own chat text (config
 	// language:); a channel's language overrides it. Empty is English.
 	Language string
+	// Redact removes secrets from text a chat is shown word for word (the
+	// exact call of an approval); nil removes well-known token formats.
+	Redact func(string) string
+	// SaveDisplay writes a channel's progress and approvals_detail to the
+	// config file ("" leaves one as it is) and returns the channel as the
+	// file now has it; nil means the settings cannot be changed from here
+	// (display.go).
+	SaveDisplay func(account, progress, approvalsDetail string) (*config.Channel, error)
 
-	pending   sync.Map // conversation key -> chan bool, while an approval waits
+	display   sync.Map // account -> Display, once changed while running (display.go)
+	pending   sync.Map // conversation key -> *pendingApproval, while an approval waits
 	asked     sync.Map // conversation key -> Approval, while an approval waits
 	questions sync.Map // conversation key -> chan string, while clarify waits
 	approveMu sync.Map // conversation key -> *sync.Mutex, one approval at a time
@@ -404,6 +413,7 @@ func (g *Gateway) command(ctx context.Context, ch *config.Channel, to Address, p
 	switch strings.ToLower(name) {
 	case "/new", "/reset":
 		g.resolveApproval(to, false)
+		g.forgetAsked(to)
 		if _, err := g.conversation(ctx, ch, to, pick, true); err != nil {
 			g.Log.Error("new session failed", "err", err)
 			g.reply(to, g.t(to, "new.failed"))
@@ -412,6 +422,7 @@ func (g *Gateway) command(ctx context.Context, ch *config.Channel, to Address, p
 		g.reply(to, g.t(to, "new.done"))
 	case "/stop":
 		g.resolveApproval(to, false)
+		g.forgetAsked(to)
 		conv, err := g.Store.Conversation(ctx, to)
 		if err != nil || conv == nil {
 			g.reply(to, g.t(to, "stop.idle"))
@@ -640,6 +651,9 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 	endProgress() // no draft edit may follow the reply
 	if err == nil || errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts {
 		g.nudged.Delete(j.ID) // the turn will not run again
+		if to != nil {
+			g.forgetAsked(*to) // nor ask again: a later "yes" is an ordinary message
+		}
 	}
 	if to == nil {
 		return final, err
@@ -822,6 +836,20 @@ type chatApprover struct {
 	session string
 }
 
+// pendingApproval is one approval prompt waiting in a chat.
+type pendingApproval struct {
+	answer chan bool
+	once   sync.Once
+	hash   string // callHash of the call, carried by the prompt's buttons
+	req    tools.ApprovalRequest
+}
+
+// resolve answers the approval; only the first answer counts.
+func (p *pendingApproval) resolve(ok bool) (first bool) {
+	p.once.Do(func() { p.answer <- ok; first = true })
+	return first
+}
+
 func (c *chatApprover) Approve(ctx context.Context, req tools.ApprovalRequest) (bool, error) {
 	g := c.g
 	conv, err := g.Store.BySession(ctx, c.session)
@@ -836,8 +864,8 @@ func (c *chatApprover) Approve(ctx context.Context, req tools.ApprovalRequest) (
 	mu.(*sync.Mutex).Lock()
 	defer mu.(*sync.Mutex).Unlock()
 
-	answer := make(chan bool, 1)
-	g.pending.Store(to.key(), answer)
+	p := &pendingApproval{answer: make(chan bool, 1), hash: callHash(conv.Agent, c.session, req), req: req}
+	g.pending.Store(to.key(), p)
 	defer g.pending.Delete(to.key())
 	defer g.recordApproval(to, c.session, req.Tool, req.Summary, req.Review)()
 
@@ -845,41 +873,102 @@ func (c *chatApprover) Approve(ctx context.Context, req tools.ApprovalRequest) (
 	if timeout == 0 {
 		timeout = 15 * time.Minute
 	}
-	prompt := g.t(to, "approval.prompt", req.Tool, shorten(req.Summary, 600))
-	if req.Review != "" {
-		prompt = g.t(to, "approval.prompt_review", req.Tool, shorten(req.Summary, 600), shorten(req.Review, 300))
-	}
-	rows, withdraw := g.approvalButtons(to)
+	rows, withdraw := g.approvalButtons(to, p.hash)
 	defer withdraw()
-	if err := g.sendChoice(ctx, to, prompt, rows); err != nil {
+	if err := g.sendChoice(ctx, to, g.approvalPrompt(to, req), rows); err != nil {
 		return false, nil // could not ask, so do not allow
 	}
+	g.rememberAsked(to, p.hash)
 	select {
-	case ok := <-answer:
+	case ok := <-p.answer:
+		g.forgetAsked(to)
 		return ok, nil
 	case <-ctx.Done():
+		// The turn stopped with the prompt still in the chat: a restart, or
+		// a lost lease. The record stays, so an answer to that prompt is
+		// explained rather than dropped; the resumed turn asks again.
 		return false, ctx.Err()
 	case <-time.After(timeout):
+		g.forgetAsked(to)
 		g.reply(to, g.t(to, "approval.timeout"))
 		return false, nil
 	}
 }
 
-// answerApproval consumes a reply to a pending approval. While one is
-// pending, anything that is not yes or no (in the chat's language or
-// English) gets a reminder instead of starting new work.
-func (g *Gateway) answerApproval(to Address, text string) bool {
-	if _, ok := g.pending.Load(to.key()); !ok {
-		return false
+// approvalPrompt is what a chat is asked: what the agent wants to do in
+// everyday words, why it asks when there is a reason beyond the permission
+// mode, and how to answer. The exact call is shown only on channels with
+// approvals_detail: full; elsewhere the prompt says how to see it.
+func (g *Gateway) approvalPrompt(to Address, req tools.ApprovalRequest) string {
+	lang := g.lang(to)
+	var b strings.Builder
+	b.WriteString(g.describeCall(lang, req))
+	if why := g.why(lang, req); why != "" {
+		b.WriteString("\n" + why)
 	}
+	full := g.Display(to.Account).ApprovalsDetail == config.ApprovalsFull
+	if full {
+		b.WriteString("\n\n" + g.exactCall(req, maxDetailInline))
+	}
+	b.WriteString("\n\n" + i18n.T(lang, "approval.reply"))
+	if !full {
+		b.WriteString(" " + i18n.T(lang, "approval.details_hint"))
+	}
+	return b.String()
+}
+
+// rememberAsked and forgetAsked keep the record of a prompt waiting in a
+// chat (state.Store.SaveAsked); without state.db there is none.
+func (g *Gateway) rememberAsked(to Address, hash string) {
+	if g.State == nil {
+		return
+	}
+	if err := g.State.SaveAsked(context.Background(), to.key(), hash); err != nil {
+		g.Log.Warn("record approval prompt failed", "err", err)
+	}
+}
+
+func (g *Gateway) forgetAsked(to Address) {
+	if g.State == nil {
+		return
+	}
+	if err := g.State.ForgetAsked(context.Background(), to.key()); err != nil {
+		g.Log.Warn("forget approval prompt failed", "err", err)
+	}
+}
+
+// answerApproval consumes a reply to a pending approval. While one is
+// pending, yes and no (in the chat's language or English) answer it,
+// "details" shows the exact call and keeps it pending, and anything else
+// gets a reminder instead of starting new work. A yes or no for a prompt
+// that was waiting when the process restarted is answered too: the request
+// expired, and the agent asks again if it still needs to.
+func (g *Gateway) answerApproval(to Address, text string) bool {
 	word := strings.ToLower(strings.TrimSpace(strings.Trim(strings.TrimSpace(text), ".!。！")))
+	v, ok := g.pending.Load(to.key())
+	if !ok {
+		if g.State == nil || (!g.isYes(to, word) && !g.isNo(to, word)) {
+			return false
+		}
+		if _, asked, err := g.State.Asked(context.Background(), to.key()); err != nil || !asked {
+			return false
+		}
+		g.forgetAsked(to)
+		g.reply(to, g.t(to, "approval.expired"))
+		return true
+	}
+	p := v.(*pendingApproval)
 	switch {
 	case g.isYes(to, word):
-		g.resolveApproval(to, true)
-		g.reply(to, g.t(to, "approval.approved"))
+		if p.resolve(true) {
+			g.reply(to, g.t(to, "approval.approved"))
+		}
 	case g.isNo(to, word):
-		g.resolveApproval(to, false)
-		g.reply(to, g.t(to, "approval.denied"))
+		if p.resolve(false) {
+			g.reply(to, g.t(to, "approval.denied"))
+		}
+	case slices.Contains(i18n.Words(g.lang(to), "approval.details_words"), word):
+		g.reply(to, g.t(to, "approval.details")+"\n"+g.exactCall(p.req, maxDetail)+"\n\n"+g.t(to, "approval.reply"))
 	case strings.HasPrefix(word, "/"):
 		return false // commands always get through; /new and /stop decline the approval
 	default:
@@ -888,13 +977,13 @@ func (g *Gateway) answerApproval(to Address, text string) bool {
 	return true
 }
 
-func (g *Gateway) resolveApproval(to Address, ok bool) {
-	if ch, found := g.pending.Load(to.key()); found {
-		select {
-		case ch.(chan bool) <- ok:
-		default:
-		}
+// resolveApproval answers the conversation's pending approval, if any; it
+// reports whether this call was the answer.
+func (g *Gateway) resolveApproval(to Address, ok bool) bool {
+	if v, found := g.pending.Load(to.key()); found {
+		return v.(*pendingApproval).resolve(ok)
 	}
+	return false
 }
 
 func shorten(s string, n int) string {

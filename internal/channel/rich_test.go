@@ -78,7 +78,7 @@ func TestApprovalButtons(t *testing.T) {
 		t.Fatalf("rows = %+v", rows)
 	}
 	prompts, _, _ := a.snapshot()
-	if !strings.Contains(prompts[0], "Approval needed") {
+	if !strings.HasPrefix(prompts[0], "I'd like to run a command on your computer.") {
 		t.Fatalf("prompt = %q", prompts[0])
 	}
 	press(r, "8", rows[0][0].Data) // not allowed: ignored
@@ -86,7 +86,7 @@ func TestApprovalButtons(t *testing.T) {
 	waitFor(t, "tool output", hasText(r.a, "approved-run"))
 	waitFor(t, "ack", hasText(r.a, "Approved."))
 	press(r, "7", rows[0][1].Data)
-	waitFor(t, "stale press", hasText(r.a, "already been answered"))
+	waitFor(t, "stale press", hasText(r.a, "already answered"))
 }
 
 func TestApprovalDenyButton(t *testing.T) {

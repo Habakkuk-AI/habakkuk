@@ -66,6 +66,8 @@ func (g *Gateway) commands() []Command {
 		{Name: "/rewind", Args: "[N]", Help: "carry on from before your last N messages (the original is kept)", Run: g.cmdRewind},
 		{Name: "/title", Args: "[text]", Help: "show or set this conversation's title", Run: g.cmdTitle},
 		{Name: "/subagents", Aliases: []string{"/tasks"}, Args: "[stop ID]", Help: "list the sub-agent tasks running for this conversation, or stop one", Run: g.cmdSubagents},
+		{Name: "/progress", Args: "[plain|detailed|off]", Help: "what this chat shows while I work: a short status line, every step, or nothing", Run: g.cmdProgress},
+		{Name: "/approvals", Args: "[summary|full]", Help: "what my approval requests show here: a plain summary, or the exact command too", Run: g.cmdApprovals},
 	}
 }
 
@@ -110,10 +112,10 @@ func (g *Gateway) runCommand(ctx context.Context, ch *config.Channel, to Address
 }
 
 // ownerOnly are the commands guests (senders let in by allow_from "*")
-// may not run: they read or change trusted memory, or move the chat to
-// another agent.
+// may not run: they read or change trusted memory, move the chat to
+// another agent, or change the channel's settings.
 var ownerOnly = map[string]bool{"/remember": true, "/forget": true, "/agent": true,
-	"/memory": true, "/undo-memory": true}
+	"/memory": true, "/undo-memory": true, "/progress": true, "/approvals": true}
 
 // messageKey carries the inbound message to the command it holds.
 type messageKey struct{}
