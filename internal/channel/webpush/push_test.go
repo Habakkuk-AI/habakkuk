@@ -157,10 +157,8 @@ func TestSubscribeNotifyAndForgetGone(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := &Service{Dir: t.TempDir(), Client: srv.Client(), Contact: "mailto:sam@example.com", Hosts: []string{"push.example.com"}}
+	s := &Service{Dir: t.TempDir(), Client: DialOnly(srv), Contact: "mailto:sam@example.com", Hosts: []string{"push.example.com"}}
 	phone, laptop := newBrowser(t), newBrowser(t)
-	// The test server is on loopback, which Subscribe refuses; register
-	// through a public-looking name, then point the stored endpoint at it.
 	idPhone, err := s.Subscribe("https://push.example.com/phone", b64.EncodeToString(phone.priv.PublicKey().Bytes()), b64.EncodeToString(phone.auth), "Phone", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -169,11 +167,6 @@ func TestSubscribeNotifyAndForgetGone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subs, _ := s.load()
-	for i := range subs {
-		subs[i].Endpoint = strings.Replace(subs[i].Endpoint, "https://push.example.com", srv.URL, 1)
-	}
-	s.save(subs)
 
 	// Replies are off on the laptop: only the phone gets one.
 	if n := s.Notify(context.Background(), KindReplies, Message{Title: "Habakkuk", Body: "Your report is ready"}); n != 1 {
@@ -292,5 +285,24 @@ func TestCheckTokenForgetsDevicesWhenTheTokenChanges(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(s.Dir, "token.json"))
 	if strings.Contains(string(data), "rotated-token") {
 		t.Fatal("the token itself was stored")
+	}
+}
+
+// A subscriptions file edited to name another server is not sent to.
+func TestSendChecksTheEndpointAgain(t *testing.T) {
+	hit := false
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hit = true; w.WriteHeader(201) }))
+	defer srv.Close()
+	s := &Service{Dir: t.TempDir(), Client: DialOnly(srv), Hosts: []string{"push.example.com"}}
+	b := newBrowser(t)
+	id, err := s.Subscribe("https://push.example.com/a", b64.EncodeToString(b.priv.PublicKey().Bytes()), b64.EncodeToString(b.auth), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subs, _ := s.load()
+	subs[0].Endpoint = "https://collector.example.net/a"
+	s.save(subs)
+	if err := s.Test(context.Background(), id, Message{Title: "x"}); err == nil || hit {
+		t.Fatalf("sent to an endpoint that is not a push service: err=%v hit=%v", err, hit)
 	}
 }

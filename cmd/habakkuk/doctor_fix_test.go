@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/config"
+	"github.com/habakkuk-ai/habakkuk/internal/ops/security"
 )
 
 func fixEnv(t *testing.T, home string) repairEnv {
@@ -118,9 +119,15 @@ func TestDoctorFixServiceFile(t *testing.T) {
 	if want := strings.Replace(custom, `"`+gone+`"`, `"/usr/local/bin/habakkuk"`, 1); string(data) != want {
 		t.Fatalf("only the program should change:\n got %s\nwant %s", data, want)
 	}
-	bak := filepath.Join(home, "backups", "habakkuk.service.20261110-173000.bak")
+	bak := filepath.Join(home, "service-backups", "habakkuk.service.20261110-173000.bak")
 	if old, _ := os.ReadFile(bak); string(old) != custom {
 		t.Fatalf("old unit not kept at %s", bak)
+	}
+	// The copy is not flagged later as a stale credential backup.
+	for _, f := range security.Audit(security.Options{Home: home, Now: time.Now().Add(200 * 24 * time.Hour)}) {
+		if strings.Contains(f.Message, "habakkuk.service") {
+			t.Fatalf("the audit flags the service copy: %s", f.Message)
+		}
 	}
 
 	// A service for another home is left alone.

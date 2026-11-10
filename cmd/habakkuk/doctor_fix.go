@@ -241,7 +241,8 @@ func withProgram(goos, text, exe string) (string, bool) {
 
 // serviceRepair points the service file at this binary, changing nothing
 // else in it, after a timestamped copy of the old file in
-// $HABAKKUK_HOME/backups. It leaves alone a service for another home, and
+// $HABAKKUK_HOME/service-backups (not backups/, whose loose files the audit
+// treats as stale credential copies after 90 days). It leaves alone a service for another home, and
 // one it would point at a temporary go run build.
 func serviceRepair(e repairEnv) (repair, bool) {
 	s, problem := serviceProblem(e)
@@ -257,7 +258,7 @@ func serviceRepair(e repairEnv) (repair, bool) {
 		if !ok {
 			return "", fmt.Errorf("could not find the program in %s; run hk setup -service again", s.path)
 		}
-		bak := filepath.Join(e.home, "backups", fmt.Sprintf("%s.%s.bak", filepath.Base(s.path), e.now.UTC().Format("20060102-150405")))
+		bak := filepath.Join(e.home, "service-backups", fmt.Sprintf("%s.%s.bak", filepath.Base(s.path), e.now.UTC().Format("20060102-150405")))
 		if err := os.MkdirAll(filepath.Dir(bak), 0o700); err != nil {
 			return "", err
 		}

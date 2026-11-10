@@ -154,9 +154,9 @@ func SubscriptionID(endpoint string) string {
 	return "dev_" + hex.EncodeToString(sum[:8])
 }
 
-// DefaultHosts are the browsers' own push services: Chrome, Edge and other
-// Chromium browsers (FCM), Firefox (Mozilla), Safari (Apple) and Windows
-// (WNS). Only these may receive messages, so someone who got hold of the
+// DefaultHosts are the browsers' own push services: Chrome and other
+// Chromium browsers (FCM), Firefox (Mozilla), Safari (Apple) and Edge
+// (Microsoft's WNS). Only these may receive messages, so someone who got hold of the
 // dashboard token cannot register a server of their own to read approval
 // and reply notices from then on.
 var DefaultHosts = []string{"fcm.googleapis.com", "*.push.services.mozilla.com", "web.push.apple.com", "*.notify.windows.com"}
@@ -408,6 +408,11 @@ func (s *Service) send(ctx context.Context, sub Subscription, kind string, m Mes
 	}
 	body, err := encrypt(payload, pub, auth)
 	if err != nil {
+		return err
+	}
+	// The file the subscriptions are in is not trusted to hold only what
+	// Subscribe accepted: check the endpoint again before posting to it.
+	if err := s.checkEndpoint(sub.Endpoint); err != nil {
 		return err
 	}
 	u, err := url.Parse(sub.Endpoint)

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -44,7 +43,7 @@ func newPushRig(t *testing.T) (*dashRig, *pushService, string) {
 	}))
 	t.Cleanup(ps.srv.Close)
 	dir := filepath.Join(r.home, "push")
-	r.s.Push = &webpush.Service{Dir: dir, Client: ps.srv.Client(), Log: quiet, Hosts: []string{"push.example.com"}}
+	r.s.Push = &webpush.Service{Dir: dir, Client: dialOnly(ps.srv), Log: quiet, Hosts: []string{"push.example.com"}}
 
 	info := r.get(t, "/api/push")
 	if info["public_key"] == "" || len(list(info, "devices")) != 0 || len(list(info, "kinds")) != 3 {
@@ -62,11 +61,6 @@ func newPushRig(t *testing.T) (*dashRig, *pushService, string) {
 	if id == "" {
 		t.Fatalf("no id: %v", out)
 	}
-	// Point the stored endpoint at the fake service (on loopback, which
-	// registration rightly refuses).
-	file := filepath.Join(dir, "subscriptions.json")
-	data, _ := os.ReadFile(file)
-	os.WriteFile(file, []byte(strings.ReplaceAll(string(data), "https://push.example.com", ps.srv.URL)), 0o600)
 	return r, ps, id
 }
 
