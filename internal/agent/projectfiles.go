@@ -3,8 +3,8 @@ package agent
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 )
 
@@ -178,20 +179,22 @@ func LoadProjectFiles(agentDir, folder, mode string, trust ProjectTrust) Project
 			}
 			seen[f.Real] = true
 			if f.Skipped == "" {
-				data, ok := readLimited(f.Real, maxProjectHash+1)
-				if !ok {
+				// Opened without following a final link and without
+				// waiting on a FIFO; the type is checked on what was opened.
+				data, err := projtrust.ReadRegular(f.Real, maxProjectHash)
+				switch {
+				case errors.Is(err, projtrust.ErrTooLarge):
+					// Shown, cut, but too large to have been trusted.
+				case err != nil:
 					continue
-				}
-				if len(data) <= maxProjectHash {
+				default:
 					f.SHA256 = projectSum(data)
 				}
-				text := strings.TrimSpace(string(data))
+				text, cut := trimCut(data)
 				if text == "" {
 					continue
 				}
-				if len(text) > maxProjectFile {
-					text, f.Cut = strings.TrimSpace(cutBytes(text, maxProjectFile)), true
-				}
+				f.Cut = cut
 				if trust != nil && f.SHA256 != "" {
 					f.Trusted, f.Changed = trust.Check(f.Real, f.SHA256)
 					f.Changed = f.Changed && !f.Trusted
@@ -210,15 +213,22 @@ func LoadProjectFiles(agentDir, folder, mode string, trust ProjectTrust) Project
 	return out
 }
 
-// readLimited reads at most n bytes of a regular file.
-func readLimited(path string, n int64) ([]byte, bool) {
-	fh, err := os.Open(path)
-	if err != nil {
-		return nil, false
+// trimCut is a file's text as the prompt takes it: trimmed, and cut at
+// maxProjectFile bytes on a rune boundary.
+func trimCut(data []byte) (string, bool) {
+	text := strings.TrimSpace(string(data))
+	if len(text) > maxProjectFile {
+		return strings.TrimSpace(cutBytes(text, maxProjectFile)), true
 	}
-	defer fh.Close()
-	data, err := io.ReadAll(io.LimitReader(fh, n))
-	return data, err == nil
+	return text, false
+}
+
+// ProjectPromptText is exactly the text of a project file that an agent
+// receives (trimmed, cut at 16 KB, look-alike tags folded and escaped), and
+// whether the file was cut. hk projects trust shows the owner this.
+func ProjectPromptText(data []byte) (string, bool) {
+	text, cut := trimCut(data)
+	return escapeProjectText(text), cut
 }
 
 func projectSum(data []byte) string {
@@ -325,13 +335,19 @@ func foldForTags(s string) string {
 	b.Grow(len(s))
 	for _, r := range s {
 		switch {
-		case unicode.Is(unicode.Cf, r), unicode.Is(unicode.Variation_Selector, r):
+		case unicode.Is(unicode.Cf, r), unicode.Is(unicode.Variation_Selector, r),
+			r == 0x034F, r == 0x115F, r == 0x1160, r == 0x17B4, r == 0x17B5, r == 0x3164, r == 0xFFA0:
+			// Format characters, variation selectors, and blanks that
+			// render as nothing (grapheme joiner, Hangul fillers, Khmer
+			// inherent vowels).
 			continue
 		case r > unicode.MaxASCII && unicode.IsSpace(r):
 			b.WriteByte(' ')
 		case r >= 0xFF01 && r <= 0xFF5E: // fullwidth ASCII
 			b.WriteRune(r - 0xFEE0)
-		case r == 0xFE64 || r == 0x2039 || r == 0x2329 || r == 0x3008: // small, single angle and angle bracket look-alikes of <
+		case r == 0xFE64 || r == 0x2039 || r == 0x2329 || r == 0x3008 || r == 0x1438 || r == 0x27E8 || r == 0x276C || r == 0x276E:
+			// Look-alikes of <: small, single and double angle brackets,
+			// the Canadian syllabics PA and the mathematical angle bracket.
 			b.WriteByte('<')
 		default:
 			b.WriteRune(r)
@@ -348,7 +364,7 @@ func escapeProjectText(s string) string {
 }
 
 func writeFileList(b *strings.Builder, p ProjectFiles, trusted bool) {
-	fmt.Fprintf(b, "Project root: %q. Files read when this session started:", p.Root)
+	fmt.Fprintf(b, "Project root: %q. Files read when this session started:", escapeProjectText(p.Root))
 	for _, f := range p.Files {
 		if f.Trusted != trusted && f.Skipped == "" {
 			continue
@@ -358,13 +374,13 @@ func writeFileList(b *strings.Builder, p ProjectFiles, trusted bool) {
 			if trusted {
 				continue // skipped files are listed with the untrusted ones
 			}
-			fmt.Fprintf(b, "\n- %q: left out, %s", f.Rel, f.Skipped)
+			fmt.Fprintf(b, "\n- %q: left out, %s", escapeProjectText(f.Rel), f.Skipped)
 		case f.Changed:
-			fmt.Fprintf(b, "\n- %q: changed since your owner trusted it; to follow it again they can review it and run hk projects trust %q", f.Rel, f.Path)
+			fmt.Fprintf(b, "\n- %q: changed since your owner trusted it; to follow it again they can review it and run hk projects trust %q", escapeProjectText(f.Rel), escapeProjectText(f.Path))
 		case f.Cut:
-			fmt.Fprintf(b, "\n- %q: cut at %d KB", f.Rel, maxProjectFile>>10)
+			fmt.Fprintf(b, "\n- %q: cut at %d KB", escapeProjectText(f.Rel), maxProjectFile>>10)
 		default:
-			fmt.Fprintf(b, "\n- %q", f.Rel)
+			fmt.Fprintf(b, "\n- %q", escapeProjectText(f.Rel))
 		}
 	}
 }
@@ -378,7 +394,7 @@ func writeFileBodies(b *strings.Builder, p ProjectFiles, trusted bool) {
 		if f.Cut {
 			text += "\n[the rest of this file is cut]"
 		}
-		fmt.Fprintf(b, "\n\n<project_file path=%q>\n%s\n</project_file>", f.Rel, text)
+		fmt.Fprintf(b, "\n\n<project_file path=%q>\n%s\n</project_file>", escapeProjectText(f.Rel), text)
 	}
 }
 
@@ -402,7 +418,7 @@ func untrustedProjectMessage(p ProjectFiles) string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s root=%q>\n%s\n\n", untrustedProjectOpen, p.Root, projectUntrustedNote)
+	fmt.Fprintf(&b, "%s root=%q>\n%s\n\n", untrustedProjectOpen, escapeProjectText(p.Root), projectUntrustedNote)
 	writeFileList(&b, p, false)
 	writeFileBodies(&b, p, false)
 	b.WriteString("\n</project_files>\n\n")

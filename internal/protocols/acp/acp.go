@@ -87,10 +87,19 @@ func New(base *agent.Runner, reg *tools.Registry, agentName, version string, log
 		c.Toolsets = append(slices.Clone(s.Toolsets), Toolset)
 		specs[name] = &c
 	}
+	// Everything that decides what a turn may do comes from the base
+	// runner: the tool policy (locked folders, trusted folders, channel
+	// rules), the owner's trusted project files, hooks (a tool_before
+	// hook can veto a call), spending limits, chat notes and the rest.
+	// Only the agents (with the editor toolset) and the environment (the
+	// editor's folder) differ.
 	a.runner = &agent.Runner{
 		Agents: specs, Sessions: base.Sessions, Queue: base.Queue, Models: base.Models, Tools: base.Tools,
 		Bus: base.Bus, BlobDir: base.BlobDir, Media: base.Media, Wake: base.Wake, Log: base.Log, Now: base.Now,
 		Location: base.Location, Snapshot: base.Snapshot, Env: a.env(base.Env),
+		Approvers: base.Approvers, Overlay: base.Overlay, Hooks: base.Hooks, Policy: base.Policy,
+		Judge: base.Judge, Home: base.Home, Choices: base.Choices, CheckModel: base.CheckModel,
+		Budget: base.Budget, Notes: base.Notes, ProjectTrust: base.ProjectTrust, ToolsPending: base.ToolsPending,
 	}
 	return a, nil
 }

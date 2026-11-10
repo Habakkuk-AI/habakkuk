@@ -107,10 +107,11 @@ func Audit(o Options) []Finding {
 // sensitiveDirs hold chats, memory, credentials or keys throughout: agents
 // (memory, profiles, identities; workspaces are skipped), blobs (chat
 // attachments), browser profiles (cookies), checkpoints, meetings, device
-// state, background process logs, ssh keys, channel sessions and the Web
-// Push key and subscriptions.
+// state, background process logs, ssh keys, channel sessions, the Web Push
+// key and subscriptions, the owner's trusted project files and copies of
+// the service file.
 var sensitiveDirs = []string{"agents", "blobs", "browser", "channels", "backups", "checkpoints", "computer",
-	"meetings", "procs", "ssh", "state", "auth", "mcp", "nodes", "push"}
+	"meetings", "procs", "ssh", "state", "auth", "mcp", "nodes", "push", "projects", "service-backups"}
 
 // sensitive names hold credentials, keys, memory or conversations.
 func sensitive(rel string) bool {

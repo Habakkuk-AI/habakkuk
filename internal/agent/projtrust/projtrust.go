@@ -1,16 +1,24 @@
 // Package projtrust is the owner's record of trusted project instruction
-// files: for each one, its path and the SHA-256 of the exact content the
+// files: for each one, where it is and the SHA-256 of the exact content the
 // owner trusted. A project's AGENTS.md, CLAUDE.md or .cursorrules is
 // followed as instructions only while its content still has that hash; any
 // change, by anyone, makes it untrusted again until the owner trusts it
 // again with hk projects trust.
 //
-// The record lives in $HABAKKUK_HOME/projects/trusted.json, owner-only.
-// Only hk projects writes it: the file tools refuse that folder in every
-// turn (tools.Policy.Locked).
+// A file is matched by identity, not by how its path is spelled: the same
+// file reached through another letter case or a link matches, and so does
+// the file at the same place in another checkout of the same repository (a
+// git worktree, as delegated tasks use), when its content is the same.
+//
+// The record lives in $HABAKKUK_HOME/projects/trusted.json. It counts only
+// while it is the owner's alone: a regular file of mode 0600 in a folder of
+// mode 0700, both owned by the user, neither a link. Otherwise nothing is
+// trusted. The file tools and every tool that saves files refuse that
+// folder (tools.Policy.Locked).
 package projtrust
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/habakkuk-ai/habakkuk/internal/core/platform"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 )
 
@@ -36,8 +45,10 @@ const Dir = "projects"
 
 // Entry is one trusted file.
 type Entry struct {
-	Path      string    `json:"path"`   // absolute, symlinks resolved
-	SHA256    string    `json:"sha256"` // of the exact content trusted
+	Path      string    `json:"path"`           // absolute, symlinks resolved
+	Repo      string    `json:"repo,omitempty"` // the repository's shared git folder, when in one
+	Rel       string    `json:"rel,omitempty"`  // the file's path in the repository, slash-separated
+	SHA256    string    `json:"sha256"`         // of the exact content trusted
 	Size      int64     `json:"size"`
 	TrustedAt time.Time `json:"trusted_at"`
 }
@@ -55,11 +66,46 @@ func (s *Store) Folder() string { return filepath.Join(s.Home, Dir) }
 
 func (s *Store) file() string { return filepath.Join(s.Folder(), "trusted.json") }
 
+// ErrNotPrivate is returned when the record or its folder could have been
+// written by someone else: then nothing is trusted.
+var ErrNotPrivate = errors.New("the trust record is not private to you")
+
+// private checks that path is the owner's alone: not a link, owned by the
+// user, with no permission bits for others.
+func private(path string, dir bool) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		return fmt.Errorf("%w: %s is a link", ErrNotPrivate, path)
+	case dir && !info.IsDir(), !dir && !info.Mode().IsRegular():
+		return fmt.Errorf("%w: %s is not a plain %s", ErrNotPrivate, path, map[bool]string{true: "folder", false: "file"}[dir])
+	}
+	if !platform.HasUnixPermissions {
+		return nil
+	}
+	if o := platform.FileOwner(info); o >= 0 && o != os.Getuid() {
+		return fmt.Errorf("%w: %s belongs to another user", ErrNotPrivate, path)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("%w: %s has mode %04o (want %s)", ErrNotPrivate, path, info.Mode().Perm(), map[bool]string{true: "0700", false: "0600"}[dir])
+	}
+	return nil
+}
+
 func (s *Store) load() ([]Entry, error) {
-	data, err := os.ReadFile(s.file())
-	if errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(s.file()); errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
+	if err := private(s.Folder(), true); err != nil {
+		return nil, err
+	}
+	if err := private(s.file(), false); err != nil {
+		return nil, err
+	}
+	data, err := ReadRegular(s.file(), 16<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +120,12 @@ func (s *Store) save(entries []Entry) error {
 	if err := os.MkdirAll(s.Folder(), 0o700); err != nil {
 		return err
 	}
-	_ = os.Chmod(s.Folder(), 0o700)
+	if err := os.Chmod(s.Folder(), 0o700); err != nil {
+		return err
+	}
+	if err := private(s.Folder(), true); err != nil {
+		return err
+	}
 	slices.SortFunc(entries, func(a, b Entry) int { return strings.Compare(a.Path, b.Path) })
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
@@ -92,27 +143,46 @@ func Real(path string) (string, error) {
 	return filepath.EvalSymlinks(abs)
 }
 
+// ReadRegular reads up to max bytes of a regular file. It opens first and
+// checks the type of what it opened, without following a final link and
+// without waiting on a FIFO, so a swap between a check and the read cannot
+// pull in another file or hang. More than max bytes is an error.
+func ReadRegular(path string, max int64) ([]byte, error) {
+	fh, err := openFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	info, err := fh.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	data, err := io.ReadAll(io.LimitReader(fh, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > max {
+		return data, ErrTooLarge
+	}
+	return data, nil
+}
+
+// ErrTooLarge is returned by ReadRegular for a file over its limit; the
+// first max+1 bytes come with it.
+var ErrTooLarge = errors.New("file too large")
+
 // Hash reads a regular file whole (up to MaxBytes) and returns its
 // SHA-256 and its content.
 func Hash(path string) (sum string, data []byte, err error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return "", nil, fmt.Errorf("%s is not a regular file", path)
-	}
-	fh, err := os.Open(path)
-	if err != nil {
-		return "", nil, err
-	}
-	defer fh.Close()
-	data, err = io.ReadAll(io.LimitReader(fh, MaxBytes+1))
-	if err != nil {
-		return "", nil, err
-	}
-	if len(data) > MaxBytes {
+	data, err = ReadRegular(path, MaxBytes)
+	if errors.Is(err, ErrTooLarge) {
 		return "", nil, fmt.Errorf("%s is larger than %d KB, too large to trust", path, MaxBytes>>10)
+	}
+	if err != nil {
+		return "", nil, err
 	}
 	return Sum(data), data, nil
 }
@@ -123,48 +193,147 @@ func Sum(data []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// Check reports whether the file at path (resolved) is trusted with
-// exactly this content, and whether it was ever trusted (so a changed file
-// can say so). An unreadable record trusts nothing.
+// place is where a file is: its real path and, in a git repository, the
+// repository's shared git folder and the file's path in it.
+type place struct {
+	real, repo, rel string
+}
+
+func locate(path string) place {
+	p := place{real: path}
+	if r, err := Real(path); err == nil {
+		p.real = r
+	}
+	for dir := filepath.Dir(p.real); ; dir = filepath.Dir(dir) {
+		if common, ok := gitCommonDir(dir); ok {
+			if rel, err := filepath.Rel(dir, p.real); err == nil {
+				p.repo, p.rel = common, filepath.ToSlash(rel)
+			}
+			return p
+		}
+		if filepath.Dir(dir) == dir {
+			return p
+		}
+	}
+}
+
+// gitCommonDir finds the shared git folder of a checkout whose top is
+// dir: dir/.git itself, or for a worktree the folder its .git file names
+// (and that folder's commondir). It does not run git.
+func gitCommonDir(dir string) (string, bool) {
+	dotgit := filepath.Join(dir, ".git")
+	info, err := os.Lstat(dotgit)
+	if err != nil {
+		return "", false
+	}
+	if info.IsDir() {
+		return realOr(dotgit), true
+	}
+	data, err := ReadRegular(dotgit, 4096)
+	if err != nil {
+		return "", false
+	}
+	line, _, _ := strings.Cut(string(data), "\n")
+	gitdir, ok := strings.CutPrefix(strings.TrimSpace(line), "gitdir:")
+	if !ok {
+		return "", false
+	}
+	gitdir = strings.TrimSpace(gitdir)
+	if !filepath.IsAbs(gitdir) {
+		gitdir = filepath.Join(dir, gitdir)
+	}
+	if c, err := ReadRegular(filepath.Join(gitdir, "commondir"), 4096); err == nil {
+		sc := bufio.NewScanner(strings.NewReader(string(c)))
+		if sc.Scan() {
+			common := strings.TrimSpace(sc.Text())
+			if !filepath.IsAbs(common) {
+				common = filepath.Join(gitdir, common)
+			}
+			return realOr(common), true
+		}
+	}
+	return realOr(gitdir), true
+}
+
+func realOr(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
+}
+
+// sameFile reports whether a and b name the same file or folder.
+func sameFile(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	return err == nil && os.SameFile(ai, bi)
+}
+
+// matches reports whether a record is for the file at p.
+func (e Entry) matches(p place) bool {
+	if sameFile(e.Path, p.real) {
+		return true
+	}
+	return e.Repo != "" && p.repo != "" && e.Rel == p.rel && sameFile(e.Repo, p.repo)
+}
+
+// Check reports whether the file at path is trusted with exactly this
+// content, and whether it was ever trusted (so a changed file can say so).
+// A record that is not private, or unreadable, trusts nothing.
 func (s *Store) Check(path, sum string) (trusted, known bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	entries, err := s.load()
+	s.mu.Unlock()
 	if err != nil {
 		return false, false
 	}
+	p := locate(path)
 	for _, e := range entries {
-		if e.Path == path {
-			return e.SHA256 == sum, true
+		if e.matches(p) {
+			if e.SHA256 == sum {
+				return true, true
+			}
+			known = true
 		}
 	}
-	return false, false
+	return false, known
 }
 
 // Trust records a file's current content as trusted, replacing any
-// earlier record for it.
-func (s *Store) Trust(path string) (Entry, error) {
+// earlier record for the same file. It returns the record and the content
+// it hashed.
+func (s *Store) Trust(path string) (Entry, []byte, error) {
 	real, err := Real(path)
 	if err != nil {
-		return Entry{}, err
+		return Entry{}, nil, err
 	}
 	sum, data, err := Hash(real)
 	if err != nil {
-		return Entry{}, err
+		return Entry{}, nil, err
 	}
 	now := time.Now
 	if s.Now != nil {
 		now = s.Now
 	}
-	e := Entry{Path: real, SHA256: sum, Size: int64(len(data)), TrustedAt: now().UTC().Truncate(time.Second)}
+	p := locate(real)
+	e := Entry{Path: p.real, Repo: p.repo, Rel: p.rel, SHA256: sum, Size: int64(len(data)), TrustedAt: now().UTC().Truncate(time.Second)}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entries, err := s.load()
-	if err != nil {
-		return Entry{}, err
+	if err != nil && !errors.Is(err, ErrNotPrivate) {
+		return Entry{}, nil, err
 	}
-	entries = slices.DeleteFunc(entries, func(x Entry) bool { return x.Path == real })
-	return e, s.save(append(entries, e))
+	if err != nil {
+		entries = nil // a record others could have written is not kept
+	}
+	entries = slices.DeleteFunc(entries, func(x Entry) bool { return sameFile(x.Path, p.real) || x.Path == p.real })
+	return e, data, s.save(append(entries, e))
 }
 
 // Untrust removes the record for a file, or for every file under a
@@ -186,7 +355,7 @@ func (s *Store) Untrust(path string) ([]Entry, error) {
 	var removed []Entry
 	kept := slices.DeleteFunc(entries, func(e Entry) bool {
 		rel, err := filepath.Rel(target, e.Path)
-		hit := err == nil && (rel == "." || (!strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)))
+		hit := sameFile(target, e.Path) || err == nil && (rel == "." || (!strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)))
 		if hit {
 			removed = append(removed, e)
 		}
