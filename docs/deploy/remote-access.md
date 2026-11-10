@@ -49,6 +49,10 @@ The dashboard's Live voice mode needs HTTPS (or `localhost`) for the microphone.
 > [!WARNING]
 > Never publish the listener without `token_env`. Habakkuk refuses to listen on a non-loopback address without one, but a proxy in front of a loopback listener bypasses that check.
 
+## From your laptop's terminal
+
+`hk` on your laptop can work on the server's Habakkuk: `hk remote add srv ssh://you@server` once, then `hk -r srv chat` or any other command. It goes over ssh, so the HTTP listener can stay on loopback. See [Remote CLI](../interfaces/remote-cli.md).
+
 ## Remote desktop app
 
 [Habakkuk Desktop](../interfaces/desktop-app.md#connections) can connect to a remote Habakkuk: give it the base URL and the token, which it keeps in the OS keychain.

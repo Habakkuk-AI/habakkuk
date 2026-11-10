@@ -6,6 +6,18 @@ order: 1
 
 `habakkuk` with no arguments prints this list. `hk` is the short name: the installers put it beside `habakkuk`, and every command below works with either (`hk chat`, `hk doctor`). `HABAKKUK_HOME` (default `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows) selects the home every command works on.
 
+Any command can run on another machine: `hk -r NAME COMMAND` runs it on a saved remote, over ssh (every command) or HTTPS (`status` and `chat`). See [Remote CLI](../interfaces/remote-cli.md).
+
+## Global flags
+
+These come before the command.
+
+| Flag | |
+|---|---|
+| `-r NAME`, `--remote NAME` | Run the command on that remote. `HABAKKUK_REMOTE=NAME` and `hk remote default NAME` do the same without the flag; `-r local` runs here. |
+| `-q`, `--quiet` | Do not print the `(remote: NAME)` line. |
+| `--yes-remote` | Allow `serve`, `init`, `restore`, `update`, `migrate`, `setup service` and `config migrate` on a remote. |
+
 ## Commands
 
 ```text
@@ -90,6 +102,11 @@ habakkuk security [-fix] [-network] effective tool policy, audit of permissions,
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
 habakkuk expose tailscale [-port 443] [-print] | status | off
                                     share the HTTP listener on your tailnet (tailscale serve, never public)
+habakkuk remote add NAME TARGET [-identity PATH] [-home DIR] [-bin PATH] [-token-env NAME] [-default]
+                                    save a remote: ssh://user@host[:port] runs every command,
+                                    https://host runs status and chat (habakkuk remote help)
+habakkuk remote [list] | rm NAME | default NAME|none
+                                    list, remove, or pick the remote plain commands run on
 habakkuk backup [-o FILE] [-env] [-workspaces]
                                     archive config, agents, skills and database snapshots
 habakkuk restore [-force] FILE      unpack a backup into $HABAKKUK_HOME
@@ -114,6 +131,7 @@ Where each command is explained:
 | `status`, `logs`, `doctor` | [Observability](../deploy/observability.md) |
 | `security` | [Security](../deploy/security.md) |
 | `expose` | [Remote access](../deploy/remote-access.md) |
+| `remote`, `-r` | [Remote CLI](../interfaces/remote-cli.md) |
 | `backup`, `restore` | [Backups and updates](../deploy/backups-and-updates.md) |
 | `update`, `config migrate`, `doctor --upgrade-check`, `version` | [Updating](../get-started/updating.md) |
 | `migrate` | [Move from another agent](../get-started/migrate.md) |
