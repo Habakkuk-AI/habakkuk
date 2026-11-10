@@ -81,13 +81,34 @@ Adapter state that the platform cannot give back (where a mailbox was read up to
 
 [Architecture: channels](../reference/architecture.md#channels) has the details.
 
+## Replies and quotes
+
+When you reply to a specific message, the agent sees the quoted text before what you typed:
+
+```text
+[Replying to you: "Tests pass. Merge it?"]
+yes
+```
+
+"you" means the agent's own message; otherwise it names the person, or says "an earlier message" when the platform does not. The quote is cut to 500 characters, and a photo, file or voice note without text shows as `(photo)`, `(file NAME)` or `(voice note)`.
+
+| Type | Quoted text |
+|---|---|
+| `whatsapp` | yes, for text and media replies |
+| `telegram` | yes, or just the part you picked; not the first message of a forum topic |
+| `signal` | yes |
+| `discord` | yes |
+| others | not yet: those platforms send only the id of the quoted message, and Habakkuk does not look it up |
+
+Messages a chat got from outside its own conversation, such as a scheduled task's result, are covered in [Sessions](../agents/sessions.md#messages-from-elsewhere-in-the-same-chat).
+
 ## Sending without a turn
 
 ```bash
 habakkuk send -to CHANNEL:CHAT[:THREAD] [-file PATH] TEXT
 ```
 
-`habakkuk send` queues a message or file to a chat as a delivery job, without running a turn; `habakkuk serve` sends it. Schedules, board cards and an agent's home chat use the same `CHANNEL:CHAT[:THREAD]` form.
+`habakkuk send` queues a message or file to a chat as a delivery job, without running a turn; `habakkuk serve` sends it. Schedules, board cards and an agent's home chat use the same `CHANNEL:CHAT[:THREAD]` form. The agent that answers the chat sees what was sent on the next message there.
 
 ## What each platform supports
 

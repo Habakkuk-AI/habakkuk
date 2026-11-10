@@ -7,6 +7,31 @@ order: 8
 
 A conversation maps to a session: the history the model sees. A chat channel starts a fresh session after `session_idle` of silence (default 24 hours; the web chat never), or when you send `/new`.
 
+## Messages from elsewhere in the same chat
+
+A chat's session holds the turns that chat started. Other messages land in the same chat too:
+
+- the result of a [scheduled task](schedules.md), which runs in its own session, including a script schedule with `-on-output deliver` or `agent`;
+- another agent's report or `message_home` post, when this chat is its [home chat](multi-agent.md#teams-and-home-chats);
+- a background task's result, a board update, `habakkuk send` and the MCP `habakkuk_send` tool.
+
+Habakkuk keeps a note of each one, in `state.db`, for the chat it went to: the same channel account, chat and thread. On your next message, the agent that answers the chat sees the notes it has not seen yet before your words, like this:
+
+```text
+[Earlier in this chat, at 18:44, your scheduled task "Inbox check" sent: "3 new emails, 1 needs an answer today."]
+[Earlier in this chat, at 18:05, agent engineering sent: "Tests pass. Merge it?"]
+how did you do that?
+```
+
+So "yes" or "how did you do that?" is read against the message you are answering, even when that message came from the agent's own scheduled run.
+
+- **Once each.** A note is shown to one turn, then marked seen. If that turn crashes before its message is saved, the retry shows the same notes, so none is lost and none appears twice.
+- **Never mid-turn.** Notes join your next message. They are never inserted into a turn that is running.
+- **Bounded.** Each note is cut to 1,200 characters and a turn takes at most 6,000 characters of notes. The newest are kept, and a line says how many older ones were left out.
+- **Not the chat's own replies.** What the chat's own session sent is already in its history and leaves no note.
+
+Notes are pruned with the rest of `state.db`, following transcript retention.
+
 ## Steering a turn
 
 | Command | What it does |

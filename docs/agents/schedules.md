@@ -32,7 +32,7 @@ Times are in the config's `timezone` (default the server's). `-to` takes a `CHAN
 
 - **At most once per slot.** For each due slot the scheduler enqueues a job whose ID is the schedule plus the slot time, so a slot runs at most once even with several processes polling or a crash in between.
 - **No late runs.** A slot more than an hour late (Habakkuk was down) is skipped, not run late.
-- **Fresh sessions.** Each run is a fresh session.
+- **Fresh sessions.** Each run is a fresh session. What it sends to a chat is still shown to the agent that answers that chat on your next message there, so you can ask about it. See [Sessions](sessions.md#messages-from-elsewhere-in-the-same-chat).
 - **Unattended.** Anything that needs approval is denied unless the agent has an approval reviewer (`approvals: reviewer` or `reviewer_then_human`; see [Permissions and approvals](approvals.md#approvals)).
 - **Budgets.** A scheduled task whose agent is out of budget is skipped without starting, and its chat gets one notice per limit and period. See [Spending limits](../models/usage-and-limits.md#spending-limits).
 
