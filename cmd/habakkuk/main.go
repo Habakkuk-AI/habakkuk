@@ -501,7 +501,7 @@ func run(ctx context.Context, home string, args []string) error {
 			if e.Kind == events.TurnError {
 				fmt.Fprintln(os.Stderr, "attempt failed:", e.Text)
 			}
-		case <-time.After(250 * time.Millisecond):
+		case <-time.After(50 * time.Millisecond): // the job is marked done just after its last event
 		}
 		j, err := a.Queue.Get(ctx, jobID)
 		if err != nil {
