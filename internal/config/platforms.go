@@ -149,6 +149,11 @@ func (c *Config) applyPlatformDefaults(ch *Channel) {
 			ch.AllowFrom[i] = strings.ToLower(id) // addresses arrive lower-cased
 		}
 	}
+	if ch.Type == "whatsapp" {
+		for i, id := range ch.AllowFrom {
+			ch.AllowFrom[i] = whatsappID(id)
+		}
+	}
 	switch {
 	case ch.Email != nil:
 		e := ch.Email
@@ -333,4 +338,21 @@ func (c *Config) validatePlatform(name string, ch *Channel) []error {
 		}
 	}
 	return errs
+}
+
+// whatsappID reduces an allow_from entry to the bare digits a WhatsApp
+// sender arrives as, so a phone number and a LID can each be written either
+// way: "+1 202-555-0142" and "12025550142@s.whatsapp.net" become
+// 12025550142, and "98765432101234@lid" becomes 98765432101234.
+func whatsappID(id string) string {
+	if id == "*" {
+		return id
+	}
+	user, _, _ := strings.Cut(strings.TrimSpace(id), "@")
+	return strings.Map(func(r rune) rune {
+		if strings.ContainsRune("+ -()", r) {
+			return -1
+		}
+		return r
+	}, user)
 }

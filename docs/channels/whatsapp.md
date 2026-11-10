@@ -89,7 +89,15 @@ With several `whatsapp` channels, pass `-account NAME`. Linking gives up after f
 
 ### Access
 
-`allow_from` takes phone numbers without the `+`. Anyone else who writes gets a pairing code for `habakkuk pair`. In groups the bot answers mentions and replies (`groups: mention`).
+`allow_from` takes phone numbers or LIDs. Anyone else who writes gets a pairing code for `habakkuk pair`. In groups the bot answers mentions and replies (`groups: mention`).
+
+WhatsApp now names many senders by a LID (a private id such as `98765432101234@lid`) instead of their phone number. Habakkuk matches `allow_from` against both: it looks up the phone number behind a LID, and the LID behind a phone number, in the linked device's store. So either form works:
+
+```yaml
+    allow_from: ["+1 202 555 0142", "98765432101234"]
+```
+
+A phone number may have a `+`, spaces or dashes. A LID may be written with or without `@lid`. `/whoami` in the chat shows the ids Habakkuk sees for you.
 
 ### What works
 

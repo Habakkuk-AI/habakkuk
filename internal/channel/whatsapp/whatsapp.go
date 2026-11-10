@@ -19,6 +19,7 @@ import (
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	wastore "go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -234,14 +235,7 @@ func convert(cli *whatsmeow.Client, v *events.Message) (channel.Message, bool) {
 		Direct:       !info.IsGroup,
 		Attachments:  atts,
 	}
-	sender, alt := info.Sender.ToNonAD(), info.SenderAlt.ToNonAD()
-	if sender.Server == types.HiddenUserServer && !alt.IsEmpty() {
-		sender, alt = alt, sender // prefer the phone number, which is what people put in allow_from
-	}
-	m.Sender = sender.User
-	if !alt.IsEmpty() {
-		m.SenderAlt = alt.User
-	}
+	m.Sender, m.SenderAlt = senderIDs(context.Background(), cli.Store, info.Sender, info.SenderAlt)
 
 	if info.IsGroup && cli.Store.ID != nil {
 		own := []string{cli.Store.ID.User, cli.Store.LID.User}
@@ -258,6 +252,31 @@ func convert(cli *whatsmeow.Client, v *events.Message) (channel.Message, bool) {
 	}
 	m.Text = text
 	return m, true
+}
+
+// senderIDs returns the ids allow_from and pairing match a sender by: the
+// phone number first, as people write it, and the LID as the alternative.
+// WhatsApp often names a sender by LID alone; the store's mapping between
+// LIDs and phone numbers then fills in the other.
+func senderIDs(ctx context.Context, dev *wastore.Device, sender, alt types.JID) (string, string) {
+	sender, alt = sender.ToNonAD(), alt.ToNonAD()
+	if alt.IsEmpty() && dev != nil && dev.LIDs != nil {
+		var other types.JID
+		var err error
+		switch sender.Server {
+		case types.HiddenUserServer:
+			other, err = dev.LIDs.GetPNForLID(ctx, sender)
+		case types.DefaultUserServer:
+			other, err = dev.LIDs.GetLIDForPN(ctx, sender)
+		}
+		if err == nil && !other.IsEmpty() {
+			alt = other.ToNonAD()
+		}
+	}
+	if sender.Server == types.HiddenUserServer && !alt.IsEmpty() {
+		sender, alt = alt, sender // the phone number is what people put in allow_from
+	}
+	return sender.User, alt.User
 }
 
 func userOf(jid string) string {

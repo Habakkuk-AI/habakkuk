@@ -146,3 +146,18 @@ func TestWhatsAppAgentChannel(t *testing.T) {
 		}
 	}
 }
+
+func TestWhatsAppAllowFromTakesPhoneNumbersAndLIDs(t *testing.T) {
+	cfg, err := Parse([]byte(withChannels(`
+  whatsapp:
+    type: whatsapp
+    allow_from: ["+1 202-555-0142", "98765432101234@lid", "15551234567@s.whatsapp.net", "447700900123"]
+`, "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"12025550142", "98765432101234", "15551234567", "447700900123"}
+	if got := cfg.Channels["whatsapp"].AllowFrom; !slices.Equal(got, want) {
+		t.Fatalf("allow_from = %q, want %q", got, want)
+	}
+}
