@@ -26,6 +26,7 @@ agents:
 | `fast_model`, `routing`, `escalate_after` | A cheaper model for quick messages and chores, and how turns are split between it and `model`. See [Routing](../models/routing.md) |
 | `effort` | The reasoning effort sent with each request; `/think` overrides it per session |
 | `max_tokens`, `max_iterations` | Output tokens per model call (default 64000) and model calls per turn (default 200) |
+| `loop_guard` | When to warn and then stop an agent that keeps repeating the same step. See [When an agent goes round in circles](#when-an-agent-goes-round-in-circles) |
 | `permission`, `approvals`, `reviewer_model` | What the agent may do without asking, and who decides when it must ask. See [Permissions and approvals](approvals.md) |
 | `trust`, `channel_allow`, `allow_tainted_exec` | Lift the extra checks on chat-driven and tainted turns. See [Security](../deploy/security.md) |
 | `workspace` | The folder its file tools and commands work in (default `$HABAKKUK_HOME/agents/<name>/workspace`) |
@@ -36,6 +37,31 @@ agents:
 | `sandbox`, `checkpoints`, `tool_search_over` | Where commands run, workspace snapshots, and when to switch to tool search. See [Files and shell](../tools/files-and-shell.md) |
 | `home`, `report_home` | The agent's own chat, where it reports work that started elsewhere. See [Multi-agent teams](multi-agent.md#teams-and-home-chats) |
 | `budget` | Spending caps for this agent. See [Usage and limits](../models/usage-and-limits.md#spending-limits) |
+
+## When an agent goes round in circles
+
+Sometimes a model gets stuck. It runs the same command, gets the same error and tries again, and every try costs you money. `max_iterations` would end that eventually, but only after 200 model calls. The loop guard catches it much sooner.
+
+It watches each round of tool calls for two things:
+
+- **Repeats.** The same call, with the same tool and the same arguments, failing with the same error.
+- **Idle rounds.** Rounds in a row where every call is one the agent already made in this turn and the results come back the same. Nothing new is learned.
+
+The first time a count reaches its warn level, the agent is told plainly that it's repeating itself and should change its approach or stop and tell you what's blocking it. If it keeps going and reaches the stop level, the turn ends and you get a message saying why, such as "I stopped working on this because I was going round in circles: I tried read_file 5 times and it failed the same way each time". Reply to tell it how to go on.
+
+```yaml
+agents:
+  habakkuk:
+    loop_guard:
+      repeat_warn: 3    # the same failing call, 3 times (default)
+      repeat_stop: 5    # default 5
+      idle_warn: 8      # rounds in a row with nothing new (default 8)
+      idle_stop: 12     # default 12
+```
+
+Leave out a key to keep its default. Set it to `-1` to turn that check off. The idle levels are higher on purpose: waiting on a slow job by checking it again and again is a fair reason to repeat a call.
+
+Each warning and stop fires the `loop_guard` [hook](approvals.md) and counts in the `habakkuk_loop_guard_total` metric. See [Observability](../deploy/observability.md). A turn that's resumed after a restart picks up its counts from its own transcript, so a restart doesn't reset them.
 
 ## Personality and instructions
 

@@ -46,6 +46,8 @@ telemetry:                        # optional OTLP/HTTP traces: a span per turn, 
 
 The [HTTP server](../interfaces/dashboard.md) serves `/metrics`, so you need an `http` section in your config to use it. Traces go only to the endpoint you name. Habakkuk sends no telemetry of its own.
 
+`habakkuk_loop_guard_total{agent,check,action}` counts the times the [loop guard](../agents/agents.md#when-an-agent-goes-round-in-circles) warned an agent that was repeating itself (`action="warn"`) or stopped its turn (`action="stop"`). A rising stop count usually means a tool is broken or an instruction is unclear.
+
 For the metric families and what the log redactor removes, see [Architecture: operations](../reference/architecture.md#operations).
 
 ## Usage and cost

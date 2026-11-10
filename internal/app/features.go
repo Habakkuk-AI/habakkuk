@@ -6,10 +6,15 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 )
 
-// agentFeatures sets an agent's tool search threshold and automatic
-// titles from its config. It runs after the spec's chain is built.
+// agentFeatures sets an agent's tool search threshold, loop guard and
+// automatic titles from its config. It runs after the spec's chain is built.
 func agentFeatures(ac *config.Agent, spec *agent.Spec) {
 	spec.ToolSearchOver = max(ac.ToolSearchOver, 0) // -1 (off) becomes 0
+	// Loop guard thresholds: -1 (off) becomes 0.
+	if g := ac.LoopGuard; g != nil {
+		spec.Loop = agent.LoopLimits{RepeatWarn: max(g.RepeatWarn, 0), RepeatStop: max(g.RepeatStop, 0),
+			IdleWarn: max(g.IdleWarn, 0), IdleStop: max(g.IdleStop, 0)}
+	}
 	if ac.TitleModel == "off" {
 		return
 	}

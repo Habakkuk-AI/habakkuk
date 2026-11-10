@@ -162,6 +162,11 @@ type Agent struct {
 	ReportHome string `yaml:"report_home"`
 	// Budget caps this agent's model spending (budget.go); nil is no cap.
 	Budget *Budget `yaml:"budget"`
+	// LoopGuard ends a turn that keeps repeating itself (guards.go).
+	LoopGuard *LoopGuard `yaml:"loop_guard"`
+	// ProjectFiles loads the workspace's AGENTS.md, CLAUDE.md and
+	// .cursorrules into the prompt: on (default), trusted or off (guards.go).
+	ProjectFiles string `yaml:"project_files"`
 	// Safety for channel and tainted turns: trust, channel_allow,
 	// allow_tainted_exec (security.go).
 	AgentSecurity `yaml:",inline"`
@@ -411,6 +416,7 @@ func (c *Config) applyDefaults() {
 			a.Toolsets = []string{"core", "memory", "skills", "schedule", "delegate", "board"}
 		}
 		a.applySandboxDefaults()
+		a.applyGuardDefaults()
 	}
 }
 
@@ -480,6 +486,7 @@ func (c *Config) Validate() error {
 		}
 		errs = append(errs, validateSandbox(name, a)...)
 		errs = append(errs, a.validateSecurity(name)...)
+		errs = append(errs, a.validateGuards(name)...)
 	}
 	for name, m := range c.MCP {
 		errs = append(errs, validateMCP(name, m)...)

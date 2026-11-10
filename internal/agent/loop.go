@@ -57,6 +57,8 @@ type Spec struct {
 	// ReportHome is off, results or all (home.go).
 	Home       string
 	ReportHome string
+	// Loop ends turns that keep repeating themselves (loopguard.go).
+	Loop LoopLimits
 }
 
 type TurnPayload struct {
@@ -358,7 +360,8 @@ type turn struct {
 	usageAt      int       // its seq, or -1
 	compactTried bool
 
-	paused bool // a spending limit ended the turn (budget.go)
+	paused bool       // a spending limit ended the turn (budget.go)
+	guard  *loopGuard // nil when the loop guard is off (loopguard.go)
 }
 
 func (t *turn) run(userText string, media []Attachment) error {
@@ -381,6 +384,10 @@ func (t *turn) run(userText string, media []Attachment) error {
 	}
 	if err := t.loadCompaction(recs); err != nil {
 		return err
+	}
+	if g := newLoopGuard(t.spec.Loop); !g.off() {
+		t.guard = g
+		g.replay(recs, t.job.ID)
 	}
 	if !started {
 		if t.r.Sessions.SetTitle(t.ctx, t.sess.ID, title(userText)) != nil {
@@ -484,7 +491,13 @@ func (t *turn) run(userText string, media []Attachment) error {
 			t.final = resp.Message.Text()
 			return nil
 		}
-		results := t.runTools(env, calls, resp.StopReason == llm.StopMaxTokens)
+		results, stop := t.guardRound(calls, t.runTools(env, calls, resp.StopReason == llm.StopMaxTokens))
+		if stop != nil {
+			if err := t.append(llm.Message{Role: llm.User, Blocks: results}, "", nil); err != nil {
+				return err
+			}
+			return t.stopLoop(stop)
+		}
 		results = append(results, t.r.steer(t.ctx, t.sess.ID)...) // after the results, as the APIs require
 		// Tools that tool_search found join the next call.
 		specs = t.moreTools(specs, calls, results)

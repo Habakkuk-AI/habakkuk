@@ -74,6 +74,7 @@ Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded
 | `effort` | | `low`, `medium`, `high`, `xhigh` or `max` |
 | `max_tokens` | 64000 | Output tokens per model call |
 | `max_iterations` | 200 | Model calls per turn |
+| `loop_guard` | `repeat_warn: 3`, `repeat_stop: 5`, `idle_warn: 8`, `idle_stop: 12` | Warn, then stop, a turn that repeats the same failing call or rounds that learn nothing new; `-1` turns a check off ([agents](../agents/agents.md#when-an-agent-goes-round-in-circles)) |
 | `permission` | `workspace` | `read-only`, `ask`, `workspace` or `full` |
 | `approvals` | `human` | `human`, `reviewer` or `reviewer_then_human` |
 | `reviewer_model` | the agent's chain | The approval reviewer's model |
