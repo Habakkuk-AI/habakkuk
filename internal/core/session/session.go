@@ -49,7 +49,7 @@ CREATE TABLE compactions (
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (session_id, keep_from)
 ) WITHOUT ROWID;
-`}, {Version: 3, SQL: searchSchema}, {Version: 4, SQL: metaSchema}}
+`}, {Version: 3, SQL: searchSchema}, {Version: 4, SQL: metaSchema}, {Version: 5, SQL: importedSchema}}
 
 type Session struct {
 	ID           string
@@ -262,9 +262,10 @@ func (s *Store) LatestCompaction(ctx context.Context, sessionID string) (*Compac
 	return &c, nil
 }
 
-// Prune deletes sessions not updated since the cutoff.
+// Prune deletes sessions not updated since the cutoff. Sessions imported
+// from another agent are kept: they are history the user brought over.
 func (s *Store) Prune(ctx context.Context, olderThan time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE updated_at < ?`, olderThan.UnixMilli())
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE updated_at < ? AND title_source != ?`, olderThan.UnixMilli(), TitleImported)
 	if err != nil {
 		return 0, err
 	}

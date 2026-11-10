@@ -30,6 +30,9 @@ type Result struct {
 	Copied   []string          // .env variables written
 	ToSet    []string          // variables the user still has to set
 	WroteCfg bool
+	// Conversations and Messages count the past conversations imported as
+	// read-only sessions, and the messages in them.
+	Conversations, Messages int
 	// Files is what the copy of the files the imported text names did; nil
 	// when nothing was to be copied.
 	Files *FilesResult
@@ -164,6 +167,9 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 	}
 	res.ToSet = append(res.ToSet, p.Found.Missing...)
 	if err := p.applySchedules(ctx, res); err != nil {
+		return res, err
+	}
+	if err := p.applyHistory(ctx, res); err != nil {
 		return res, err
 	}
 	return res, nil

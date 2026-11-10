@@ -814,9 +814,6 @@ func (r *ocReader) deliverTo(job, agentName string, d map[string]any) *Address {
 }
 
 func (r *ocReader) leftovers() {
-	if exists(filepath.Join(r.dir, "agents")) {
-		r.f.leftover("conversation history", "it stays in "+r.dir+"; Habakkuk starts fresh sessions")
-	}
 	if ms, _ := filepath.Glob(filepath.Join(r.dir, "agents", "*", "agent", "openclaw-agent.sqlite")); len(ms) > 0 || exists(filepath.Join(r.dir, "credentials", "oauth.json")) {
 		r.f.leftover("API keys and sign-ins saved by onboarding (in its own credential store)",
 			"put the keys in "+"$HABAKKUK_HOME/.env, or run hk setup model")

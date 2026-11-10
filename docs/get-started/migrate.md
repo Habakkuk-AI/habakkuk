@@ -1,20 +1,23 @@
 ---
 title: Move from another agent
-description: "Bring your agents, memory, skills, schedules, MCP servers, channels, keys and your own files over from Hermes Agent or OpenClaw with hk migrate."
+description: "Bring your agents, memory, past conversations, skills, schedules, MCP servers, channels, keys and your own files over from Hermes Agent or OpenClaw, or your instructions, MCP servers, skills and memory from Claude Code or Codex, with hk migrate."
 order: 7
 ---
 
 If you already run [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://github.com/openclaw/openclaw), this page shows you how to bring your setup over. `hk migrate` reads the other agent's home folder and sets up the same things in Habakkuk. It shows you a plan first, and it writes nothing until you say yes. You can run it again safely, because it leaves alone what's already there.
 
-It can also copy your own files out of the old folder. That way, the new agent stops depending on the old folder.
+It also brings your past conversations, so your agent can look back at what you talked about before. It can copy your own files out of the old folder too. That way, the new agent stops depending on the old folder.
+
+Coming from Claude Code or Codex instead? `hk migrate --from claude-code` or `--from codex` brings your instructions, MCP servers, skills, slash commands and memory. See [From Claude Code or Codex](#from-claude-code-or-codex).
 
 ```bash
 hk migrate --dry-run           # see what would move, change nothing
 hk migrate                     # show the plan, ask, then import
 hk migrate --files copy        # also bring your own files over from the old folder
+hk migrate --history skip      # leave your past conversations behind
 ```
 
-On a new install, `hk setup` notices either home and offers to import it before it starts its own steps. So running `hk setup` works too.
+On a new install, `hk setup` notices any of these homes and offers to import it before it starts its own steps. So running `hk setup` works too.
 
 ## What moves
 
@@ -26,6 +29,7 @@ This table shows what the import reads from each agent and what it becomes in Ha
 | Persona | `SOUL.md`, `agent.system_prompt` | `SOUL.md`, `AGENTS.md` (with `TOOLS.md` appended), `IDENTITY.md` and the agent's `identity` | `agents/<agent>/SOUL.md`, `AGENTS.md`, `IDENTITY.md` |
 | User profile | `memories/USER.md` | `USER.md` | `agents/<agent>/USER.md`, section by section |
 | Memory | each entry of `memories/MEMORY.md`, and each fact in `memory_store.db` (tagged with its category) | each `##` section of `MEMORY.md`, and the daily files in `memory/` | one note each in `agents/<agent>/memory/` |
+| Past conversations | the sessions in `state.db`, in the main home and each profile | each agent's transcripts in `agents/<id>/sessions/`, or in its `openclaw-agent.sqlite` | read-only sessions of the same agent (see [Your past conversations](#your-past-conversations)) |
 | Skills | your own skills in `skills/` (the ones it installed itself are skipped) | `skills/` in each workspace, and the shared `skills/` | `agents/<agent>/skills/`, or the shared `skills/` |
 | Schedules | `cron/jobs.json` | the scheduled jobs (`state/openclaw.sqlite`, or the older `cron/jobs.json`) | schedules, **paused** |
 | MCP servers | `mcp_servers` | `mcp.servers` | `mcp_servers`, plus an `mcp:<name>` toolset on the agents that used them |
@@ -35,6 +39,44 @@ This table shows what the import reads from each agent and what it becomes in Ha
 | Your own files | folders and files in the home that the imported text names, such as `workspaces/`, `scripts/` and `state/` | the same; each agent's workspace folder stays where it is | `$HABAKKUK_HOME/files/<name>/`, with `--files copy` (see [Your files in the old folder](#your-files-in-the-old-folder)) |
 
 The import looks for each source folder where that agent's own tools look. That's `~/.hermes` or `$HERMES_HOME`, and `~/.openclaw`, `$OPENCLAW_STATE_DIR` or `~/.openclaw-<profile>` for `$OPENCLAW_PROFILE`. If yours is anywhere else, pass `--source DIR`.
+
+## Your past conversations
+
+Each conversation you had with the old agent comes over as a session of the agent it belonged to. It keeps its title and its dates. Where the old agent noted the chat, such as a Telegram chat or a Discord thread, the session records that chat under the matching Habakkuk channel.
+
+Only what you and the agent said comes over. Tool calls, tool results, reasoning and the old agent's summaries stay behind. A conversation with no words in it, only tool calls, is left out.
+
+The imported sessions are history:
+
+- Your agent can search them with `session_search`, the same way it searches its own past chats.
+- They show in `hk sessions`, marked `(imported, read-only)`, and on the dashboard's Sessions page. `hk show ID` and `hk sessions export ID` work on them.
+- No new message runs in them. To pick up an old topic, start a new session and ask the agent about it.
+- Retention never prunes them. To remove one, use `hk sessions rm ID`.
+
+The plan shows how many conversations and messages each agent gets, and how many are already there. Running the import again adds only the ones that are new. Pass `--history skip` to leave them all in the old folder.
+
+## From Claude Code or Codex
+
+`hk migrate --from claude-code` and `hk migrate --from codex` set up your main agent from a coding tool. The tool's folder is `~/.claude` or `$CLAUDE_CONFIG_DIR` for Claude Code, and `~/.codex` or `$CODEX_HOME` for Codex. Pass `--source DIR` if yours is somewhere else.
+
+| From | Claude Code | Codex | Becomes in Habakkuk |
+|---|---|---|---|
+| Instructions | `CLAUDE.md` | `AGENTS.md` (or `AGENTS.override.md`) | the main agent's `AGENTS.md` |
+| MCP servers | `mcpServers` in `~/.claude.json`, and Claude Desktop's `claude_desktop_config.json` | `[mcp_servers]` in `config.toml` | `mcp_servers`, plus an `mcp:<name>` toolset on the agent |
+| Skills | `skills/` | `skills/`, and `~/.agents/skills` | shared skills |
+| Slash commands | `commands/` (`commands/git/commit.md` is `/git:commit`) | `prompts/` | a shared skill each (`git-commit`), saying what it was and how to use `$ARGUMENTS` |
+| Memory | each file in `projects/<project>/memory/` | each file in `memories/` | one note each |
+| Model | `model` in `settings.json`, when it's a full model id | `model` and `model_provider` in `config.toml` | the agent's `model` |
+
+Keys and sign-ins never move from a coding tool, not even with `--secrets copy`. The plan names the variables the imported config uses, such as `ANTHROPIC_API_KEY` or a server's token. Set them in `$HABAKKUK_HOME/.env` yourself. Habakkuk can't use a Claude subscription sign-in, so give it an API key with `hk setup model`. If Codex signs in with ChatGPT, the agent gets the ChatGPT sign-in, and you run `hk auth login chatgpt`.
+
+If `settings.json` names a model by a short name such as `opus`, the import sets no model. Run `hk setup model` first, then `hk migrate --from claude-code` again. Without a model, the agent's MCP servers wait for that second run.
+
+To add one project's own setup, pass `--project DIR`. When you run the import inside a project folder, that folder is used. For Claude Code, that's its `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`, the project's servers in `~/.claude.json`, `.claude/skills` and `.claude/commands`. For Codex, it's `AGENTS.md`, `.codex/skills` and `.agents/skills`. The project's instructions go under their own heading in `AGENTS.md`. When the import creates the agent, the project folder becomes its workspace.
+
+A few things stay behind: past coding sessions, subagents, hooks, plugins, output styles, Codex's command rules and its `notify` command. The plan lists the ones it finds.
+
+When an agent's home and a coding tool are both on your computer, `hk migrate` imports the agent and names the coding tool, so you can run it again with `--from`.
 
 ## Your files in the old folder
 
@@ -69,7 +111,7 @@ Each OpenClaw agent's workspace folder is already handled. Habakkuk uses it wher
 | What | Why | Instead |
 |---|---|---|
 | The old agent's own folders (program, caches, logs, sessions, databases, keys, config) | They belong to the old agent, not to you | They stay in the old folder; the plan lists the ones your text still names |
-| Conversation history | Each agent stores sessions in its own database format | It stays in the old folder; Habakkuk starts fresh sessions |
+| Tool calls, tool results and reasoning in past conversations | Only what you and the agent said is imported | They stay in the old folder |
 | The WhatsApp linked device | The session belongs to a different WhatsApp library | `hk whatsapp link` (or `hk setup channel whatsapp`) links the number again |
 | Subscription and OAuth sign-ins | Tokens are tied to the app that signed in | `hk auth login chatgpt` or `copilot`, `hk mcp login NAME`, or an API key with `hk setup model` |
 | Keys kept in OpenClaw's credential store | They are not in `.env` or the config | Put them in `$HABAKKUK_HOME/.env`; the plan names the variables it still needs |
@@ -82,19 +124,24 @@ A few more things are left out: schedules and MCP servers that are turned off, o
 ## The command
 
 ```text
-hk migrate [--from hermes|openclaw] [--source DIR] [--agent NAME]
-                 [--dry-run] [--secrets copy|skip] [--files copy|skip]
-                 [--files-dir DIR] [--files-max SIZE] [--force] [-y]
+hk migrate [--from hermes|openclaw|claude-code|codex] [--source DIR]
+                 [--agent NAME] [--project DIR] [--dry-run]
+                 [--secrets copy|skip] [--history copy|skip]
+                 [--files copy|skip] [--files-dir DIR] [--files-max SIZE]
+                 [--force] [-y]
 ```
 
 | Flag | Meaning |
 |---|---|
-| `--from` | `hermes` or `openclaw`. Without it, the one found on this computer is used; if both are there you must choose. |
+| `--from` | `hermes`, `openclaw`, `claude-code` or `codex`. Without it, the one found on this computer is used. An agent found beside a coding tool is picked, and the coding tool is named. If two agents are there, you must choose. |
 | `--source DIR` | The source home folder, when it is not in the default place. |
 | `--agent NAME` | What the main agent is called in Habakkuk (default `habakkuk`). Other agents keep their names. |
+| `--project DIR` | Claude Code and Codex only: also bring this project folder's instructions, MCP servers and skills. The default is the folder you run the import in, when it has them. |
 | `--dry-run` | Print the plan and stop. Nothing is written, not even an empty folder. It shows the files that would be copied, their sizes, and what would stay. |
 | `--secrets copy` | Copy keys and tokens into `$HABAKKUK_HOME/.env` (readable only by you). |
 | `--secrets skip` | Copy no keys; the report lists the variables to set yourself. |
+| `--history copy` | Import your past conversations as read-only sessions. This is the default. |
+| `--history skip` | Leave your past conversations in the old folder. |
 | `--files copy` | Copy your own files that the imported text names into `$HABAKKUK_HOME/files`, and rewrite the text to name the copies. |
 | `--files skip` | Copy no files. The imported text keeps naming the old folder, and the report lists what it names. |
 | `--files-dir DIR` | Where `--files copy` puts the files, instead of `$HABAKKUK_HOME/files`. It is remembered: later runs keep using the place where each folder went. |
@@ -151,6 +198,10 @@ Channels
   + telegram: telegram for agent habakkuk
   + whatsapp: whatsapp for agent habakkuk
 
+Conversation history (imported read-only)
+  + habakkuk: 38 conversations (1204 messages) to import, 0 already there
+  + coder: 3 conversations (57 messages) to import, 0 already there
+
 Files in /home/ada/.hermes that the imported text names
   + scripts: 12 KB in 3 files, named 3 times -> /home/ada/.habakkuk/files/scripts
   + state: 4 KB in 1 file, named 2 times -> /home/ada/.habakkuk/files/state
@@ -170,7 +221,6 @@ Keys and tokens (names only; values are never shown)
   + TELEGRAM_BOT_TOKEN
 
 Cannot carry over
-  - conversation history: it stays in /home/ada/.hermes; Habakkuk starts fresh sessions
   - the WhatsApp linked-device session: hk whatsapp link (or hk setup channel whatsapp) to link the number again
 
 config.yaml will be created.
@@ -185,7 +235,7 @@ $ hk migrate --secrets copy --files copy -y
 ...
 Copying 2.5 GB into /home/ada/.habakkuk/files ...
 
-Imported 2 agents, 3 persona files, 1 profile, 3 memory notes, 2 skills, 2 schedules, 2 MCP servers, 2 providers, 2 channels.
+Imported 2 agents, 3 persona files, 1 profile, 3 memory notes, 2 skills, 2 schedules, 2 MCP servers, 2 providers, 2 channels, 41 past conversations (1261 messages) as read-only sessions.
 Copied ANTHROPIC_API_KEY, GITHUB_PERSONAL_ACCESS_TOKEN, NOTION_TOKEN, OPENROUTER_API_KEY, TELEGRAM_BOT_TOKEN into /home/ada/.habakkuk/.env.
 
 Copied 1208 files (2.5 GB) out of /home/ada/.hermes into /home/ada/.habakkuk/files: scripts, state, workspaces.
@@ -222,6 +272,8 @@ When you run the import again, it compares everything with what's already in `$H
 - **Conflict** (`!`): something different exists under the same name, for example a `SOUL.md` you wrote. The import leaves it alone and lists it. Pass `--force` to replace it. One thing in a conflict does change when files are copied. If it has a path that leads into a copied folder, that path is rewritten to the copy, and the plan says so on that line. Everything else in it stays as you wrote it. Replaced files are kept as `NAME.bak`, and replaced skills as `<skill>.bak`. `config.yaml` is always kept as `config.yaml.bak` before it's edited.
 - **Added to** (`~`): the import only ever adds to the user profile and to an agent's toolsets. It doesn't cut anything from them.
 
+Past conversations are matched by their id in the old agent, so each one comes over once. A conversation you deleted from Habakkuk comes back on the next run. Pass `--history skip` if you don't want that.
+
 The import edits `config.yaml` in place, the same way `hk setup` does, so your comments and settings stay.
 
 Copied files work the same way. A second `--files copy` brings over only what's new or changed in the old folder, and it shows `=` for a folder with nothing to copy. It doesn't delete from the copy, and it doesn't replace a file that changed there since. The import keeps a small record of which folder went where, in `migrated-files.json` in `$HABAKKUK_HOME`. Later runs read that record, with or without `--files`. That's how text that already names the copies is seen as already there.
@@ -246,6 +298,10 @@ Once the Files section lists nothing under "Not moved" and every folder shows `=
 **"found both Hermes Agent and OpenClaw"**: pass `--from hermes` or `--from openclaw`. If you want both, run it again for the other one.
 
 **"found no setup to import"**: the home is somewhere else, so pass `--from` and `--source DIR`.
+
+**"Found Claude Code too"** (or Codex): the import picked the agent's home. Run `hk migrate --from claude-code` (or `--from codex`) after it to bring the coding tool's setup into the same agent.
+
+**"this conversation was imported from another agent and is read-only"**: you sent a message to an imported session. Start a new session instead. The agent can still find the old conversation with `session_search`.
 
 **"config.yaml does not parse as YAML" or "openclaw.json does not parse as JSON5"**: the source config is damaged. The message says where. Fix it, then run the import again.
 

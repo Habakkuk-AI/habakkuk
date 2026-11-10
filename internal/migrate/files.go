@@ -228,11 +228,43 @@ var openclawInternals = []internals{
 	{"%s's schedules, already imported", []string{"cron"}},
 }
 
+// claudeCodeInternals: what a Claude Code folder (~/.claude) keeps for
+// itself.
+var claudeCodeInternals = []internals{
+	{whyProgram, []string{"local", "bin", "node_modules", "ide"}},
+	{whyCache, []string{"statsig", "shell-snapshots", "paste-cache", "image-cache", "file-history", "tmp"}},
+	{whyLogs, []string{"logs", "debug", "telemetry"}},
+	{whySessions, []string{"projects", "todos", "history.jsonl", "session-env", "sessions", "plans", "tasks", "teams"}},
+	{whyKeys, []string{".credentials.json", ".claude.json"}},
+	{whyConfig, []string{"settings.json", "settings.local.json", "keybindings.json", "statusline.sh"}},
+	{whyPlugins, []string{"plugins", "hooks", "agents", "output-styles"}},
+	{"already imported as the agent's AGENTS.md", []string{"CLAUDE.md"}},
+	{"already imported as skills", []string{"skills", "commands"}},
+}
+
+// codexInternals: what a Codex folder (~/.codex) keeps for itself.
+var codexInternals = []internals{
+	{whyProgram, []string{"bin", "node_modules", "vendor_imports"}},
+	{whyCache, []string{"tmp", ".tmp", "shell_snapshots"}},
+	{whyLogs, []string{"log", "logs"}},
+	{whySessions, []string{"sessions", "archived_sessions", "history.jsonl", "state.sqlite", "worktrees"}},
+	{whyKeys, []string{"auth.json", ".credentials.json"}},
+	{whyConfig, []string{"config.toml", "version.json", "rules"}},
+	{"already imported as the agent's AGENTS.md", []string{"AGENTS.md", "AGENTS.override.md"}},
+	{"already imported as skills", []string{"skills", "prompts"}},
+	{"already imported as memory notes", []string{"memories"}},
+}
+
 // internalWhy says why an entry name is part of the agent itself, or "".
 func internalWhy(from, name string) string {
 	list := hermesInternals
-	if from == OpenClaw {
+	switch from {
+	case OpenClaw:
 		list = openclawInternals
+	case ClaudeCode:
+		list = claudeCodeInternals
+	case Codex:
+		list = codexInternals
 	}
 	same := func(a, b string) bool {
 		if runtime.GOOS == "windows" {

@@ -22,17 +22,35 @@ import (
 var testNow = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 
 // copyHome copies a fixture home, turning its stored dotenv files (the
-// repository ignores .env) into .env.
+// repository ignores .env) into .env, and names stored as dot-NAME (the
+// repository ignores .claude/) into .NAME.
 func copyHome(dst, src string) error {
 	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
 		return err
 	}
-	return filepath.WalkDir(dst, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && d.Name() == "dotenv" {
-			return os.Rename(p, filepath.Join(filepath.Dir(p), ".env"))
+	var renames [][2]string
+	err := filepath.WalkDir(dst, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		return err
+		switch name := d.Name(); {
+		case name == "dotenv":
+			renames = append(renames, [2]string{p, filepath.Join(filepath.Dir(p), ".env")})
+		case strings.HasPrefix(name, "dot-"):
+			renames = append(renames, [2]string{p, filepath.Join(filepath.Dir(p), "."+strings.TrimPrefix(name, "dot-"))})
+		}
+		return nil
 	})
+	if err != nil {
+		return err
+	}
+	slices.Reverse(renames) // inner names first
+	for _, r := range renames {
+		if err := os.Rename(r[0], r[1]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // fixture copies a synthetic source home from testdata so a test may
@@ -112,7 +130,7 @@ func TestRead(t *testing.T) {
 		channels:  []string{"telegram", "whatsapp"},
 		schedules: []string{"Morning brief=CRON_TZ=America/Toronto 0 8 * * 1-5", "Inbox sweep=@every 30m", "Digest script=30 18 * * *"},
 		secrets:   []string{"ANTHROPIC_API_KEY", "GITHUB_PERSONAL_ACCESS_TOKEN", "NOTION_TOKEN", "OPENROUTER_API_KEY", "TELEGRAM_BOT_TOKEN"},
-		leftovers: []string{"conversation history", "WhatsApp linked-device session", "board cards"},
+		leftovers: []string{"older sessions/ folder", "WhatsApp linked-device session", "board cards"},
 		skipped:   []string{"1 skill that came with", "MCP server retired", "One-off long past", "1 schedule of agent habakkuk: turned off"},
 	}, {
 		from: OpenClaw,
@@ -280,7 +298,7 @@ func TestOtherEnvSkipsKeysCopiedElsewhere(t *testing.T) {
 }
 
 func TestPlanNeverShowsSecrets(t *testing.T) {
-	for _, from := range Sources {
+	for _, from := range []string{Hermes, OpenClaw} { // coding tools: TestCodingToolsNeverTakeKeys
 		t.Run(from, func(t *testing.T) {
 			home := t.TempDir()
 			p := mustPlan(t, from, fixture(t, from), home, false)

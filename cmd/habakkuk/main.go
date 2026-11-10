@@ -29,6 +29,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/events"
 	plat "github.com/habakkuk-ai/habakkuk/internal/core/platform"
+	"github.com/habakkuk-ai/habakkuk/internal/core/session"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/logs"
 	"github.com/habakkuk-ai/habakkuk/internal/protocols/mcp"
@@ -641,7 +642,11 @@ func sessions(ctx context.Context, home string, args []string) error {
 		return err
 	}
 	for _, s := range list {
-		fmt.Printf("%s  %-10s  %s  %s\n", s.ID, s.Agent, s.UpdatedAt.Format("2006-01-02 15:04"), s.Title)
+		title := s.Title
+		if s.TitleSource == session.TitleImported {
+			title += "  (imported, read-only)"
+		}
+		fmt.Printf("%s  %-10s  %s  %s\n", s.ID, s.Agent, s.UpdatedAt.Format("2006-01-02 15:04"), title)
 	}
 	return nil
 }

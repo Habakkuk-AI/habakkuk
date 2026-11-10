@@ -57,6 +57,10 @@ type Item struct {
 	// rewritten where they are.
 	fix  int
 	have *Schedule // schedules: the text of the one that is there
+	// hist are the new conversations of a history item, with how many
+	// messages they hold; histSame counts the ones already there.
+	hist               []*Conversation
+	histMsgs, histSame int
 }
 
 // Rewritten is how many references in the item's text name copied files
@@ -196,6 +200,9 @@ func NewPlan(f *Found, home string, o Options) (*Plan, error) {
 		p.Items = append(p.Items, it)
 	}
 	if err := p.planSchedules(); err != nil {
+		return nil, err
+	}
+	if err := p.planHistory(); err != nil {
 		return nil, err
 	}
 	for _, it := range p.Items {
@@ -674,6 +681,7 @@ func (p *Plan) Write(w io.Writer, copySecrets string) {
 	section("MCP servers", "mcp", func(it *Item) string { return it.Name })
 	section("Model providers", "provider", func(it *Item) string { return it.Name })
 	section("Channels", "channel", func(it *Item) string { return it.Name })
+	section("Conversation history (imported read-only)", "history", func(it *Item) string { return it.Agent })
 	p.writeFiles(w)
 	if names := p.Secrets(); len(names) > 0 {
 		fmt.Fprintf(w, "\nKeys and tokens (names only; values are never shown)\n")

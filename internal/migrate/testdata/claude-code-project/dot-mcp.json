@@ -1,0 +1,1 @@
+{ "mcpServers": { "orders-db": { "command": "orders-mcp", "args": ["--read-only"], "env": { "ORDERS_DB_URL": "${ORDERS_DB_URL}" } } } }

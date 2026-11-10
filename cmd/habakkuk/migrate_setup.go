@@ -18,10 +18,16 @@ func (s *setup) offerImport() error {
 	if len(found) == 0 || (!s.interactive && !s.opts.migrate) {
 		return nil
 	}
-	from := found[0]
+	from, others, err := choose(found)
+	if err != nil {
+		// Two agents (or two coding tools) and no way to tell which one is
+		// wanted: the first is offered, the other named after.
+		from = found[0]
+		others = found[1:]
+	}
 	label, dir := migrate.Label(from), migrate.DefaultSource(from, o)
 	if s.interactive {
-		ok, err := s.yes(fmt.Sprintf("Found a %s setup in %s. Import its agents, memory, skills, schedules and keys first?", label, dir), true)
+		ok, err := s.yes(fmt.Sprintf("Found a %s setup in %s. Import its %s first?", label, dir, migrate.Brings(from)), true)
 		if err != nil || !ok {
 			if err == nil {
 				s.say("  Skipped; hk migrate imports it later.")
@@ -34,8 +40,8 @@ func (s *setup) offerImport() error {
 	if err := m.run(s.ctx); err != nil {
 		return fmt.Errorf("importing from %s: %w", label, err)
 	}
-	if len(found) > 1 {
-		s.say("\nA %s setup is here too: hk migrate --from %s imports it.", migrate.Label(found[1]), found[1])
+	for _, other := range others {
+		s.say("\nA %s setup is here too: hk migrate --from %s imports it.", migrate.Label(other), other)
 	}
 	s.say("")
 	return s.load()

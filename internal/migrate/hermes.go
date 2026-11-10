@@ -780,8 +780,8 @@ func scriptCommand(script, dir string) string {
 
 // hermesLeftovers lists what the home holds that has no equivalent.
 func hermesLeftovers(f *Found, dir string) {
-	if exists(filepath.Join(dir, "state.db")) || exists(filepath.Join(dir, "sessions")) {
-		f.leftover("conversation history", "it stays in "+dir+"; Habakkuk starts fresh sessions")
+	if !exists(filepath.Join(dir, "state.db")) && exists(filepath.Join(dir, "sessions")) {
+		f.leftover("conversations kept in the older sessions/ folder", "only state.db is read; they stay in "+dir)
 	}
 	if exists(filepath.Join(dir, "platforms", "whatsapp", "session")) || slices.ContainsFunc(f.Channels, func(c *Channel) bool { return c.Link }) {
 		f.leftover("the WhatsApp linked-device session", "hk whatsapp link (or hk setup channel whatsapp) to link the number again")

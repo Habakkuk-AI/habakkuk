@@ -1,0 +1,5 @@
+{
+  "model": "claude-sonnet-5-5",
+  "permissions": { "allow": ["Bash(go test:*)"] },
+  "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "say done" }] }] }
+}
