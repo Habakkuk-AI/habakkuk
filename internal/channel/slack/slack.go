@@ -170,6 +170,12 @@ func (a *Adapter) Run(ctx context.Context, in channel.Inbox) error {
 		if err := json.Unmarshal(data, &env); err != nil {
 			continue
 		}
+		// Every envelope is acknowledged at once, before anything is done
+		// with it: Slack waits about three seconds for the ack of a button
+		// press and otherwise shows "this app did not respond" beside the
+		// button, whatever the press turns out to be (a button whose prompt
+		// expired included). Handling it, which calls back into Slack to
+		// take the buttons off, comes after.
 		if env.EnvelopeID != "" {
 			ack, _ := json.Marshal(map[string]string{"envelope_id": env.EnvelopeID})
 			if err := conn.Write(ctx, websocket.MessageText, ack); err != nil {

@@ -27,6 +27,23 @@ type fakeSlack struct {
 	baseURL string
 	uploads []map[string]any // the three steps of each file upload, in order
 	opens   []string         // the app token of each Socket Mode connection
+	// updates records, for each chat.update call, whether the envelope
+	// named in ackFirst had been acknowledged by the time the call was
+	// answered (the handler waits for it).
+	updates  []bool
+	ackFirst string
+}
+
+// acked reports whether the envelope has been acknowledged.
+func (f *fakeSlack) acked(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.acks {
+		if a == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeSlack) handler() http.Handler {
@@ -60,6 +77,20 @@ func (f *fakeSlack) handler() http.Handler {
 		body["token"] = r.Header.Get("Authorization")
 		f.mu.Lock()
 		f.posts = append(f.posts, body)
+		f.mu.Unlock()
+		w.Write([]byte(`{"ok":true}`))
+	})
+	mux.HandleFunc("/api/chat.update", func(w http.ResponseWriter, r *http.Request) {
+		// Hold the answer until the ack arrives (or give up): an adapter
+		// that only acks after handling the press can never get it here in
+		// time, because it is still waiting for this answer.
+		deadline := time.Now().Add(time.Second)
+		for !f.acked(f.ackFirst) && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		ok := f.acked(f.ackFirst)
+		f.mu.Lock()
+		f.updates = append(f.updates, ok)
 		f.mu.Unlock()
 		w.Write([]byte(`{"ok":true}`))
 	})
@@ -337,5 +368,56 @@ func TestBadBotTokenIsFatal(t *testing.T) {
 	err := New("xapp-1", []string{"xoxb-wrong"}, srv.URL+"/api").Run(context.Background(), &inbox{})
 	if !errors.As(err, new(channel.Fatal)) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A button press is acknowledged to Slack before the adapter does anything
+// with it, so Slack never shows "this app did not respond", and the press
+// still reaches the gateway. That holds for a button whose prompt is long
+// gone (posted before a restart): the gateway answers that one in words.
+func TestButtonPressIsAckedBeforeItIsHandled(t *testing.T) {
+	press := func(id, value string) string {
+		return `{"type":"interactive","envelope_id":"` + id + `","payload":{"type":"block_actions","team":{"id":"TA"},
+			"user":{"id":"U7","name":"ay"},"channel":{"id":"D1"},"message":{"ts":"5.5","text":"I'd like to run a command."},
+			"actions":[{"value":"` + value + `","action_ts":"6.6"}]}}`
+	}
+	f := &fakeSlack{ackFirst: "i1", frames: []string{
+		press("i1", "fy|0123456789ab|0|aaaaaaaaaaaaaaaa"),                                // a prompt from before a restart
+		`{"type":"interactive","envelope_id":"i2","payload":{"type":"view_submission"}}`, // nothing the adapter handles
+		`{"type":"disconnect","reason":"refresh_requested"}`,
+	}}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	f.wsURL = "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	a := New("xapp-1", []string{"xoxb-a"}, srv.URL+"/api")
+	in := &inbox{}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := a.Run(ctx, in); err == nil || !strings.Contains(err.Error(), "refresh_requested") {
+		t.Fatalf("run ended with %v", err)
+	}
+	in.mu.Lock()
+	msgs := append([]channel.Message(nil), in.msgs...)
+	in.mu.Unlock()
+	if len(msgs) != 1 || msgs[0].Callback != "fy|0123456789ab|0|aaaaaaaaaaaaaaaa" || msgs[0].Sender != "U7" || !msgs[0].Direct {
+		t.Fatalf("the press did not reach the gateway: %+v", msgs)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for (!f.acked("i1") || !f.acked("i2")) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.updates) != 1 || !f.updates[0] {
+		t.Fatalf("the press was handled before it was acknowledged (chat.update calls saw ack: %v)", f.updates)
+	}
+	for _, id := range []string{"i1", "i2"} {
+		found := false
+		for _, a := range f.acks {
+			found = found || a == id
+		}
+		if !found {
+			t.Fatalf("envelope %s was never acknowledged: %v", id, f.acks)
+		}
 	}
 }
