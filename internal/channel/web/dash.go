@@ -16,6 +16,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
+	"github.com/habakkuk-ai/habakkuk/internal/knowledge/retro"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/skills"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/budget"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/usage"
@@ -36,6 +37,7 @@ type Dash struct {
 	BoardWake func() // look at the board now (the dispatcher)
 	Memory    *memory.Store
 	Skills    *skills.Library
+	Retros    *retro.Runner
 	Usage     *usage.Store
 	Pricer    *usage.Pricer
 	// Budget reads spend against the spending limits now.
@@ -87,6 +89,8 @@ func (s *Server) dashRoutes(mux *http.ServeMux) {
 	api("GET /api/memory-history/{agent}", s.historyList)
 	api("GET /api/memory-history/{agent}/{id}", s.historyGet)
 	api("POST /api/memory-history/{agent}/{id}/restore", s.historyRestore)
+	api("GET /api/retros/{agent}", s.retroList)
+	api("GET /api/retros/{agent}/{id}", s.retroGet)
 	api("GET /api/skills/{agent}", s.skillList)
 	api("GET /api/skills/{agent}/{name}", s.skillGet)
 	api("GET /api/usage", s.usageReport)

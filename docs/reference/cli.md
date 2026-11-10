@@ -82,6 +82,11 @@ habakkuk memory history [-agent A] [-file NAME] [-since 7d] | diff ID | restore 
                                     print its user profile or the background review log;
                                     list, diff and undo changes to memory, profile, identity
                                     and skills; pin what background jobs must not rewrite
+habakkuk retro [-agent A] [-days N] [-dry-run]
+                                    look back over an agent's work now: what went wrong, likely
+                                    causes, proposed changes (-dry-run prints evidence and plan only)
+habakkuk retro list [-agent A] | show ID | apply ID N [N...] | reject ID N
+                                    past retros; approve or reject their proposals
 habakkuk skills [-agent A]          list the skills an agent can use
 habakkuk skills [search|install|update|remove|approve|restore|curate]
                                     skills from GitHub, URLs, paths and registries (habakkuk skills help)
@@ -142,6 +147,7 @@ Where each command is explained:
 | `usage` | [Usage and limits](../models/usage-and-limits.md) |
 | `mcp` | [MCP](../tools/mcp.md) |
 | `memory` | [Memory](../agents/memory.md) |
+| `retro` | [Retros](../agents/retros.md) |
 | `skills` | [Skills](../agents/skills.md), [Plugins](../tools/plugins.md) |
 | `plugins` | [Plugins](../tools/plugins.md) |
 | `schedules` | [Schedules](../agents/schedules.md) |
@@ -178,6 +184,7 @@ These work in every chat channel, the web chat and `habakkuk chat`. `/help` list
 | `/agents`, `/agent <name>\|default` | List agents; switch this conversation to another (`/agent default` goes back) |
 | `/remember <text>`, `/forget <what>` | Save a memory word for word; remove one |
 | `/memory`, `/undo-memory <id>` | The latest changes to memory, profile, identity and skills; undo one |
+| `/retro`, `/retro apply N [N...]`, `/retro reject N` | Look back over the agent's last week now; approve or reject the latest retro's proposals (owner only) |
 | `/skills`, `/skill NAME [request]`, `/learn <topic, URL or path>` | List skills, run one, or have the agent write a new one |
 | `/fork`, `/rewind [N]` | Carry on in a copy of the conversation, optionally without your last N messages |
 | `/title [text]` | Show or set the conversation's title |

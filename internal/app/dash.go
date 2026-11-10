@@ -21,7 +21,7 @@ func (a *App) openDash() {
 	d := &web.Dash{
 		Schedules: a.Schedules, Scheduler: a.Scheduler, Board: a.Board, Memory: a.Memory, Skills: a.Skills,
 		Usage: a.Usage, Pricer: a.Pricer, Config: a.Cfg, Secret: a.Secret, Doctor: a.DoctorChecks,
-		Budget: a.BudgetReport,
+		Budget: a.BudgetReport, Retros: a.Retro,
 	}
 	if a.Dispatcher != nil {
 		d.BoardWake = a.Dispatcher.Wake

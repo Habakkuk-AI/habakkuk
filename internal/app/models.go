@@ -141,6 +141,8 @@ func (a *App) ChatCommands() map[string]channel.AppCommand {
 		"/budget": {Help: "/budget: spending today and this month against the limits", Run: func(ctx context.Context, session, _ string) string {
 			return a.sessionBudget(ctx, session)
 		}},
+		"/retro": {Help: "/retro [apply N... | reject N]: look back over my last week now, or answer the latest retro's proposals",
+			Run: a.retroCommand, Async: true, OwnerOnly: true},
 	}
 	a.addHubCommands(cmds) // /skills, /skill, /learn, plugin commands
 	return cmds

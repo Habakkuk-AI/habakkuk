@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/habakkuk-ai/habakkuk/internal/config"
@@ -46,5 +47,24 @@ func TestPromptCommandRunsAsATurn(t *testing.T) {
 	waitFor(t, "turn reply", hasText(r.a, "[Skill report] do the thing"))
 	if !Reserved("/retry") || !Reserved("/new") || Reserved("/standup") {
 		t.Fatal("reserved names")
+	}
+}
+
+func TestOwnerOnlyCommandRefusesGuests(t *testing.T) {
+	r := newRig(t, &config.Channel{AllowFrom: []string{"7", "*"}})
+	ctx := context.Background()
+	var ran atomic.Int32
+	r.g.Commands = map[string]AppCommand{"/retro": {Help: "/retro: look back", OwnerOnly: true, Run: func(context.Context, string, string) string {
+		ran.Add(1)
+		return "retro done"
+	}}}
+	guest := dm("m1", "/retro")
+	guest.Sender = "8"
+	r.g.Handle(ctx, guest)
+	waitFor(t, "refusal", hasText(r.a, "/retro: only the owner can do that here."))
+	r.g.Handle(ctx, dm("m2", "/retro"))
+	waitFor(t, "owner reply", hasText(r.a, "retro done"))
+	if ran.Load() != 1 {
+		t.Fatalf("ran %d times", ran.Load())
 	}
 }

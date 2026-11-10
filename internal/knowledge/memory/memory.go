@@ -96,6 +96,39 @@ CREATE TABLE review_runs (
 	summary TEXT NOT NULL DEFAULT '',
 	at      INTEGER NOT NULL
 ) WITHOUT ROWID;
+`}, {Version: 3, SQL: `
+-- Retrospectives (package retro): one row per retro job, holding the plan
+-- the model made, the evidence it saw and how far applying has got, so a
+-- retro resumed after a crash neither asks the model again nor applies a
+-- change twice. Each proposed action has its own row and status.
+CREATE TABLE retros (
+	id          TEXT PRIMARY KEY, -- the job id, derived from agent and period
+	agent       TEXT NOT NULL,
+	period_from INTEGER NOT NULL, -- unix milliseconds
+	period_to   INTEGER NOT NULL,
+	on_demand   INTEGER NOT NULL DEFAULT 0, -- asked for now: not delivered
+	plan        TEXT NOT NULL,     -- JSON
+	evidence    TEXT NOT NULL,     -- JSON
+	next        INTEGER NOT NULL DEFAULT 0, -- actions looked at so far
+	report      TEXT NOT NULL DEFAULT '', -- path of the Markdown report, relative to the home
+	delivered   INTEGER NOT NULL DEFAULT 0,
+	done        INTEGER NOT NULL DEFAULT 0,
+	summary     TEXT NOT NULL DEFAULT '',
+	created_at  INTEGER NOT NULL,
+	updated_at  INTEGER NOT NULL
+);
+CREATE INDEX retros_agent ON retros (agent, period_to);
+CREATE TABLE retro_actions (
+	retro      TEXT NOT NULL,
+	n          INTEGER NOT NULL, -- 1-based, as people number them
+	kind       TEXT NOT NULL,
+	target     TEXT NOT NULL,
+	action     TEXT NOT NULL,    -- JSON
+	status     TEXT NOT NULL CHECK (status IN ('proposed','applied','approved','rejected','failed')),
+	result     TEXT NOT NULL DEFAULT '',
+	updated_at INTEGER NOT NULL,
+	PRIMARY KEY (retro, n)
+);
 `}}
 
 // Provenance values in a note's frontmatter.

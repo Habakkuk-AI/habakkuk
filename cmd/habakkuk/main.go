@@ -109,6 +109,11 @@ Usage:
                                     print its user profile or the background review log;
                                     list, diff and undo changes to memory, profile, identity
                                     and skills; pin what background jobs must not rewrite
+  habakkuk retro [-agent A] [-days N] [-dry-run]
+                                    look back over an agent's work now: what went wrong, likely
+                                    causes, proposed changes (-dry-run prints evidence and plan only)
+  habakkuk retro list [-agent A] | show ID | apply ID N [N...] | reject ID N
+                                    past retros; approve or reject their proposals
   habakkuk skills [-agent A]          list the skills an agent can use
   habakkuk skills [search|install|update|remove|approve|restore|curate]
                                     skills from GitHub, URLs, paths and registries (habakkuk skills help)
@@ -232,6 +237,8 @@ func main() {
 		err = meetingsCmd(ctx, home, args, os.Stdout)
 	case "memory":
 		err = memoryCmd(ctx, home, args)
+	case "retro":
+		err = retroCmd(ctx, home, args, os.Stdout)
 	case "skills":
 		err = skillsCmd(ctx, home, args)
 	case "plugins":
