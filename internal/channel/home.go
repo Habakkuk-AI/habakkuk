@@ -103,7 +103,11 @@ func (g *Gateway) ReportHome(ctx context.Context, n agent.HomeNews) error {
 		}
 		text = g.resultText(n, final)
 	}
-	return g.enqueueDelivery(ctx, homePostID(n.Job, n.Started), home, text)
+	p := deliverPayload{To: home, Text: text, Agent: n.Agent, Session: n.Session}
+	if n.Source == agent.SourceSchedule {
+		p.What = n.Task
+	}
+	return g.enqueue(ctx, homePostID(n.Job, n.Started), p)
 }
 
 // resultText is a finished turn's home report: the task, its final reply
@@ -236,7 +240,8 @@ func (t messageHomeTool) Run(ctx context.Context, env *tools.Env, input json.Raw
 			return "", fmt.Errorf("%w: this turn has read external content (web pages, search results, tool output from outside, or an unvetted message), so message_home sends only a short status: %s. Put the details in your final reply instead", tools.ErrDenied, why)
 		}
 	}
-	if err := g.enqueueDelivery(ctx, homeMessageID(env.Session, tools.CallID(ctx), text), home, text); err != nil {
+	p := deliverPayload{To: home, Text: text, Agent: env.Agent, Session: env.Session, What: agent.PosterFrom(ctx).What}
+	if err := g.enqueue(ctx, homeMessageID(env.Session, tools.CallID(ctx), text), p); err != nil {
 		return "", err
 	}
 	return "Posted to your home chat (" + spec.Home + ").", nil

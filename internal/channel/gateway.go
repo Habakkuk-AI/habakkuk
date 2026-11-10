@@ -95,6 +95,12 @@ type deliverPayload struct {
 	File *outFile `json:"file,omitempty"` // set when the delivery is a file
 	// Draft is the turn whose progress draft goes before this delivery.
 	Draft string `json:"draft,omitempty"`
+	// Who sends it, for chat notes (notes.go): the session whose turn
+	// wrote it, the agent, and what sent it. A delivery from the chat's
+	// own session leaves no note.
+	Session string `json:"session,omitempty"`
+	Agent   string `json:"agent,omitempty"`
+	What    string `json:"what,omitempty"`
 }
 
 func (g *Gateway) now() time.Time {
@@ -580,6 +586,9 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 			to = nil
 		}
 	}
+	// What this turn sends (its reply, files, home posts) is the session's
+	// own; another chat it lands in gets a note of it (notes.go).
+	ctx = agent.WithPoster(ctx, agent.Poster{Agent: j.Agent, What: p.Task, Session: p.Session})
 	if to != nil {
 		ctx = context.WithValue(ctx, originKey{}, *to)
 		stop := g.keepAlive(ctx, j.ID, *to)
@@ -639,6 +648,7 @@ func (g *Gateway) enqueueDelivery(ctx context.Context, id string, to Address, te
 // enqueue queues a delivery. Deliveries to one conversation share a serial
 // key, so a file sent during a turn goes out before the turn's reply.
 func (g *Gateway) enqueue(ctx context.Context, id string, p deliverPayload) error {
+	p.poster(ctx)
 	_, err := g.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: id, Kind: KindDeliver, SerialKey: "dlv:" + p.To.key(), Priority: 20, MaxAttempts: 20,
 		Payload: p,
@@ -703,6 +713,7 @@ func (g *Gateway) HandleDeliver(ctx context.Context, j *jobs.Job, owner string) 
 	if err := g.Store.ForgetDelivery(ctx, j.ID); err != nil {
 		g.Log.Warn("clear delivery progress failed", "err", err)
 	}
+	g.recordNote(ctx, j.ID, p)
 	g.messageOut(ctx, p)
 	return fmt.Sprintf("sent %d chunk(s)", len(chunks)), nil
 }

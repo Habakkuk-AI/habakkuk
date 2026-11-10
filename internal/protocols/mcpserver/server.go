@@ -416,7 +416,7 @@ func (s *Server) send(ctx context.Context, _ *mcp.CallToolRequest, in sendIn) (*
 	}
 	to := channel.Address{Account: in.Account, Conversation: in.Conversation, Thread: in.Thread}
 	id := jobs.NewID("send")
-	if err := s.Gateway.SendText(ctx, id, to, in.Text); err != nil {
+	if err := s.Gateway.SendText(agent.WithPoster(ctx, agent.Poster{What: "an MCP client (habakkuk_send)"}), id, to, in.Text); err != nil {
 		return nil, sendOut{}, err
 	}
 	if s.Log != nil {
