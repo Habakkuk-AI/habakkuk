@@ -1,12 +1,14 @@
 ---
 title: Providers
-description: "Provider types and presets, custom OpenAI-compatible APIs, local model servers, AWS Bedrock, key rotation, fallbacks, and switching models in a chat."
+description: "Set up providers: types and presets, custom OpenAI-compatible APIs, local model servers, AWS Bedrock, key rotation, fallbacks and switching models in a chat."
 order: 1
 ---
 
+A provider is a model API that Habakkuk calls. Come here when you want to add a service, run a local model server, rotate keys or set fallbacks.
+
 ## Provider types
 
-A provider's `type` is the API it speaks:
+Every provider has a `type`, which says which API it speaks:
 
 | `type` | API |
 |---|---|
@@ -18,7 +20,7 @@ A provider's `type` is the API it speaks:
 
 ## Presets
 
-For well-known services, `preset:` fills in the type, base URL and key variable, and a provider named after a preset uses it without saying so. The [provider directory](index.md#provider-directory) lists them all.
+For well-known services, you don't have to fill in the details yourself. Set `preset:` and it fills in the type, base URL and key variable. If you name a provider after a preset, it uses that preset without you saying so. The [provider directory](index.md#provider-directory) lists every preset.
 
 ```yaml
 providers:
@@ -34,11 +36,11 @@ providers:
     region: us-east-1         # AWS credentials from the usual chain; keys_env may name Bedrock API keys instead
 ```
 
-Any field you set wins over the preset.
+If you set a field yourself, your value wins over the preset.
 
 ## Custom APIs
 
-A service without a preset works if it speaks one of the types above. Give it a type, a base URL and the variable holding its key:
+A service that has no preset still works, as long as it speaks one of the types above. Give it a type, a base URL and the variable that holds its key:
 
 ```yaml
 providers:
@@ -53,7 +55,7 @@ agents:
 
 ## Local model servers
 
-Ollama, LM Studio, vLLM, llama.cpp's `llama-server` and LiteLLM have presets pointing at their usual local ports, with the key optional. `habakkuk setup` finds servers running on this computer.
+Ollama, LM Studio, vLLM, llama.cpp's `llama-server` and LiteLLM each have a preset. The preset points at the server's usual local port, and the key is optional. When you run `habakkuk setup`, it finds servers running on this computer.
 
 ```yaml tab="Ollama"
 providers:
@@ -82,7 +84,7 @@ agents:
 ```
 
 > [!TIP]
-> Small local models often struggle with long tool-using turns. A common setup keeps a local model as the [`fast_model`](routing.md) for quick messages and a hosted model for real work.
+> Small local models often struggle with long turns that use tools. A common setup uses a local model as the [`fast_model`](routing.md) for quick messages, and a hosted model for real work.
 
 ## Keys, retries and fallbacks
 
@@ -96,19 +98,21 @@ agents:
     fallbacks: [deepseek/deepseek-v4-pro, ollama/llama3.3]
 ```
 
-Errors are classified: rate limit, overload, auth, billing, context overflow, bad request, network.
+Habakkuk sorts every error into a class: rate limit, overload, auth, billing, context overflow, bad request or network. What it does next depends on the class:
 
-- **Transient errors** retry with jittered backoff.
-- **Rate limits and auth failures** rotate to the next key in `keys_env`, with a cooldown per key.
-- **Errors another model can fix** fall back down the agent's `fallbacks`, in order.
+- **Transient errors** are retried with jittered backoff (a randomized wait between tries).
+- **Rate limits and auth failures** make Habakkuk rotate to the next key in `keys_env`. Each key has its own cooldown.
+- **Errors another model can fix** send the call down the agent's `fallbacks`, in order.
 
-See [Architecture: models](../reference/architecture.md#models).
+For more, see [Architecture: models](../reference/architecture.md#models).
 
 ## Switching models in a chat
 
-`/model` shows the models the conversation uses. `/model provider/model` switches this conversation only (the agent's own models stay as fallbacks), and `/model default` switches back. The choice is stored per session and overrides [routing](routing.md).
+Send `/model` to see the models the conversation uses. Send `/model provider/model` to switch models for this conversation only. The agent's own models stay as fallbacks. Send `/model default` to switch back. Your choice is stored per session, and it overrides [routing](routing.md).
 
 ## Checking providers
+
+Use these two commands to check your providers:
 
 ```bash
 habakkuk models      # each provider, its credential status, and the models it serves

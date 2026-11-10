@@ -4,11 +4,11 @@ description: "The chat page Habakkuk serves itself, and the same chat over a JSO
 order: 13
 ---
 
-With an `http` section, `habakkuk serve` serves a small chat page at `/` and the same chat over a JSON API. It needs no outside account, and the [dashboard](../interfaces/dashboard.md) and [desktop app](../interfaces/desktop-app.md) use it too.
+Web chat is the chat page Habakkuk serves itself. Use it when you want to talk to an agent from a browser, or from a client you write. When your config has an `http` section, `habakkuk serve` serves a small chat page at `/`, and the same chat over a JSON API. You don't need an account anywhere else. The [dashboard](../interfaces/dashboard.md) and [desktop app](../interfaces/desktop-app.md) use it too.
 
 ## Set it up
 
-Run `habakkuk setup` and pick **web chat on this computer**, or add an `http` section by hand:
+Run `habakkuk setup` and pick **web chat on this computer**. Or add an `http` section by hand:
 
 ```yaml
 http:
@@ -16,7 +16,7 @@ http:
   token_env: HABAKKUK_HTTP_TOKEN    # Authorization: Bearer <token>; required off loopback
 ```
 
-The `http` section adds a channel of type `web` named `web` by itself. Configure one yourself only to change its settings:
+The `http` section adds a channel of type `web`, named `web`, on its own. You only need to configure one yourself when you want to change its settings:
 
 ```yaml
 channels:
@@ -25,13 +25,13 @@ channels:
     agent: habakkuk
 ```
 
-Then open `http://127.0.0.1:8484/`. The page works on a phone, follows the system's dark mode, keeps your conversation list in the browser and asks for the token once.
+Then open `http://127.0.0.1:8484/`. The page works on a phone and follows the system's dark mode. It keeps your conversation list in the browser, and it asks for the token once.
 
 ## Access
 
-The bearer token is the gate: everyone who holds it may talk, so a `web` channel allows every sender by default. Without `token_env` the server refuses any address but loopback. To reach it from elsewhere, set a token and put it behind HTTPS; see [Remote access](../deploy/remote-access.md).
+The bearer token decides who gets in. Anyone who holds it may talk, so a `web` channel allows every sender by default. Without `token_env`, the server refuses any address except loopback. To reach it from elsewhere, set a token and put the server behind HTTPS. See [Remote access](../deploy/remote-access.md).
 
-Web chat sessions never go idle: a conversation keeps its session until you send `/new`.
+Web chat sessions never go idle. A conversation keeps its session until you send `/new`.
 
 ## The chat API
 
@@ -42,18 +42,18 @@ curl -s -H "Authorization: Bearer $HABAKKUK_HTTP_TOKEN" -H 'Content-Type: applic
 curl -sN -H "Authorization: Bearer $HABAKKUK_HTTP_TOKEN" 'localhost:8484/api/chat/desk/events?after=0'   # Server-Sent Events
 ```
 
-- A conversation id is any name you pick (letters, digits, `.`, `_`, `:`, `-`).
-- Add `"agent": "ops"` to talk to another agent, and `"id"` to make a retry safe.
-- The event stream replays everything after `after` (or `Last-Event-ID`), then follows live, so a client that drops simply reconnects with the last id it saw.
-- Commands such as `/new` and chat approvals work as in any other channel.
+- A conversation id is any name you pick. It can use letters, digits, `.`, `_`, `:` and `-`.
+- To talk to another agent, add `"agent": "ops"`. To make a retry safe, add `"id"`.
+- The event stream replays everything after `after` (or `Last-Event-ID`), then follows live. A client that drops can reconnect with the last id it saw.
+- Commands such as `/new` work the way they do in any other channel, and so do chat approvals.
 
-The [HTTP API reference](../reference/api.md#chat) has every endpoint. For OpenAI clients, use the [OpenAI-compatible API](../tools/integrations.md#openai-compatible-api) instead.
+You'll find every endpoint in the [HTTP API reference](../reference/api.md#chat). If you're using an OpenAI client, use the [OpenAI-compatible API](../tools/integrations.md#openai-compatible-api) instead.
 
 ## What works
 
-- Text in and out, with the typing indicator.
-- The dashboard's chat adds tool calls shown live, file attachments, voice recordings, replies read aloud and Live voice mode.
-- Approvals waiting in any chat can be answered from the dashboard.
+- Text works in both directions, with the typing indicator.
+- The dashboard's chat adds more: tool calls shown live, file attachments, voice recordings, replies read aloud and Live voice mode.
+- You can use the dashboard to answer an approval that's waiting in any chat.
 
 ## Troubleshooting
 

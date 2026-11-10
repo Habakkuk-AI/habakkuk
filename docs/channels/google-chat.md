@@ -4,17 +4,17 @@ description: "Connect a Google Chat app with an HTTP endpoint: the Chat API conf
 order: 11
 ---
 
-The `googlechat` channel is a Chat app with an HTTP endpoint. Chat posts events to Habakkuk's HTTP server with a bearer token Google signs for the app's audience; replies go through the Chat API, authorized as the app's service account.
+On Google Chat, Habakkuk is a Chat app with an HTTP endpoint. The channel type is `googlechat`. Chat posts each event to Habakkuk's HTTP server, with a bearer token that Google signs for the app's audience. Replies go out through the Chat API, authorized as the app's service account.
 
 > [!NOTE]
-> Google Chat is a [webhook channel](settings.md#webhook-channels): it needs an `http` section with a `public_url` that Google can reach.
+> Google Chat is a [webhook channel](settings.md#webhook-channels). You need an `http` section with a `public_url` that Google can reach.
 
 ## Set it up
 
-1. In a Google Cloud project, enable the **Google Chat API**.
-2. Create a service account and a JSON key for it. Replies are sent as this account.
-3. In the Chat API configuration, set the app's connection to an **HTTP endpoint URL** of `<public_url>/channels/<name>`, for example `https://habakkuk.example.com/channels/gchat`.
-4. Note the **Authentication Audience** you chose there: the project number, or the endpoint URL.
+1. Open a Google Cloud project and enable the **Google Chat API**.
+2. Create a service account, then create a JSON key for it. Habakkuk sends replies as this account.
+3. In the Chat API configuration, set the app's connection to an **HTTP endpoint URL**. The URL is `<public_url>/channels/<name>`, for example `https://habakkuk.example.com/channels/gchat`.
+4. Note the **Authentication Audience** you chose there. It's either the project number or the endpoint URL.
 5. Configure the channel:
 
 ```yaml
@@ -29,21 +29,21 @@ http:
   public_url: https://habakkuk.example.com
 ```
 
-Chat apps built as Google Workspace add-ons work too.
+A Chat app built as a Google Workspace add-on works too.
 
 ## Access
 
-`allow_from` takes the sender's email address or their Chat user name (`users/123456789`). Anyone else who sends a direct message gets a pairing code.
+`allow_from` takes the sender's email address or their Chat user name, which looks like `users/123456789`. Anyone else who sends the bot a direct message gets a pairing code.
 
 ## Spaces and threads
 
-In spaces the bot answers when mentioned, and replies in the thread.
+In a space, the bot answers when you mention it, and it replies in the thread.
 
 ## What works
 
-- Text and uploads in.
-- Text out, in the thread.
-- No typing indicator or buttons: approvals are answered with **yes** or **no**.
+- The bot receives text and uploads.
+- It sends text, in the thread.
+- There's no typing indicator and there are no buttons, so you answer approvals with **yes** or **no**.
 
 ## Troubleshooting
 

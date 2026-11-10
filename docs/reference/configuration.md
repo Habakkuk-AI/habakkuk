@@ -1,10 +1,12 @@
 ---
 title: Configuration
-description: "Every section of config.yaml, the settings for providers, agents and channels, and where each one is explained."
+description: "Look up every section of config.yaml, the settings for providers, agents and channels, and the guide that explains each one."
 order: 2
 ---
 
-`$HABAKKUK_HOME/config.yaml` is strict YAML: unknown keys are errors. Settings ending in `_env` name an environment variable (or a `.env` entry, or a [secret manager](../deploy/security.md#secret-managers) reference) that holds the value; secrets never go in the file. `habakkuk init` writes a commented starter config, and `habakkuk doctor` checks one.
+Every section of the config file is listed here, with the settings for providers, agents and channels. Use it to look up a key. Where a section has a guide, the table links to it.
+
+The config file is `$HABAKKUK_HOME/config.yaml`. It's strict YAML, so an unknown key is an error. A setting that ends in `_env` doesn't hold the value itself. It names an environment variable that holds it. A `.env` entry or a [secret manager](../deploy/security.md#secret-managers) reference works too. That way, secrets never go in the file. `habakkuk init` writes a commented starter config, and `habakkuk doctor` checks one.
 
 ## Top-level sections
 
@@ -47,7 +49,7 @@ order: 2
 | `tools` | `allow_private_urls` for `fetch_url` and A2A | [Tools and approvals](../agents/approvals.md#safety-guards) |
 | `secrets` | `sources` and `refs` for secret managers | [Deployment](../deploy/security.md#secret-managers) |
 
-Enabled plugins add MCP servers, skills, hooks and commands to the loaded configuration without changing the file; see [Plugins](../tools/plugins.md).
+Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded configuration. They don't change the file. See [Plugins](../tools/plugins.md).
 
 ## Providers
 
@@ -110,4 +112,4 @@ Enabled plugins add MCP servers, skills, hooks and commands to the loaded config
 | `language` | The language of Habakkuk's own messages on this channel |
 | `email`, `sms`, `msteams`, `googlechat`, `bluebubbles`, `line`, `mattermost`, `irc`, `ntfy`, `whatsappcloud`, `messenger`, `instagram`, `feishu`, `dingtalk`, `wecom`, `zulip`, `rocketchat`, `nextcloudtalk`, `twitch` | The block for that type; see the [channel's page](../channels/index.md#all-channels) |
 
-The source of truth is `internal/config`: each setting is documented beside its field.
+The source of truth is `internal/config`. Each setting is documented there, beside its field.

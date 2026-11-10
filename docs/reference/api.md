@@ -1,18 +1,20 @@
 ---
 title: HTTP API
-description: "The JSON API under /api/ that the dashboard is built on: chat, sessions, board, schedules, memory, skills, usage, approvals, nodes and config."
+description: "The JSON API under /api/ that the dashboard uses, covering chat, sessions, board, schedules, memory, skills, usage, approvals, nodes and config."
 order: 3
 ---
 
-`habakkuk serve` with an `http` section listens on `listen` (default `127.0.0.1:8484`). Besides the chat page at `/`, the webhooks at `/hooks/<name>` and the OpenAI-compatible API under `/v1/` (see [Architecture](architecture.md#other-clients)), it serves a control dashboard at `/app/` and the JSON API below, which the dashboard is built on.
+Every endpoint of Habakkuk's JSON API is listed here. Use it when you want to drive Habakkuk from your own code, the way the dashboard does.
+
+When your config has an `http` section, `habakkuk serve` listens on the address in `listen` (default `127.0.0.1:8484`). It serves the chat page at `/`, the webhooks at `/hooks/<name>` and the OpenAI-compatible API under `/v1/` (see [Architecture](architecture.md#other-clients)). It also serves a control dashboard at `/app/` and the JSON API below. The dashboard is built on that API.
 
 ## Conventions
 
-- **Auth.** Every `/api/` path needs `Authorization: Bearer <token>`, the value of the variable `http.token_env` names. Without `token_env` the server only listens on, and only answers requests addressed to, a loopback name.
-- **Changes are JSON.** `POST` and `PUT` take `Content-Type: application/json` (an empty object where nothing is needed); anything else is `415`. Browsers cannot send that cross-site without a preflight, which the server never approves. Requests a browser marks `Sec-Fetch-Site: cross-site` or `same-site` are refused with `403`.
-- **Errors** are `{"error": "..."}` with a fitting status: `400` for input the store rejected (the message says why), `404` for an unknown agent, card, schedule, note, skill or session, `501` when this process has no such subsystem (or speech or transcription is not configured), `500` otherwise (details go to the log, not the response).
-- **Times** are RFC 3339 in UTC. Days in the usage report use the config `timezone`.
-- Agents are referred to by their config name; an unknown name is `404`.
+- **Auth.** Every `/api/` path needs an `Authorization: Bearer <token>` header. The token is the value of the variable that `http.token_env` names. If you don't set `token_env`, the server only listens on a loopback name and only answers requests addressed to one.
+- **Changes are JSON.** Send `POST` and `PUT` with `Content-Type: application/json`. Where there's nothing to send, use an empty object. Anything else gets a `415`. A browser can't send that content type cross-site without a preflight, and the server never approves one. The server also refuses, with `403`, any request that a browser marks `Sec-Fetch-Site: cross-site` or `same-site`.
+- **Errors** come back as `{"error": "..."}` with a status that fits. You get `400` for input the store rejected, and the message says why. You get `404` for an unknown agent, card, schedule, note, skill or session. You get `501` when this process has no such subsystem, or when speech or transcription isn't configured. Everything else is `500`, and the details go to the log so they stay out of the response.
+- **Times** use RFC 3339 and are in UTC. Days in the usage report follow the `timezone` from your config.
+- You refer to an agent by its name in the config. An unknown name gets a `404`.
 
 ## Dashboard
 
@@ -21,19 +23,19 @@ order: 3
 | `GET /app/` | The dashboard (static HTML, JavaScript and CSS, no data). It asks for the token once and keeps it in `localStorage`. |
 | `GET /app/manifest.webmanifest`, `/app/sw.js`, `/app/icon.svg`, `/app/icon-{180,192,512}.png` | Install to home screen. The service worker caches only these static files, never an API response. |
 
-The page needs a secure context for the microphone: `localhost`, or HTTPS in front of Habakkuk (a reverse proxy or tunnel).
+To use the microphone, the page needs a secure context. That means `localhost`, or HTTPS in front of Habakkuk (a reverse proxy or tunnel).
 
 ## App
 
 ### `GET /api/app`
 
-What the page needs to start.
+Returns what the page needs to start.
 
 ```json
 {"account": "web", "agents": ["habakkuk", "ops"], "default": "habakkuk", "transcription": true, "speech": true, "realtime": true, "timezone": "America/Toronto"}
 ```
 
-`transcription` says whether recordings can be sent (`transcription:` in config); `speech` whether replies can be read aloud (`tts:`); `realtime` whether Live mode is on (`realtime:`).
+`transcription` tells you whether recordings can be sent (`transcription:` in config). `speech` tells you whether replies can be read aloud (`tts:`). `realtime` tells you whether Live mode is on (`realtime:`).
 
 ### `GET /api/overview`
 
@@ -50,13 +52,13 @@ What the page needs to start.
 }
 ```
 
-`channels` lists every configured account (`state` is `never started` when `habakkuk serve` has not run it). `established` is true once the install is in use: an agent has answered a message, or there is a schedule, or more than one messaging channel. The dashboard hides its Get started panel then. `errors` are jobs that failed for good, or recorded an error on a retried attempt, in the last 7 days (newest 20).
+`channels` lists every configured account. An account's `state` is `never started` when `habakkuk serve` hasn't run it. `established` turns true once the install is in use. That means an agent has answered a message, or there's a schedule, or there's more than one messaging channel. The dashboard then hides its Get started panel. `errors` holds jobs from the last 7 days that failed for good, or that recorded an error on a retried attempt. You get the newest 20.
 
 ## Chat
 
 ### `POST /api/chat`
 
-As JSON, `{conversation, text, agent?, id?}` (see ARCHITECTURE.md). As `multipart/form-data`, with the header `X-Habakkuk-Client` set to any value:
+You can send a message two ways. As JSON, the body is `{conversation, text, agent?, id?}` (see ARCHITECTURE.md). As `multipart/form-data`, set the header `X-Habakkuk-Client` to any value and send these parts:
 
 | Part | |
 |---|---|
@@ -64,32 +66,32 @@ As JSON, `{conversation, text, agent?, id?}` (see ARCHITECTURE.md). As `multipar
 | `file` (repeatable, at most 10) | Attachments, like photos and documents on other channels: saved as blobs and to the agent's `workspace/inbox/`; images and PDFs also go to the model. |
 | `audio` (optional) | A recording, transcribed with the configured `transcription` provider before the message is sent. The transcript (after any typed `text`) is the message, so a spoken "yes" answers an approval. |
 
-All files together may be 25 MB. The reply is `202 {"message": "...", "turn": "...", "transcript": "..."}`; `transcript` is present when there was audio. Errors: `403` without `X-Habakkuk-Client`, `501` for audio when transcription is not configured, `502` when the transcription service failed, `422` when it heard nothing.
+All the files together can be up to 25 MB. The reply is `202 {"message": "...", "turn": "...", "transcript": "..."}`. `transcript` is there when you sent audio. The errors are `403` when `X-Habakkuk-Client` is missing, `501` for audio when transcription isn't configured, `502` when the transcription service failed, and `422` when it heard nothing.
 
 ### `GET /api/chat/conversations?limit=50`
 
-The web channel's conversations, newest first: `{"conversations": [{"conversation", "agent", "session", "title", "last_at"}]}`.
+Lists the web channel's conversations, newest first: `{"conversations": [{"conversation", "agent", "session", "title", "last_at"}]}`.
 
 ### `GET /api/chat/{conversation}/events?after=N`
 
-Server-Sent Events of the conversation's messages (see ARCHITECTURE.md).
+Streams the conversation's messages as Server-Sent Events (see ARCHITECTURE.md).
 
 ### `GET /api/chat/{conversation}/live`
 
-Server-Sent Events of the activity of the conversation's current session, from the in-process events bus. It follows the conversation to a new session (after `/new` or switching agents) when the next turn starts. Events:
+Streams what the conversation's current session is doing, as Server-Sent Events. The activity comes from the in-process events bus. If the conversation moves to a new session (after `/new` or switching agents), the stream follows it when the next turn starts. It sends two kinds of event:
 
-- `session`: `{"session": "ses_...", "agent": "habakkuk"}` when the stream starts following a session.
-- `activity`: `{"kind", "tool", "id", "input", "text", "is_error"}` where `kind` is `text` (a piece of the reply as it streams), `thinking`, `tool_start` (`tool`, `id`, `input`: the call's JSON input, cut at 2,000 characters), `tool_done` (`id`, `text`: the result, cut at 4,000, `is_error`), `review` (an approval reviewer's decision), `retry`, `turn_done` or `turn_error`.
+- `session`: `{"session": "ses_...", "agent": "habakkuk"}`, sent when the stream starts following a session.
+- `activity`: `{"kind", "tool", "id", "input", "text", "is_error"}`. Here `kind` is one of `text` (a piece of the reply as it streams), `thinking`, `tool_start` (with `tool`, `id` and `input`, which is the call's JSON input, cut at 2,000 characters), `tool_done` (with `id`, `is_error` and `text`, which is the result, cut at 4,000), `review` (an approval reviewer's decision), `retry`, `turn_done` or `turn_error`.
 
-Activity is best effort and not replayed; the transcript is the record.
+Activity is best effort and isn't replayed. The transcript is the record.
 
 ### `GET /api/chat/{conversation}/messages/{seq}/speech`
 
-One of the agent's replies (by its event sequence number) read aloud with the configured `tts` provider, Markdown stripped. The body is audio (`audio/ogg` Opus or `audio/mpeg`, as the provider returns). `404` for a user message, `413` over `tts.max_chars`, `501` without `tts`.
+Reads one of the agent's replies aloud with the configured `tts` provider. You pick the reply by its event sequence number, and the Markdown is stripped before it's read. The body is audio: `audio/ogg` Opus or `audio/mpeg`, whichever the provider returns. You get `404` for a user message, `413` when the reply is over `tts.max_chars`, and `501` when there's no `tts`.
 
 ## Live mode
 
-Real-time voice in the dashboard (`realtime:` in config). The browser talks to the provider directly over WebRTC; these endpoints mint its credentials, bridge its one tool to Habakkuk and keep the transcript. All return `501` without `realtime:`, except the tool and transcript endpoints, which only need the web channel.
+Live mode is real-time voice in the dashboard. It's configured under `realtime:` in config. The browser talks to the provider directly over WebRTC. These endpoints mint its credentials, bridge its one tool to Habakkuk and keep the transcript. Without `realtime:` they all return `501`, except the tool and transcript endpoints, which only need the web channel.
 
 | Request | |
 |---|---|
@@ -102,7 +104,7 @@ Real-time voice in the dashboard (`realtime:` in config). The browser talks to t
 
 ### `GET /api/sessions?agent=&limit=50&q=`
 
-Without `q`: `{"sessions": [{"id", "agent", "title", "created_at", "updated_at"}]}`, most recently updated first. With `q`: a full-text search of user and assistant messages across agents (or one), `{"hits": [{"session", "agent", "title", "seq", "role", "at", "snippet"}]}`; matched words are in `[brackets]`.
+Without `q`, you get `{"sessions": [{"id", "agent", "title", "created_at", "updated_at"}]}`, most recently updated first. With `q`, you get a full-text search of user and assistant messages, across every agent or only one: `{"hits": [{"session", "agent", "title", "seq", "role", "at", "snippet"}]}`. Matched words are in `[brackets]`.
 
 ### `GET /api/sessions/{id}`
 
@@ -114,15 +116,15 @@ Without `q`: `{"sessions": [{"id", "agent", "title", "created_at", "updated_at"}
 }
 ```
 
-Blocks are `text`, `tool_use` (`tool`, `tool_use_id`, `input`), `tool_result` (`tool_use_id`, `text`, `is_error`), `thinking`, `image` and `document` (`name`, `media_type`), and others by type only. Text over 20,000 characters is cut and marked `"cut": true`. `compaction` is present when older messages were summarized.
+A block is `text`, `tool_use` (with `tool`, `tool_use_id`, `input`), `tool_result` (with `tool_use_id`, `text`, `is_error`), `thinking`, `image` or `document` (with `name`, `media_type`). Any other block comes with its type only. Text over 20,000 characters is cut and marked `"cut": true`. `compaction` is there when older messages have been summarized.
 
 ### `GET /api/sessions/{id}/export`
 
-The transcript as a Markdown file (`Content-Disposition: attachment`), as `/export` sends it.
+Returns the transcript as a Markdown file (`Content-Disposition: attachment`), in the same form `/export` sends it.
 
 ## Board
 
-Changes are made as the user (`created_by: "user"`), who may change any card.
+Changes you make here are made as the user (`created_by: "user"`). The user can change any card.
 
 | Request | Body | |
 |---|---|---|
@@ -135,7 +137,7 @@ Changes are made as the user (`created_by: "user"`), who may change any card.
 | `POST /api/board/{id}/cancel` | `{}` | Stops a running attempt. |
 | `POST /api/board/{id}/reopen` | `{}` | A blocked card goes back to todo for another attempt. |
 
-A card is `{"id", "title", "body", "assignee", "created_by", "status", "priority", "result", "parent", "depends_on", "attempt", "session", "created_at", "updated_at", "comments": [{"author", "text", "at"}], "events": [{"author", "kind", "text", "at"}]}`. Every action returns the card.
+A card looks like this: `{"id", "title", "body", "assignee", "created_by", "status", "priority", "result", "parent", "depends_on", "attempt", "session", "created_at", "updated_at", "comments": [{"author", "text", "at"}], "events": [{"author", "kind", "text", "at"}]}`. Every action sends the card back.
 
 ## Schedules
 
@@ -148,7 +150,7 @@ A card is `{"id", "title", "body", "assignee", "created_by", "status", "priority
 | `POST /api/schedules/{id}/run` | `{}` | Queues one extra run now: `{"job": "sch_...", "schedule": {...}}`. |
 | `DELETE /api/schedules/{id}` | | `204`. |
 
-A schedule is `{"id", "agent", "name", "spec", "prompt", "command", "on_output", "deliver_to", "enabled", "next_run", "last_run", "last_status", "last_output", "fail_streak", "created_at"}`. The API only adds prompt schedules: script schedules run shell commands unattended, so they are added with `habakkuk schedules add -run` (a body with `command` is rejected as an unknown field). The others can be listed, paused, run and deleted here.
+A schedule looks like this: `{"id", "agent", "name", "spec", "prompt", "command", "on_output", "deliver_to", "enabled", "next_run", "last_run", "last_status", "last_output", "fail_streak", "created_at"}`. The API only adds prompt schedules. Script schedules run shell commands unattended, so you add those with `habakkuk schedules add -run`. A body with `command` is rejected as an unknown field. You can still list, pause, run and delete script schedules here.
 
 ## Memory
 
@@ -160,11 +162,11 @@ A schedule is `{"id", "agent", "name", "spec", "prompt", "command", "on_output",
 | `PUT /api/memory/{agent}/{slug}` | `{"title", "content", "tags"?}` | Replaces a note. A new title means a new slug: the note is saved under it and the old file moves to the trash. `tags` omitted keeps them. |
 | `DELETE /api/memory/{agent}/{slug}` | | Moves the note to `agents/<agent>/memory/.trash/` (`204`). |
 
-A note is `{"slug", "title", "tags", "created_at", "updated_at", "body", "snippet"}`.
+A note looks like this: `{"slug", "title", "tags", "created_at", "updated_at", "body", "snippet"}`.
 
 ### Memory history
 
-Every change to an agent's notes, `USER.md`, `IDENTITY.md`, own skills and (once Habakkuk has changed it) `SOUL.md`, kept for `memory.history_days` (see [Memory history and undo](../agents/memory.md#memory-history-and-undo)).
+Habakkuk keeps every change to an agent's notes, `USER.md`, `IDENTITY.md` and own skills. It also keeps changes to `SOUL.md`, once Habakkuk has changed it. Changes are kept for `memory.history_days` (see [Memory history and undo](../agents/memory.md#memory-history-and-undo)).
 
 | Request | Body | |
 |---|---|---|
@@ -172,18 +174,18 @@ Every change to an agent's notes, `USER.md`, `IDENTITY.md`, own skills and (once
 | `GET /api/memory-history/{agent}/{id}` | | One change with its unified `diff`. `id` may be shortened to four characters. |
 | `POST /api/memory-history/{agent}/{id}/restore` | `{"version"?: "before" \| "after"}` | Puts back the content before the change (default: undo) or after it (redo). The restore is recorded as a change by the user: `{"restored": {...}, "unchanged": false}`, or `"unchanged": true` when the file already held that version. |
 
-A change is `{"id", "agent", "kind", "name", "path", "op", "old_hash", "new_hash", "by", "tool", "session", "tainted", "note", "restores", "at"}`. `op` is `created`, `updated` or `deleted`; `by` is `agent`, `user`, `review`, `curator`, `retro`, `hand` or `system`; `tainted` is true when external content had entered the turn that made it.
+A change looks like this: `{"id", "agent", "kind", "name", "path", "op", "old_hash", "new_hash", "by", "tool", "session", "tainted", "note", "restores", "at"}`. `op` is `created`, `updated` or `deleted`. `by` is `agent`, `user`, `review`, `curator`, `retro`, `hand` or `system`. `tainted` is true when external content had entered the turn that made the change.
 
 ### Retros
 
-An agent's [retrospectives](../agents/retros.md), read only. Approve or reject proposals with `habakkuk retro apply` or `/retro apply` in a chat.
+These endpoints let you read an agent's [retrospectives](../agents/retros.md). They're read only. To approve or reject proposals, use `habakkuk retro apply`, or `/retro apply` in a chat.
 
 | Request | Body | |
 |---|---|---|
 | `GET /api/retros/{agent}?limit=` | | Retros, newest first, `{"retros": [...]}`, without their evidence. |
 | `GET /api/retros/{agent}/{id}` | | One retro with its `evidence`. `id` may be `latest`. |
 
-A retro is `{"id", "agent", "from", "to", "on_demand", "plan", "evidence", "actions", "report", "delivered", "done", "summary", "created_at"}`. `plan` holds `summary`, `went_well`, `went_badly` (each `{"what", "cause", "evidence"}`), `follow_up` and `dropped` (what validation threw out). Each action is `{"n", "kind", "target", "description", "find", "change", "why", "expected", "risk", "evidence", "status", "result", "updated_at"}`; `status` is `proposed`, `applied`, `approved`, `rejected` or `failed`. `report` is the Markdown report's path under `$HABAKKUK_HOME`.
+A retro looks like this: `{"id", "agent", "from", "to", "on_demand", "plan", "evidence", "actions", "report", "delivered", "done", "summary", "created_at"}`. `plan` holds `summary`, `went_well`, `went_badly` (each `{"what", "cause", "evidence"}`), `follow_up` and `dropped` (what validation threw out). Each action looks like this: `{"n", "kind", "target", "description", "find", "change", "why", "expected", "risk", "evidence", "status", "result", "updated_at"}`. Its `status` is `proposed`, `applied`, `approved`, `rejected` or `failed`. `report` is the path of the Markdown report under `$HABAKKUK_HOME`.
 
 ## Skills
 
@@ -196,7 +198,7 @@ A retro is `{"id", "agent", "from", "to", "on_demand", "plan", "evidence", "acti
 
 ### `GET /api/usage?days=30&agent=`
 
-Tokens and cost of every successful model call over the last `days` days (1 to 400), today included.
+Reports the tokens and cost of every successful model call over the last `days` days (1 to 400), counting today.
 
 ```json
 {
@@ -208,11 +210,11 @@ Tokens and cost of every successful model call over the last `days` days (1 to 4
 }
 ```
 
-`days` has one row per day, zero rows included. Cost is in dollars, from config `pricing:` and the built-in table; calls through a subscription login cost 0; `unpriced` counts calls whose model has no known price (their cost is not included).
+`days` has one row per day, including the days where everything is zero. Cost is in dollars. It's worked out from `pricing:` in config and the built-in table. Calls through a subscription login cost 0. `unpriced` counts the calls whose model has no known price, and their cost isn't included.
 
 ### `GET /api/budget?agent=`
 
-Spend today and this month against the spending limits (config `budget:`), for the whole install and each agent; `agent` keeps one. A `limit` of 0 (left out) is no limit; `paused` is set while a limit is used up and holds the message turns end with.
+Shows what's been spent today and this month against the spending limits (`budget:` in config). It covers the whole install and each agent. Pass `agent` to keep only one. A `limit` of 0 (left out) means there's no limit. `paused` is set while a limit is used up, and it holds the message that turns end with.
 
 ```json
 {
@@ -227,7 +229,7 @@ Spend today and this month against the spending limits (config `budget:`), for t
 
 ## Approvals
 
-Tool calls waiting for a yes or no in a chat (permission mode `ask`, or `workspace` for exec, or a reviewer that was unsure).
+These are the tool calls waiting for a yes or no in a chat. A call waits there under permission mode `ask`, under `workspace` for exec, or when a reviewer was unsure.
 
 | Request | |
 |---|---|
@@ -236,7 +238,7 @@ Tool calls waiting for a yes or no in a chat (permission mode `ask`, or `workspa
 
 ## Nodes
 
-Present when the config has a `nodes` section. Devices themselves use `/nodes` (see [ARCHITECTURE.md](architecture.md#device-nodes)), not this API.
+These endpoints are there when the config has a `nodes` section. The devices themselves use `/nodes` (see [ARCHITECTURE.md](architecture.md#device-nodes)) instead of this API.
 
 | Request | |
 |---|---|
@@ -252,19 +254,19 @@ Present when the config has a `nodes` section. Devices themselves use `/nodes` (
 {"home": "/home/me/.habakkuk", "config": {"providers": {...}, "agents": {...}}, "doctor": [{"name": "provider anthropic", "ok": true, "detail": "2/2 keys present"}]}
 ```
 
-`config` is the effective configuration (defaults applied), read-only, with secrets redacted:
+`config` is the configuration in effect, with defaults applied. It's read-only, and secrets are redacted like this:
 
-- the value of every variable the config names (`*_env` fields, MCP `env` maps, `${VAR}` in MCP headers) is replaced with `[redacted]` wherever it appears;
-- string fields whose names read like secrets (token, password, key, ...) and do not name a variable, and MCP header values that are not variable references, are replaced whole;
-- passwords in URLs, secret-looking query parameters, and strings shaped like well-known API keys, bearer tokens, JWTs and private keys are replaced.
+- The value of every variable the config names is replaced with `[redacted]` wherever it appears. That covers `*_env` fields, MCP `env` maps and `${VAR}` in MCP headers.
+- A string field is replaced whole when its name reads like a secret (token, password, key, ...) and it doesn't name a variable. So is an MCP header value that isn't a variable reference.
+- Passwords in URLs and secret-looking query parameters are replaced. So are strings shaped like well-known API keys, bearer tokens, JWTs and private keys.
 
-`progress` and `approvals_detail` under each channel are the values in effect now, which may be newer than the ones `serve` started with.
+Under each channel, `progress` and `approvals_detail` show the values in effect now. They may be newer than the ones `serve` started with.
 
-`doctor` checks what `habakkuk doctor` checks that the running process can see: provider keys and logins, `control.db` and `transcripts.db` integrity, channel, HTTP and MCP credentials (by variable name, never value), and MCP servers that failed to connect.
+`doctor` runs the `habakkuk doctor` checks that the running process can see. It covers provider keys and logins, the integrity of `control.db` and `transcripts.db`, and channel, HTTP and MCP credentials. Credentials are named by their variable, so their values never appear. It also covers MCP servers that failed to connect.
 
 ### `GET /api/channels`
 
-What each chat channel shows while the agent works and in approval requests. Only messaging channels are listed, not the web chat.
+Returns what each chat channel shows while the agent works and in approval requests. It lists messaging channels only, so the web chat isn't here.
 
 ```json
 {
@@ -275,7 +277,7 @@ What each chat channel shows while the agent works and in approval requests. Onl
 }
 ```
 
-`live_progress` says whether the platform can edit a message; without it a long turn shows a typing indicator or one notice whatever `progress` says. `progress` and `approvals_detail` at the top level are the values each setting takes. `writable` is false in a process that cannot save the config.
+`live_progress` tells you whether the platform can edit a message. Without it, a long turn shows a typing indicator or one notice, whatever `progress` says. At the top level, `progress` and `approvals_detail` list the values each setting takes. `writable` is false in a process that can't save the config.
 
 ### `PUT /api/channels/{account}`
 
@@ -283,4 +285,4 @@ What each chat channel shows while the agent works and in approval requests. Onl
 {"progress": "detailed", "approvals_detail": "full"}
 ```
 
-Changes one or both settings for a channel and answers with its entry as in the list. The change is written to `config.yaml` in place (comments kept, the previous file saved as `config.yaml.bak`) and applies from the channel's next message, with no restart. `400` for a value that is not one of those listed or a body with neither setting, `404` for an account that is not a messaging channel, `501` when the process cannot save. Like every change in this API it needs the token and a JSON body.
+Changes one or both settings for a channel. The answer is the channel's entry, in the same shape as in the list. The change is written to `config.yaml` in place. Comments are kept, and the previous file is saved as `config.yaml.bak`. The change applies from the channel's next message, so you don't need to restart. You get `400` for a value that isn't one of those listed, or for a body with neither setting. You get `404` for an account that isn't a messaging channel, and `501` when the process can't save. Like every change in this API, it needs the token and a JSON body.

@@ -4,7 +4,7 @@ description: "Install Habakkuk, run the setup wizard, get your first reply in ab
 order: 1
 ---
 
-This page takes you from nothing to an agent that answers you, in three steps: install, run setup, say hi. It takes a few minutes. The rest of the page covers the commands you'll use every day.
+Three steps take you from nothing to an agent that answers you: install, run setup, say hi. It takes a few minutes. The rest of the page covers the commands you'll use every day.
 
 ## 1. Install
 
@@ -16,23 +16,23 @@ curl -fsSL https://habakkuk.ai/install.sh | sh
 irm https://habakkuk.ai/install.ps1 | iex
 ```
 
-[Installation](installation.md) has the other ways (a release archive, `go install`, the container image) and the options.
+There are other ways to install too: a release archive, `go install` or the container image. [Installation](installation.md) covers them, along with the install options.
 
 ## 2. Run the setup wizard
 
-Not sure what to run? Type `hk` (or `habakkuk`) on its own: on a new computer it prints one short screen that ends with the command below.
+Not sure what to run? Type `hk` (or `habakkuk`) on its own. On a new computer, it prints one short screen that ends with the command below.
 
 ```bash
 habakkuk setup
 ```
 
-It takes about a minute from download to your agent's first reply, and there's no YAML to edit. The wizard has three steps.
+From download to your agent's first reply takes about a minute, and you don't edit any YAML. The wizard walks you through three steps.
 
-1. **Pick a model.** It finds API keys already in your environment or `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` and the other [presets](../models/index.md#provider-directory)), ChatGPT or GitHub Copilot sign-ins, and model servers running on this computer (Ollama, LM Studio, vLLM, llama.cpp, LiteLLM). It recommends the best one, paired with the same provider's cheaper model for quick messages ([routing](../models/routing.md)). Any provider works; nothing assumes Claude. You can also paste a key (it is not shown as you type) or sign in. One tiny live call checks it, with a timeout and a plain error if it fails.
-2. **Pick where to talk.** The recommended one is a **WhatsApp agent**: in WhatsApp, open Settings > Agents > Create agent and send it "hi". Then in its chat open Chat info > API key, and paste the key. Setup checks the key with one poll that skips no messages, finds your "hi" and lets only you in. It can also connect a Telegram bot (token checked with `getMe`), WhatsApp as a linked device (it runs the QR or pairing-code link), the web chat on this computer, Slack or Discord (tokens checked), or just the terminal.
-3. **Names.** What your agent is called (default Habakkuk) and, if you like, what it should call you. On your first chat it still introduces itself, under that name.
+1. **Pick a model.** The wizard looks for what you already have. That's API keys in your environment or `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` and the other [presets](../models/index.md#provider-directory)), ChatGPT or GitHub Copilot sign-ins, and model servers running on this computer (Ollama, LM Studio, vLLM, llama.cpp, LiteLLM). It recommends the best one and pairs it with the same provider's cheaper model for quick messages (see [routing](../models/routing.md)). Any provider works, and nothing assumes Claude. You can also paste a key, which isn't shown as you type, or sign in. The wizard checks your choice with one tiny live call. The call has a timeout, and you get a plain error if it fails.
+2. **Pick where to talk.** The wizard recommends a **WhatsApp agent**. In WhatsApp, open Settings > Agents > Create agent and send the new agent "hi". Then open Chat info > API key in its chat, and paste the key. Setup checks the key with one poll that skips no messages. It finds your "hi" and lets only you in. Setup can also connect a Telegram bot (it checks the token with `getMe`), WhatsApp as a linked device (it runs the QR or pairing-code link), the web chat on this computer, or Slack or Discord (it checks the tokens). You can also stay with the terminal alone.
+3. **Names.** Choose what your agent is called (the default is Habakkuk) and, if you like, what it should call you. The agent still introduces itself in your first chat, under the name you chose.
 
-It then writes a short, commented `config.yaml` holding what you chose plus two starter defaults: the [dashboard](../interfaces/dashboard.md) on this computer only (`http.listen` on loopback, the next free port if 8484 is taken) and [memory review](../agents/memory.md) on, so your agent keeps what matters from each chat without you asking. Keys go to `.env`, readable only by you, never to the config. It runs `habakkuk doctor`, then ends with a summary like this one:
+The wizard then writes a short, commented `config.yaml`. It holds what you chose, plus two starter defaults. The first is the [dashboard](../interfaces/dashboard.md), open to this computer only (`http.listen` on loopback, on the next free port if 8484 is taken). The second is [memory review](../agents/memory.md), switched on so your agent keeps what matters from each chat without you asking. Your keys go to `.env`, which only you can read, and stay out of the config. Last, the wizard runs `habakkuk doctor` and ends with a summary like this one:
 
 ```text
 Nova is ready. Setup took 2.1s.
@@ -51,12 +51,12 @@ Try these first:
 Schedules, channels and memory reviews run while habakkuk serve does.
 ```
 
-Then it offers to keep your agent running. On macOS and Linux, say yes and it installs a launchd agent or a systemd user unit, starts it, and waits until `habakkuk serve` is up, so it keeps answering after you close the terminal and after a restart. Say no and it offers to run `habakkuk serve` in this terminal instead. With `-y` it never installs or starts anything unless you pass `-service` (which writes the file and prints the commands) or `-serve`, and it never opens a chat.
+Next, the wizard offers to keep your agent running. On macOS and Linux, say yes and it installs a launchd agent or a systemd user unit, starts it, and waits until `habakkuk serve` is up. Your agent then keeps answering after you close the terminal and after a restart. If you say no, the wizard offers to run `habakkuk serve` in this terminal instead. With `-y`, the wizard never opens a chat. It also installs and starts nothing unless you pass `-service` (which writes the file and prints the commands) or `-serve`.
 
 > [!TIP]
-> Run `habakkuk setup` again to change something. It edits `config.yaml` in place, keeps everything you did not change (comments too), and saves the previous file as `config.yaml.bak`.
+> To change something later, run `habakkuk setup` again. It edits `config.yaml` in place and keeps everything you didn't change, comments included. The previous file is saved as `config.yaml.bak`.
 
-Or change one piece at a time:
+You can also change one piece at a time:
 
 ```bash
 habakkuk setup model                   # another model or provider
@@ -67,7 +67,7 @@ habakkuk setup service                 # write the background service file and s
 
 ### Without prompts
 
-In scripts and CI, `-y` never prompts. Answers come from flags. Keys and tokens come only from the environment or `.env`, never from flags: `WHATSAPP_AGENT_KEY`, `TELEGRAM_BOT_TOKEN`, `SLACK_APP_TOKEN` and `SLACK_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, and the provider's key.
+For scripts and CI, pass `-y` and the wizard never prompts. It takes its answers from flags. Keys and tokens are the exception. You can't pass them as flags, so setup reads them only from the environment or `.env`. They are `WHATSAPP_AGENT_KEY`, `TELEGRAM_BOT_TOKEN`, `SLACK_APP_TOKEN` and `SLACK_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, and the provider's key.
 
 ```bash
 ANTHROPIC_API_KEY=... WHATSAPP_AGENT_KEY=... habakkuk setup -y -channel whatsappagent -name Nova -user Ada
@@ -77,6 +77,8 @@ habakkuk setup -h      # every flag: -provider, -model, -base-url, -key-env, -ch
 ```
 
 ### By hand
+
+To set things up without the wizard, run these commands:
 
 ```bash tab="macOS / Linux"
 habakkuk init                      # writes ~/.habakkuk/config.yaml and agents/habakkuk/SOUL.md
@@ -92,34 +94,36 @@ habakkuk doctor
 habakkuk chat
 ```
 
-`HABAKKUK_HOME` overrides the data folder (`~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows).
+The data folder is `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows. Set `HABAKKUK_HOME` to use a different one.
 
 ## 3. Talk to it
 
-Talk to it in the channel you picked, or in the terminal:
+Message your agent in the channel you picked, or chat with it in the terminal:
 
 ```bash
 habakkuk chat
 ```
 
-`habakkuk chat` opens the full-screen terminal UI on a terminal (`-plain` keeps a line-by-line chat). An empty chat suggests things to try. The first conversation opens with a welcome in which the agent introduces itself, suggests three things you can ask for right away (a morning brief first, when it can schedule tasks) and asks what to call you; see [Agents and identity](../agents/agents.md#the-first-chat).
+On a terminal, `habakkuk chat` opens the full-screen terminal UI. Add `-plain` to keep a line-by-line chat. An empty chat suggests things to try. Your first conversation opens with a welcome. In it, the agent introduces itself, suggests three things you can ask for right away (a morning brief comes first, when the agent can schedule tasks) and asks what to call you. See [Agents and identity](../agents/agents.md#the-first-chat).
 
-The dashboard's Overview page has a **Get started** panel with the same first steps, and every empty page (Chat, Schedules, Memory, Skills, the Board) says what belongs there and offers a one-click message that fills it.
+In the dashboard, the Overview page has a **Get started** panel with the same first steps. Every empty page (Chat, Schedules, Memory, Skills, the Board) tells you what belongs there and offers a one-click message that fills it.
 
 ## 4. Keep it running
 
-`habakkuk chat` runs turns while it is open. To reach the agent from chat apps, run schedules and the board, and serve the dashboard, run:
+`habakkuk chat` runs turns while it's open. Reaching the agent from chat apps, running schedules and the board, and serving the dashboard all need this command:
 
 ```bash
 habakkuk serve      # channels and workers: resumes interrupted turns, applies retention
 ```
 
 > [!IMPORTANT]
-> Run one `habakkuk serve` per `$HABAKKUK_HOME`. Most channels allow only one program to poll them, so stop any other `serve` first.
+> Run only one `habakkuk serve` for each `$HABAKKUK_HOME`. Most channels let only one program poll them, so stop any other `serve` before you start this one.
 
-See [Channels](../channels/index.md) to connect more chat apps and [Run it on a server](../deploy/server.md) to run `serve` as a service.
+To connect more chat apps, see [Channels](../channels/index.md). To run `serve` as a service, see [Run it on a server](../deploy/server.md).
 
 ## Everyday commands
+
+Here are the commands for everyday use:
 
 ```bash
 habakkuk run "summarise the files in my workspace"   # one turn, print the answer
@@ -139,11 +143,11 @@ habakkuk backup -o habakkuk.tar.gz                   # config, agents, skills an
 habakkuk update -check                               # is there a newer release?
 ```
 
-The [CLI reference](../reference/cli.md) lists every command and flag.
+For every command and flag, see the [CLI reference](../reference/cli.md).
 
 ## Chat commands
 
-In a chat, `/help` lists the commands. The ones you will use most:
+Send `/help` in a chat to list the commands. These are the ones you'll use most:
 
 | Command | What it does |
 |---|---|
@@ -157,14 +161,14 @@ In a chat, `/help` lists the commands. The ones you will use most:
 | `/goal <text>` | Keep working turn after turn until it is done |
 | `/undo` | Put back the files the latest turn changed |
 
-[Sessions and chat commands](../agents/sessions.md) explains them, and the [CLI reference](../reference/cli.md#chat-commands) lists them all.
+[Sessions and chat commands](../agents/sessions.md) explains each one. The [CLI reference](../reference/cli.md#chat-commands) has the full list.
 
 > [!TIP]
-> Coming from another agent? On a new install `habakkuk setup` offers to import it, or run `habakkuk migrate --dry-run` to see what would move. See [Move from another agent](migrate.md).
+> Coming from another agent? On a new install, `habakkuk setup` offers to import it. You can also run `habakkuk migrate --dry-run` to see what would move. See [Move from another agent](migrate.md).
 
 ## Next steps
 
 <!-- cards -->
-- [Configuration](configuration.md): how `config.yaml` is laid out and where keys go.
+- [Configuration](configuration.md): see how `config.yaml` is laid out and where keys go.
 - [Channels](../channels/index.md): connect Telegram, Slack, Discord and the rest.
-- [Use cases](use-cases.md): concrete setups to copy.
+- [Use cases](use-cases.md): find a concrete setup you can copy.

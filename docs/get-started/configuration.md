@@ -4,7 +4,9 @@ description: "How config.yaml is laid out, where keys go, what lives in $HABAKKU
 order: 4
 ---
 
-Habakkuk reads `$HABAKKUK_HOME/config.yaml`. The default home is `~/.habakkuk` (`%APPDATA%\Habakkuk` on Windows). `habakkuk setup` writes a short config holding only what you chose; `habakkuk init` writes a starter file with comments for every section. `habakkuk doctor` checks the config, the keys it names and the channels.
+Read this when you want to change settings by hand. It covers how Habakkuk's config file is laid out, where your keys go, and which changes need a restart.
+
+Habakkuk reads its settings from `$HABAKKUK_HOME/config.yaml`. The default home is `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows. There are two ways to get a config. `habakkuk setup` writes a short one that holds only what you chose. `habakkuk init` writes a starter file with comments for every section. To check the config, the keys it names and the channels, run `habakkuk doctor`.
 
 ## A first config
 
@@ -45,17 +47,17 @@ retention:
   days: 90
 ```
 
-The three main sections:
+A config has three main sections:
 
-- **`providers`** are the model APIs. An agent's `model` is `<provider>/<model id>`. See [Model providers](../models/providers.md).
-- **`agents`** are the assistants, each with its models, permission mode, workspace and toolsets. See [Agents and identity](../agents/agents.md) and [Permissions and approvals](../agents/approvals.md).
-- **`channels`** are keyed by an account name you choose; `type` says which platform. See [Channels](../channels/index.md).
+- **`providers`** lists the model APIs. An agent's `model` is written as `<provider>/<model id>`. See [Model providers](../models/providers.md).
+- **`agents`** defines the assistants. Each one has its own models, permission mode, workspace and toolsets. See [Agents and identity](../agents/agents.md) and [Permissions and approvals](../agents/approvals.md).
+- **`channels`** holds one entry per account, under a name you choose. Its `type` says which platform it is. See [Channels](../channels/index.md).
 
-The [configuration reference](../reference/configuration.md) lists every section.
+For every section, see the [configuration reference](../reference/configuration.md).
 
 ## Keys and secrets
 
-Keys are read from the environment or `$HABAKKUK_HOME/.env`, never from the config file. Settings that end in `_env` name the variable that holds a value (`token_env: TELEGRAM_BOT_TOKEN`), so `config.yaml` can be shared or committed without secrets.
+Habakkuk reads keys from the environment or from `$HABAKKUK_HOME/.env`. It doesn't read them from the config file. A setting that ends in `_env` gives the name of the variable that holds the value, as in `token_env: TELEGRAM_BOT_TOKEN`. That keeps secrets out of `config.yaml`, so you can share it or commit it.
 
 ```bash
 # $HABAKKUK_HOME/.env
@@ -63,15 +65,17 @@ ANTHROPIC_API_KEY=sk-ant-...
 TELEGRAM_BOT_TOKEN=123456:ABC...
 ```
 
-`secrets:` can resolve those variables from 1Password, Bitwarden, `pass` or any command instead; see [Secret managers](../deploy/security.md#secret-managers).
+If you'd rather keep those variables in 1Password, Bitwarden, `pass` or behind any command, `secrets:` can resolve them from there. See [Secret managers](../deploy/security.md#secret-managers).
 
 ## Typos and bad values
 
-A key Habakkuk does not know is reported, not silently accepted: `habakkuk doctor` prints `config: UNKNOWN KEY ...`, and commands such as `habakkuk serve` and `habakkuk chat` warn about it when they start. The key is then ignored, so a setting written for a newer release does not stop an older binary.
+If your config has a key Habakkuk doesn't know, it tells you. `habakkuk doctor` prints `config: UNKNOWN KEY ...`, and commands such as `habakkuk serve` and `habakkuk chat` warn about it when they start. Habakkuk then ignores the key, so a setting written for a newer release doesn't stop an older binary.
 
-Bad values (an unknown provider in a model name, a permission mode that does not exist, a channel without its token setting) stop the config from loading, and every problem is reported at once. `habakkuk serve` keeps running on the last good config when a hand edit breaks the file, and logs the error.
+Bad values are different: they stop the config from loading. Examples are an unknown provider in a model name, a permission mode that doesn't exist, or a channel without its token setting. Habakkuk reports every problem at once. If a hand edit breaks the file while `habakkuk serve` is running, it logs the error and keeps running on the last good config.
 
 ## What lives in `$HABAKKUK_HOME`
+
+Here's what you'll find in the home folder:
 
 | Path | What it holds |
 |---|---|
@@ -88,21 +92,23 @@ Bad values (an unknown provider in a model name, a permission mode that does not
 | `auth.json` | Subscription and MCP OAuth logins |
 | `habakkuk.log` | The log, rotated, with secrets redacted |
 
-[Architecture: storage](../reference/architecture.md#storage) describes each file.
+For a description of each file, see [Architecture: storage](../reference/architecture.md#storage).
 
 ## What reloads without a restart
 
-`SOUL.md`, `AGENTS.md`, `USER.md` and the memory and skill listings are read when a session starts, and persona files on every turn. Their edits reach every new session (`/new`) without a restart; an existing session keeps its frozen prompt.
+Habakkuk reads `SOUL.md`, `AGENTS.md`, `USER.md` and the memory and skill listings when a session starts. It reads persona files on every turn. So your edits to them reach every new session (start one with `/new`) without a restart. A session that's already open keeps its frozen prompt, the one it started with.
 
-`habakkuk serve` checks `$HABAKKUK_HOME` every 3 seconds:
+While it runs, `habakkuk serve` checks `$HABAKKUK_HOME` every 3 seconds. What it does depends on what changed:
 
-- Hand-edited memory notes are reindexed at once.
-- `hooks:` and spending limits (`budget:`) apply in place.
-- Changes to providers, agents, channels, MCP servers, `http`, transcription, timezone, workers, retention, metrics, telemetry, logging, tools and secrets are logged as needing a restart.
-- Other sections are read at start, so restart `serve` after changing them.
-- An invalid `config.yaml` is reported and ignored.
+- Memory notes you edited by hand are reindexed at once.
+- Changes to `hooks:` and to spending limits (`budget:`) apply in place.
+- Changes to providers, agents, channels, MCP servers, `http`, transcription, timezone, workers, retention, metrics, telemetry, logging, tools and secrets need a restart, and the log says so.
+- Other sections are read at start, so restart `serve` after you change them.
+- If `config.yaml` is invalid, Habakkuk reports it and ignores the file.
 
 ## Other common settings
+
+A few more settings you're likely to reach for:
 
 ```yaml
 timezone: America/Toronto   # for schedules and budgets; default the server's

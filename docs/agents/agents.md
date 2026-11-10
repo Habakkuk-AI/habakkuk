@@ -1,8 +1,10 @@
 ---
 title: Agents and identity
-description: "Define agents, give them a personality and standing instructions, use personas, and how the first-chat welcome lets the user name the agent."
+description: "Define an agent, give it a personality and standing instructions, switch personas, and see how the first-chat welcome lets you name it."
 order: 1
 ---
+
+An agent is defined in your config, and a few files shape how it talks. Come here when you set up a new agent, or when you want to change one's settings, personality or language.
 
 ## Defining an agent
 
@@ -37,7 +39,7 @@ agents:
 
 ## Personality and instructions
 
-An agent's files live in `$HABAKKUK_HOME/agents/<name>/`:
+Each agent keeps its files in `$HABAKKUK_HOME/agents/<name>/`:
 
 | File | What it is |
 |---|---|
@@ -46,26 +48,26 @@ An agent's files live in `$HABAKKUK_HOME/agents/<name>/`:
 | `IDENTITY.md` | The name, emoji and manner the user chose in chat |
 | `USER.md` | The agent's profile of the user. See [Memory](memory.md#the-user-profile) |
 
-They are read when a session starts, so edits reach every new session (`/new`) without a restart. An existing session keeps its frozen prompt, which keeps the provider's prompt cache valid.
+Habakkuk reads these files when a session starts. Your edits reach every new session (`/new`), and you don't need to restart. A session that's already open keeps the prompt it started with, so the provider's prompt cache stays valid.
 
 ### Personas
 
-`/personality NAME` in a chat appends a persona to the session's prompt: the built-in `concise`, `warm`, `formal`, `technical` and `playful`, or your own `$HABAKKUK_HOME/personalities/NAME.md`, read on every turn. `/personality off` drops it, and `/new` starts a session without it.
+Send `/personality NAME` in a chat to add a persona to the end of the session's prompt. The built-in personas are `concise`, `warm`, `formal`, `technical` and `playful`. You can also write your own as `$HABAKKUK_HOME/personalities/NAME.md`, which is read on every turn. `/personality off` drops the persona, and `/new` starts a session without it.
 
 ## The first chat
 
-The first one-to-one conversation an agent has with its user (a direct message on any channel, `habakkuk chat` or the TUI) opens with a welcome. The agent greets the user, introduces itself, suggests three things to try right away, each written as a message the user could send (a morning brief first, when it can schedule tasks), picked from the tools it actually has, and asks three questions: what to call the user, whether to keep its name and how to talk, and where they are for time zones. A first message that asks for something real is answered first.
+The first one-to-one conversation an agent has with you opens with a welcome. That conversation can be a direct message on any channel, `habakkuk chat` or the TUI. The agent greets you and introduces itself. It suggests three things to try right away, each written as a message you could send. It picks them from the tools it actually has, and puts a morning brief first when it can schedule tasks. Then it asks three questions: what to call you, whether it should keep its name and how it should talk, and where you are, for time zones. If your first message asks for something real, the agent answers that first.
 
-The answers go to `agents/<name>/IDENTITY.md` (name, emoji and manner, through the `set_identity` tool) and to the user profile, `USER.md`. The user can change the identity later too: "call yourself Jarvis". The prompt states the identity after `SOUL.md`, so a hand-written soul keeps its place and the chosen name wins.
+Your answers go to `agents/<name>/IDENTITY.md` (the name, emoji and manner, written through the `set_identity` tool) and to the user profile, `USER.md`. You can change the identity later too, by saying something like "call yourself Jarvis". The prompt states the identity after `SOUL.md`. That way a soul you wrote by hand keeps its place, and the name you chose wins.
 
 > [!NOTE]
-> `set_identity` is refused in a turn that read outside content, since the identity reaches every prompt.
+> Habakkuk refuses `set_identity` in a turn that has read outside content, because the identity goes into every prompt.
 
-The welcome runs once per agent. Habakkuk marks it with an `.onboarding` file, so two chats opening at once welcome once, and a user who ignores the questions is not asked again. An agent that already has an identity or a user profile, such as one moved over from another setup, skips it. Schedules, webhooks, the board and other automated sessions never take it. A Telegram `/start` reaches the agent while it has not met its user, and shows the command list afterwards.
+The welcome runs once per agent. Habakkuk marks it as done with an `.onboarding` file. So if two chats open at the same moment, you get one welcome. And if you ignore the questions, the agent doesn't ask again. An agent that already has an identity or a user profile skips the welcome. An agent moved over from another setup is one example. Automated sessions, such as schedules, webhooks and the board, never get it. On Telegram, `/start` reaches the agent for as long as it hasn't met you. After that, it shows the command list.
 
 ## Languages
 
-The model is told to answer in the user's language. Habakkuk's own text (command replies, approval prompts, pairing notices) comes from catalogs for English, French, Spanish, Portuguese, German, Yoruba, Arabic, Chinese (Simplified), Japanese and Hindi; the non-English ones are machine-translated. Config `language:` sets the default, and a channel's `language:` overrides it.
+Habakkuk tells the model to answer in the user's language. Habakkuk's own text is handled separately. That text is the command replies, approval prompts and pairing notices. It comes from catalogs for English, French, Spanish, Portuguese, German, Yoruba, Arabic, Chinese (Simplified), Japanese and Hindi. The non-English catalogs are machine-translated. Set `language:` in the config to choose the default. A channel's own `language:` overrides it.
 
 ```yaml
 language: fr

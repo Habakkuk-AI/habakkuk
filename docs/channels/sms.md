@@ -4,16 +4,16 @@ description: "Text Habakkuk over SMS and MMS through a Twilio number: the webhoo
 order: 9
 ---
 
-The `sms` channel uses Twilio. Twilio posts inbound SMS and MMS to Habakkuk's HTTP server, signed with the account's auth token; replies go out through Twilio's Messages API.
+You can text Habakkuk over SMS and MMS. The `sms` channel uses Twilio. Twilio posts each inbound SMS and MMS to Habakkuk's HTTP server, signed with the account's auth token. Replies go out through Twilio's Messages API.
 
 > [!NOTE]
-> SMS is a [webhook channel](settings.md#webhook-channels): Twilio must reach `habakkuk serve` over the internet, so you need an `http` section with a `public_url`.
+> SMS is a [webhook channel](settings.md#webhook-channels). Twilio has to reach `habakkuk serve` over the internet, so you need an `http` section with a `public_url`.
 
 ## Set it up
 
-1. In Twilio, buy or pick a number that can send and receive SMS (and MMS, for media).
-2. Set the number's **A message comes in** webhook (HTTP POST) to `<public_url>/channels/<name>`, for example `https://habakkuk.example.com/channels/sms`. `habakkuk doctor` prints the URL.
-3. Put the auth token in `.env` and configure the channel:
+1. In Twilio, buy or pick a number that can send and receive SMS. If you want media, it needs MMS too.
+2. Set the number's **A message comes in** webhook to `<public_url>/channels/<name>`, with HTTP POST as the method. For example, `https://habakkuk.example.com/channels/sms`. Run `habakkuk doctor` to print the URL.
+3. Put the auth token in `.env`, then configure the channel:
 
 ```yaml
 channels:
@@ -29,19 +29,19 @@ http:
   public_url: https://habakkuk.example.com
 ```
 
-Use `messaging_service_sid` instead of `from` if you send through a Twilio messaging service.
+If you send through a Twilio messaging service, set `messaging_service_sid` in place of `from`.
 
 > [!IMPORTANT]
-> Twilio signs the exact URL it calls. `public_url` must match the webhook URL in Twilio character for character, or every request is refused.
+> Twilio signs the exact URL it calls. Your `public_url` has to match the webhook URL in Twilio character for character. If it doesn't, every request is refused.
 
 ## Access
 
-`allow_from` takes phone numbers without the `+`. Anyone else who texts gets a pairing code.
+`allow_from` takes phone numbers without the `+`. Anyone else who texts the number gets a pairing code.
 
 ## What works
 
-- SMS and MMS media in; SMS and MMS out, with media up to 5 MB. Twilio fetches outgoing media from a one-hour URL on Habakkuk's server.
-- No typing indicator or buttons: approvals are answered by texting **yes** or **no**.
+- The channel receives SMS and MMS media. It sends SMS and MMS, with media up to 5 MB. Twilio fetches outgoing media from a URL on Habakkuk's server that lasts one hour.
+- There's no typing indicator and there are no buttons. To answer an approval, text **yes** or **no**.
 
 ## Troubleshooting
 

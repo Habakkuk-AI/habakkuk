@@ -1,13 +1,15 @@
 ---
 title: Run it on a server
 nav_title: Server
-description: "Keep habakkuk serve running under systemd, launchd or Docker: the setup service command, unit files, container volumes, ports and keys."
+description: "Keep habakkuk serve running under systemd, launchd or Docker, with the setup service command, unit files, container volumes, ports and keys."
 order: 1
 ---
 
+To keep `habakkuk serve` running on a machine that stays on, run it under a service manager (systemd or launchd) or in a Docker container.
+
 ## Under a service manager
 
-Habakkuk does not install a service itself. `habakkuk setup service` writes the file and prints the commands that install it:
+Habakkuk doesn't install a service for you. Run `habakkuk setup service` instead. It writes the service file and prints the commands that install it:
 
 ```bash
 habakkuk setup service
@@ -26,14 +28,14 @@ mkdir -p ~/Library/LaunchAgents && cp ~/.habakkuk/ai.habakkuk.agent.plist ~/Libr
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.habakkuk.agent.plist
 ```
 
-The files run `habakkuk serve` with your `HABAKKUK_HOME` and `PATH`, and restart it when it fails. On macOS its output goes to `serve.out.log` and `serve.err.log` in `$HABAKKUK_HOME`.
+These files run `habakkuk serve` with your `HABAKKUK_HOME` and `PATH`, and they restart it if it fails. On macOS, its output goes to `serve.out.log` and `serve.err.log` in `$HABAKKUK_HOME`.
 
 > [!IMPORTANT]
-> Stop any `habakkuk serve` running in a terminal first: most channels allow only one program to poll them.
+> First stop any `habakkuk serve` that's running in a terminal. Most channels let only one program poll them.
 
 ### Writing the unit by hand
 
-A minimal systemd user unit, in `~/.config/systemd/user/habakkuk.service`:
+Here's a minimal systemd user unit. It goes in `~/.config/systemd/user/habakkuk.service`:
 
 ```ini
 [Unit]
@@ -48,19 +50,19 @@ Restart=on-failure
 WantedBy=default.target
 ```
 
-Set `Environment=HABAKKUK_HOME=...` in the unit to use another home.
+To use a different home, set `Environment=HABAKKUK_HOME=...` in the unit.
 
 ### Windows
 
-`habakkuk setup service` covers Linux and macOS only. On Windows, run `habakkuk serve` with the service manager or task scheduler you prefer, or run it in WSL.
+`habakkuk setup service` only covers Linux and macOS. On Windows, run `habakkuk serve` with whichever service manager or task scheduler you prefer, or run it in WSL.
 
 ### The desktop app
 
-The [desktop app](../interfaces/desktop-app.md) can also start `serve` for you, but it stops it when you quit. For an agent that must stay up, run `serve` as a service and let the app connect to it.
+The [desktop app](../interfaces/desktop-app.md) can start `serve` for you too, but it stops `serve` when you quit the app. If your agent has to stay up, run `serve` as a service and let the app connect to it.
 
 ## In a container
 
-The image runs `habakkuk serve` with `HABAKKUK_HOME=/data`:
+The container image runs `habakkuk serve` and sets `HABAKKUK_HOME=/data`:
 
 ```bash
 docker run --rm -it -v habakkuk-data:/data ghcr.io/habakkuk-ai/habakkuk:latest init      # once
@@ -68,11 +70,11 @@ docker run -d --name habakkuk --restart unless-stopped -v habakkuk-data:/data \
   -p 127.0.0.1:8484:8484 ghcr.io/habakkuk-ai/habakkuk:latest
 ```
 
-- Put keys in `/data/.env`.
-- Inside a container the HTTP server must listen on a non-loopback address (`listen: 0.0.0.0:8484`) to be reachable through the published port, which needs `http.token_env`.
-- For the browser toolset or meetings, build the variant with Chromium: `docker build --target browser -t habakkuk:browser .`
+- Put your keys in `/data/.env`.
+- Inside a container, the HTTP server is reachable through the published port only if it listens on a non-loopback address (`listen: 0.0.0.0:8484`). Listening there needs `http.token_env`.
+- If you want the browser toolset or meetings, build the variant that includes Chromium: `docker build --target browser -t habakkuk:browser .`
 
-A Compose file does the same:
+You can do the same with a Compose file:
 
 ```yaml
 services:
@@ -92,4 +94,4 @@ habakkuk status       # serve uptime, channels, queue, today's cost, recent erro
 habakkuk logs -f      # follow the log
 ```
 
-See [Observability](observability.md) for health checks and metrics, and [Backups and updates](backups-and-updates.md) to keep it safe.
+For health checks and metrics, see [Observability](observability.md). To keep it safe, see [Backups and updates](backups-and-updates.md).

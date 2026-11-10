@@ -1,20 +1,22 @@
 ---
 title: Desktop app
-description: "Habakkuk Desktop: a native window around the dashboard with a tray icon, notifications, quick ask, start at login and a connection manager."
+description: "Habakkuk Desktop puts the dashboard in a native window and adds a tray icon, notifications, quick ask, start at login and a connection manager."
 order: 3
 ---
 
 
-Habakkuk Desktop is a native app for macOS, Windows and Linux around the dashboard every `habakkuk serve` already has at `/app/`. It adds what a browser tab cannot: a menu bar (tray) icon with status, notifications for approvals and replies with Approve and Deny buttons, a quick ask window on a global hotkey, starting at login, and running `habakkuk serve` for you.
+Habakkuk Desktop is a native app for macOS, Windows and Linux. It wraps the dashboard that every `habakkuk serve` already has at `/app/`, and adds what a browser tab can't do. You get a menu bar (tray) icon that shows status. You get notifications for approvals and replies, with Approve and Deny buttons. A global hotkey opens a quick ask window. The app can start at login, and it can run `habakkuk serve` for you.
 
-It lives in [`apps/desktop`](../../apps/desktop), a Go module of its own built with [Wails v3](https://v3.wails.io). The `habakkuk` binary does not depend on it and still builds without CGO.
+This page covers installing the app, how it connects to a Habakkuk, what each screen shows, building it yourself, and its limits.
+
+The app's code is in [`apps/desktop`](../../apps/desktop). It's a Go module of its own, built with [Wails v3](https://v3.wails.io). The `habakkuk` binary doesn't depend on it, and still builds without CGO.
 
 ## Install
 
-Download the build for your OS from the [latest release](https://github.com/habakkuk-ai/habakkuk/releases/latest): `Habakkuk.app` in a `.zip` or `.dmg` for macOS (it bundles `habakkuk`), a `.tar.gz` for Linux, and an `.exe` for Windows. The builds are not signed yet; see [Unsigned builds](#unsigned-builds) for the first launch.
+Download the build for your OS from the [latest release](https://github.com/habakkuk-ai/habakkuk/releases/latest). For macOS it's `Habakkuk.app` in a `.zip` or `.dmg`, and it bundles `habakkuk`. For Linux it's a `.tar.gz`. For Windows it's an `.exe`. The builds aren't signed yet, so read [Unsigned builds](#unsigned-builds) before your first launch.
 
 > [!TIP]
-> Quitting the app stops a `habakkuk serve` it started. For an agent that must stay up, run `habakkuk serve` [as a service](../deploy/server.md) and let the app connect to it.
+> When you quit the app, it stops a `habakkuk serve` it started. If your agent has to stay up, run `habakkuk serve` [as a service](../deploy/server.md) and let the app connect to it.
 
 ## How it works
 
@@ -30,23 +32,23 @@ Download the build for your OS from the [latest release](https://github.com/haba
  └──────────────────────────────────────────┘
 ```
 
-- **One UI codebase.** The main window shows the connected Habakkuk's own dashboard, so it is always the version that Habakkuk ships. The app's windows load everything from a small web server on `127.0.0.1`, which passes `/app/` and `/api/` to the active Habakkuk with its token added. The token never reaches the page, and the page sees one origin whichever Habakkuk is connected. Over loopback the microphone works even when the Habakkuk itself is plain `http`.
-- **Only the app can use that server.** It answers only requests addressed to its own loopback address, so DNS rebinding gets nowhere. It needs a session cookie that the app's windows get by opening a URL with a fresh random key each launch. The cookie is `HttpOnly` and `SameSite=Strict`, changes must be JSON, and requests a browser marks as cross-site are refused. Another local program can still open a connection to the port, but without the key it gets `403`.
-- **The app's own pages** (connections, logs, settings, quick ask) are static files embedded in the app. The CSP is the dashboard's strict policy: only the app's own scripts, no inline code.
-- **Notifications.** The app follows the event stream (`/api/chat/{conversation}/events`) of each web conversation active in the last day, up to eight at once, and notifies assistant replies newer than the app's start. It asks `/api/approvals` every 5 seconds and the overview every 15 seconds, or every second while Habakkuk does not answer. An approval prompt is only notified once, as an approval with buttons, even though it is also a chat message. Replies are not notified while the main window has focus, or while the quick ask window shows that conversation.
+- **One UI codebase.** The main window shows the dashboard of the Habakkuk you're connected to, so you always see the version that Habakkuk ships. The app's windows load everything from a small web server on `127.0.0.1`. That server passes `/app/` and `/api/` on to the active Habakkuk and adds its token. The token never reaches the page. The page also sees one origin, whichever Habakkuk is connected. Because the page loads over loopback (an address only this computer can reach), the microphone works even when the Habakkuk itself is plain `http`.
+- **Only the app can use that server.** The server answers only requests addressed to its own loopback address, which stops DNS rebinding. It also needs a session cookie. The app's windows get that cookie by opening a URL with a random key, and the key is new on each launch. The cookie is `HttpOnly` and `SameSite=Strict`. Changes must be JSON, and the server refuses any request a browser marks as cross-site. Another program on your computer can still open a connection to the port, but without the key it gets `403`.
+- **The app's own pages** are connections, logs, settings and quick ask. They're static files embedded in the app. Their CSP is the dashboard's strict policy, which allows only the app's own scripts and no inline code.
+- **Notifications.** The app follows the event stream (`/api/chat/{conversation}/events`) of each web conversation that was active in the last day, up to eight at once. It notifies you of assistant replies that are newer than the app's start. It asks `/api/approvals` every 5 seconds and the overview every 15 seconds. While Habakkuk isn't answering, it asks every second. An approval prompt is also a chat message, but you're notified of it only once, as an approval with buttons. You don't get a reply notification while the main window has focus, or while the quick ask window is showing that conversation.
 
 ## Connections
 
-A connection is either:
+Each connection is one of two kinds:
 
-- **Local.** A Habakkuk on this computer, given by its `HABAKKUK_HOME` (default `$HABAKKUK_HOME` or `~/.habakkuk`). Its address and token come from that home, the way `habakkuk serve` reads them: `http.listen` and `http.token_env` in `config.yaml`, the token from the environment or `.env`. When you activate it, the app starts `habakkuk serve` as a child process with that `HABAKKUK_HOME` and a `PATH` that includes the usual install folders. It shows the output in the connections page, restarts it after a crash (1 second, doubling to 30), and stops it with SIGTERM (a kill after 10 seconds) when you pause it or quit. If `serve.json` shows a `habakkuk serve` already running there, the app connects to it and leaves it alone. Tick "only when I press Start" to never start it automatically.
-- **Remote.** Any Habakkuk reachable over HTTP(S): a base URL (`https://habakkuk.example.com`, or with a path prefix behind a reverse proxy; a pasted `/app/` is dropped) and the token. The token is stored in the OS keychain: the login Keychain on macOS, the Secret Service (GNOME Keyring, KWallet) on Linux, the Credential Manager on Windows. It is filed under the service "Habakkuk Desktop" and never written to the config file. **Test** checks the URL and token against `/api/app` before you save.
+- **Local.** This is a Habakkuk on this computer. You point the app at its `HABAKKUK_HOME` (the default is `$HABAKKUK_HOME` or `~/.habakkuk`). The app takes the address and token from that home, the same way `habakkuk serve` reads them. They come from `http.listen` and `http.token_env` in `config.yaml`, with the token itself read from the environment or `.env`. When you activate the connection, the app starts `habakkuk serve` as a child process. The process gets that `HABAKKUK_HOME` and a `PATH` that includes the usual install folders. Its output shows in the connections page. If it crashes, the app restarts it after 1 second, and the wait doubles up to 30. When you pause the connection or quit, the app stops the process with SIGTERM, followed by a kill after 10 seconds. If `serve.json` shows that a `habakkuk serve` is already running there, the app connects to it and leaves it alone. If you never want the app to start it automatically, tick "only when I press Start".
+- **Remote.** This is any Habakkuk you can reach over HTTP(S). You give the app a base URL and the token. The URL looks like `https://habakkuk.example.com`, and it can carry a path prefix when the Habakkuk is behind a reverse proxy. If you paste a URL with `/app/` on it, the app drops that part. The app stores the token in the OS keychain. That's the login Keychain on macOS, the Secret Service (GNOME Keyring, KWallet) on Linux, and the Credential Manager on Windows. The token is filed under the service "Habakkuk Desktop", and it's never written to the config file. Before you save, use **Test** to check the URL and token against `/api/app`.
 
-The list, the active connection and the settings are in `config.json` in the OS's per-user config folder (`~/Library/Application Support/Habakkuk Desktop/` on macOS, `%AppData%\Habakkuk Desktop\` on Windows, `~/.config/Habakkuk Desktop/` on Linux), mode 0600. `HABAKKUK_DESKTOP_CONFIG` points somewhere else. The app's log is `desktop.log` in the same folder.
+The app keeps the list, the active connection and the settings in `config.json`, with mode 0600. The file is in the OS's per-user config folder: `~/Library/Application Support/Habakkuk Desktop/` on macOS, `%AppData%\Habakkuk Desktop\` on Windows, and `~/.config/Habakkuk Desktop/` on Linux. To keep it somewhere else, set `HABAKKUK_DESKTOP_CONFIG`. The app's log is `desktop.log`, in the same folder.
 
-The habakkuk executable for a local connection is the one set on the connection, else the one bundled with the app (macOS and Linux packages include it), else `habakkuk` on `PATH`, else `~/.local/bin/habakkuk`, `/usr/local/bin/habakkuk` or `/opt/homebrew/bin/habakkuk`.
+For a local connection, the app has to find the habakkuk executable. It uses the one set on the connection if there is one. Failing that, it uses the one bundled with the app (the macOS and Linux packages include it). After that it tries `habakkuk` on your `PATH`, and last `~/.local/bin/habakkuk`, `/usr/local/bin/habakkuk` or `/opt/homebrew/bin/habakkuk`.
 
-A local Habakkuk needs an `http` section in its `config.yaml`. Without one, `habakkuk serve` has no dashboard, and the connections page says so:
+A local Habakkuk needs an `http` section in its `config.yaml`. If there isn't one, `habakkuk serve` has no dashboard, and the connections page tells you so. The section looks like this:
 
 ```yaml
 http:
@@ -56,21 +58,21 @@ http:
 
 ## What you see
 
-What follows describes the screens in words; there are no screenshots in the repository.
+This section describes each screen in words, because the repository has no screenshots.
 
-- **Main window.** The Habakkuk dashboard (overview, chat, sessions, board, schedules, memory, skills, usage, approvals, config), the same as in a browser. While a connection is coming up, the window shows the connections page with a "Connecting" status, then switches to the dashboard once Habakkuk answers. Closing the window keeps the app in the tray. On macOS the menu bar has File → New Chat (Cmd+N), Quick Ask, Connections… (Cmd+,), plus the usual Edit, View and Window menus.
-- **Connections page** (`Connections…`, or the tray). A card for the active connection with a coloured dot (green connected, amber when a channel is down, red when not connected), its channel and approval counts, and any problem in a red box ("no Habakkuk is set up in ~/.habakkuk yet: run `habakkuk setup`", "config.yaml has no http section", "The token is missing or wrong."). For a local connection, a panel shows `habakkuk serve`: its state (running, backoff, stopped, or "running outside the app"), pid, address, restart count, last exit, Start and Stop buttons, and a scrolling log. Below that are the list of connections, each with a radio button to switch to it, a badge (local, remote, or "remote, no token"), and Edit and Remove links. The add/edit form shows URL and Token fields for a remote, and HABAKKUK_HOME, executable and "only when I press Start" for a local one. Last come the settings: the hotkey, start at login, and notifications on or off.
-- **Tray / menu bar.** On macOS, the Habakkuk mark (two tablets forming an H, with the light above) as a template image, which macOS tints to match light and dark menu bars. A variant with a dot in the corner shows while approvals are waiting, the connection has a problem, or Habakkuk is not answering, and the number of waiting approvals shows next to it. On Windows and Linux the tray shows the app icon. The menu lists the status ("Connected to Home"), "Channels: 3 of 3 connected", "Approvals waiting: 2" (opens the approvals page), then Open Habakkuk, New Chat, Quick Ask (with its hotkey), a Connections submenu with one radio item per connection plus "Manage Connections…", "Pause habakkuk serve" or "Resume habakkuk serve" for a local connection, a "Start at Login" checkbox, and Quit Habakkuk.
-- **Quick ask.** Cmd+Shift+Space on macOS, Ctrl+Shift+Space elsewhere, opens a small window that floats on top in the middle of the screen. It has a text box and Send. The reply streams in under your question as the model writes it, with a grey "using exec…" line for each tool call. The final message replaces the streamed text when it arrives. Its footer says which agent you are asking, with New (a fresh conversation) and Open in Habakkuk (the same conversation in the main window's chat). Escape or clicking elsewhere hides it. Each quick ask conversation is an ordinary web conversation (`quick-...`), so it is also in the dashboard's chat list and in sessions.
-- **Notifications.** "Approval needed: exec" with the tool's summary and **Approve** and **Deny** buttons. Clicking the notification itself opens the approvals page. A reply shows as "Habakkuk replied" (or the agent's name) with the first 240 characters, and clicking it opens that conversation.
+- **Main window.** It shows the Habakkuk dashboard (overview, chat, sessions, board, schedules, memory, skills, usage, approvals, config), the same as in a browser. While a connection is coming up, you see the connections page with a "Connecting" status. The window switches to the dashboard once Habakkuk answers. When you close the window, the app stays in the tray. On macOS the menu bar has File → New Chat (Cmd+N), Quick Ask, Connections… (Cmd+,), and the usual Edit, View and Window menus.
+- **Connections page.** Open it with `Connections…`, or from the tray. It starts with a card for the active connection. The card has a coloured dot: green when connected, amber when a channel is down, red when not connected. It also shows the connection's channel and approval counts, and any problem in a red box ("no Habakkuk is set up in ~/.habakkuk yet: run `habakkuk setup`", "config.yaml has no http section", "The token is missing or wrong."). For a local connection, a panel shows `habakkuk serve`. You see its state (running, backoff, stopped, or "running outside the app"), pid, address, restart count and last exit. The panel also has Start and Stop buttons and a scrolling log. Below that is the list of connections. Each one has a radio button to switch to it, a badge (local, remote, or "remote, no token"), and Edit and Remove links. The add/edit form shows URL and Token fields for a remote connection. For a local one it shows HABAKKUK_HOME, executable and "only when I press Start". The settings come last: the hotkey, start at login, and notifications on or off.
+- **Tray / menu bar.** On macOS the icon is the Habakkuk mark (two tablets forming an H, with the light above). It's a template image, which macOS tints to match light and dark menu bars. A variant with a dot in the corner shows while approvals are waiting, the connection has a problem, or Habakkuk isn't answering. The number of waiting approvals shows next to it. On Windows and Linux the tray shows the app icon. The menu starts with the status ("Connected to Home"), "Channels: 3 of 3 connected" and "Approvals waiting: 2", which opens the approvals page. Then come Open Habakkuk, New Chat and Quick Ask (with its hotkey). A Connections submenu has one radio item per connection, plus "Manage Connections…". For a local connection there's "Pause habakkuk serve" or "Resume habakkuk serve". The menu ends with a "Start at Login" checkbox and Quit Habakkuk.
+- **Quick ask.** Press Cmd+Shift+Space on macOS, or Ctrl+Shift+Space elsewhere. A small window opens in the middle of the screen and floats on top. It has a text box and Send. The reply streams in under your question as the model writes it, and each tool call adds a grey "using exec…" line. When the final message arrives, it replaces the streamed text. The footer says which agent you're asking. It also has New (a fresh conversation) and Open in Habakkuk (the same conversation in the main window's chat). To hide the window, press Escape or click somewhere else. Each quick ask conversation is an ordinary web conversation (`quick-...`), so you'll also find it in the dashboard's chat list and in sessions.
+- **Notifications.** An approval shows as "Approval needed: exec" with the tool's summary and **Approve** and **Deny** buttons. Click the notification itself to open the approvals page. A reply shows as "Habakkuk replied" (or the agent's name) with the first 240 characters. Click it to open that conversation.
 
 ## Building
 
-You need Go (the version in `apps/desktop/go.mod`) with CGO and the platform's webview:
+To build the app yourself, you need Go (the version in `apps/desktop/go.mod`) with CGO, and your platform's webview:
 
-- **macOS** 11 or later: Xcode or the Command Line Tools.
-- **Linux**: GTK 4 and WebKitGTK 6, e.g. `sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev` on Ubuntu 24.04.
-- **Windows** 10 or 11: the WebView2 runtime (preinstalled on Windows 11). No C compiler is needed.
+- **macOS** 11 or later: you need Xcode or the Command Line Tools.
+- **Linux**: you need GTK 4 and WebKitGTK 6. On Ubuntu 24.04, for example, run `sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev`.
+- **Windows** 10 or 11: you need the WebView2 runtime, which is preinstalled on Windows 11. You don't need a C compiler.
 
 ```bash
 cd apps/desktop
@@ -79,7 +81,7 @@ go build -o habakkuk-desktop .          # a plain binary; run it from a terminal
 HABAKKUK_DESKTOP_DEBUG=1 ./habakkuk-desktop   # also logs every request to the app's local server
 ```
 
-Packages, as the release workflow makes them:
+To make the packages the way the release workflow does, run the packaging script:
 
 ```bash
 VERSION=v0.3.0 apps/desktop/scripts/package.sh darwin    # dist/Habakkuk.app (universal, bundles habakkuk), .zip and .dmg
@@ -87,25 +89,29 @@ VERSION=v0.3.0 apps/desktop/scripts/package.sh linux     # dist/Habakkuk-Desktop
 VERSION=v0.3.0 apps/desktop/scripts/package.sh windows   # dist/Habakkuk-Desktop_v0.3.0_windows_amd64.exe (Git Bash)
 ```
 
-Wails v3 apps are ordinary Go programs, so the script calls `go build` directly, with `lipo`, `iconutil`, `codesign` and `hdiutil` on macOS. It does not use the `wails3` Taskfile scaffolding. The icons come from the Habakkuk app icon (`assets/brand/app-icon-1024.png`, embedded in `internal/icon` with the menu bar template images). `go run ./cmd/icons` writes the files each package needs: the macOS `.icns` (through `iconutil`), the Windows `.ico` linked into the executable together with the application manifest (`packaging/windows/habakkuk-desktop.exe.manifest`) and version info, and the Linux PNG. `packaging/` also holds the macOS `Info.plist` and the Linux `.desktop` file. The macOS bundle ID is `ai.habakkuk.desktop`. On Linux, install by unpacking the archive, putting `habakkuk-desktop` and `habakkuk` on your `PATH`, and copying `habakkuk-desktop.desktop` to `~/.local/share/applications/` and `habakkuk-desktop.png` to `~/.local/share/icons/`.
+A Wails v3 app is an ordinary Go program, so the script calls `go build` directly. On macOS it also uses `lipo`, `iconutil`, `codesign` and `hdiutil`. It doesn't use the `wails3` Taskfile scaffolding.
 
-The release workflow (`.github/workflows/release.yml`, job `desktop`) builds all three on tag pushes, after the `binaries` job has created the release, and attaches the files to it.
+The icons come from the Habakkuk app icon, `assets/brand/app-icon-1024.png`. That file is embedded in `internal/icon` with the menu bar template images. `go run ./cmd/icons` writes the files each package needs. For macOS that's the `.icns`, made through `iconutil`. For Windows it's the `.ico`, which is linked into the executable together with the application manifest (`packaging/windows/habakkuk-desktop.exe.manifest`) and version info. For Linux it's the PNG. `packaging/` also holds the macOS `Info.plist` and the Linux `.desktop` file. The macOS bundle ID is `ai.habakkuk.desktop`.
+
+To install on Linux, unpack the archive. Put `habakkuk-desktop` and `habakkuk` on your `PATH`. Then copy `habakkuk-desktop.desktop` to `~/.local/share/applications/` and `habakkuk-desktop.png` to `~/.local/share/icons/`.
+
+The release workflow builds all three packages on tag pushes. It's the `desktop` job in `.github/workflows/release.yml`. The job runs after the `binaries` job has created the release, and attaches the files to that release.
 
 ## Unsigned builds
 
-The release builds are not signed with a developer certificate or notarized:
+The release builds aren't signed with a developer certificate, and they aren't notarized. Here's what that means on each OS:
 
-- **macOS** has an ad-hoc signature only. The first time, open it with right-click → Open, or run `xattr -dr com.apple.quarantine /Applications/Habakkuk.app`. macOS asks once whether Habakkuk may send notifications, and asks again after upgrading from a build with an older bundle ID, since it treats `ai.habakkuk.desktop` as a new app. Start at login uses `SMAppService` on macOS 13 and later (System Settings → General → Login Items shows it), a LaunchAgent before that.
-- **Windows** SmartScreen warns about an unknown publisher: More info → Run anyway.
+- **macOS** builds have an ad-hoc signature only. The first time, open the app with right-click → Open, or run `xattr -dr com.apple.quarantine /Applications/Habakkuk.app`. macOS asks once whether Habakkuk may send notifications. It asks again after you upgrade from a build with an older bundle ID, because it treats `ai.habakkuk.desktop` as a new app. Start at login uses `SMAppService` on macOS 13 and later, and System Settings → General → Login Items shows it. On earlier versions it uses a LaunchAgent.
+- **Windows** SmartScreen warns you about an unknown publisher. Choose More info → Run anyway.
 - **Linux** has nothing to sign.
 
 ## Limits
 
-- **Notifications cover the web chat only.** Replies on Telegram, Slack and the other channels are not notified, since you get them there already. Approvals are notified wherever they wait. Only the eight most recently active web conversations of the last day are followed.
-- **Notification buttons.** Approve and Deny appear on macOS (in the bundled app) and Windows, and on Linux where the notification server supports actions. A plain `go build` binary on macOS is not a bundle, so macOS refuses it native notifications; the app falls back to `osascript` banners without buttons. The fallback on Linux is `notify-send`.
-- **Global hotkey.** On Linux it needs X11, or a Wayland compositor with the GlobalShortcuts portal; elsewhere it may not register. The settings page reports a hotkey the system refused and keeps the old one.
-- **Windows** packages do not bundle `habakkuk`. Install it with the [Windows installer](../get-started/installation.md#install-script) and point a local connection at that `habakkuk.exe`, or use remote connections. Stopping a local serve there kills it rather than asking it to stop.
-- **"New Chat"** opens the dashboard's chat and presses its New chat button, since the dashboard has no address for a new chat. **"Open in Habakkuk"** from quick ask opens `#/chat/<conversation>`; the dashboard selects it once it has merged the server's conversation list.
-- **Quitting the app stops the `habakkuk serve` it started.** For an agent that must stay up (channels, schedules), run `habakkuk serve` as a service and let the app connect to it; the app never stops a serve it did not start.
-- The dashboard's own settings (theme, chat list) are kept per origin, so the app keeps its loopback port across launches. If that port is taken, it picks another and they start afresh.
-- Not tested in this repository: the Windows and Linux builds (CI builds them), notification buttons, the global hotkey and start at login on each OS. Tests cover the connection manager, the event stream client and notifier, the loopback server and proxy, and the supervisor with a fake `habakkuk` binary.
+- **Notifications cover the web chat only.** You don't get a notification for a reply on Telegram, Slack or the other channels, because you already get the reply there. You do get one for an approval, wherever it's waiting. The app follows only the eight most recently active web conversations of the last day.
+- **Notification buttons.** Approve and Deny appear on macOS (in the bundled app) and on Windows. On Linux they appear where the notification server supports actions. A plain `go build` binary on macOS isn't a bundle, so macOS refuses it native notifications. The app then falls back to `osascript` banners, which have no buttons. On Linux the fallback is `notify-send`.
+- **Global hotkey.** On Linux the hotkey needs X11, or a Wayland compositor with the GlobalShortcuts portal. Elsewhere it may not register. If the system refuses a hotkey, the settings page tells you and keeps the old one.
+- **Windows** packages don't bundle `habakkuk`. Install it with the [Windows installer](../get-started/installation.md#install-script), then point a local connection at that `habakkuk.exe`. Or use remote connections. On Windows, stopping a local serve kills it outright, without asking it to stop first.
+- **"New Chat"** opens the dashboard's chat and presses its New chat button for you, because the dashboard has no address for a new chat. **"Open in Habakkuk"** from quick ask opens `#/chat/<conversation>`. The dashboard selects that conversation once it has merged the server's conversation list.
+- **Quitting the app stops the `habakkuk serve` it started.** If your agent has to stay up (for channels or schedules), run `habakkuk serve` as a service and let the app connect to it. The app never stops a serve it didn't start.
+- The dashboard keeps its own settings (theme, chat list) per origin, so the app uses the same loopback port on every launch. If that port is taken, the app picks another one and those settings start afresh.
+- Some things aren't tested in this repository: the Windows and Linux builds (CI builds them), notification buttons, the global hotkey, and start at login on each OS. The tests do cover the connection manager, the event stream client and notifier, the loopback server and proxy, and the supervisor with a fake `habakkuk` binary.

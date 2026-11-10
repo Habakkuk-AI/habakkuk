@@ -1,10 +1,10 @@
 ---
 title: Skills
-description: "Skills are SKILL.md folders an agent loads before a task it covers: where they live, how to run and write them, installing outside skills, and the curator."
+description: "A skill is a folder with a SKILL.md that an agent loads before a task: where skills live, how to run, write and install them, and what the curator does."
 order: 4
 ---
 
-A skill is a folder with a `SKILL.md` (frontmatter `name` and `description`, then instructions) and optional supporting files. Agents get the `skills` toolset by default.
+A skill is a set of instructions that an agent loads before a task the skill covers. This page shows where skills live, how to use and install them, and what the curator does. On disk, a skill is a folder with a `SKILL.md` and optional supporting files. The file starts with frontmatter that has a `name` and a `description`, and the instructions come after it. Agents get the `skills` toolset by default.
 
 ```markdown
 ---
@@ -15,7 +15,7 @@ description: Write the weekly report from the board and the week's sessions.
 1. ...
 ```
 
-The folder name is the skill name and must be lower-case letters, digits and hyphens (up to 64 characters).
+The folder name is the skill's name. It must be made of lower-case letters, digits and hyphens, and it can be up to 64 characters long.
 
 ## Where skills live
 
@@ -25,25 +25,27 @@ The folder name is the skill name and must be lower-case letters, digits and hyp
 | `$HABAKKUK_HOME/agents/<agent>/skills/<name>/` | That agent only; wins on a name clash |
 | An enabled plugin's skills folder | Every agent, below the two above |
 
-Each new session's prompt lists every skill's description, as a snapshot taken when the session starts. Habakkuk loads a skill with `skill_view` before a task it covers, reads its supporting files with `skill_file`, and can write its own with `skill_save` (the previous version is kept as `SKILL.md.bak`).
+The prompt of each new session lists the description of every skill. The list is a snapshot taken when the session starts. Before a task that a skill covers, Habakkuk loads the skill with `skill_view`. It reads the skill's supporting files with `skill_file`. It can also write skills of its own with `skill_save`, which keeps the previous version as `SKILL.md.bak`.
 
 ## Using skills
 
-- **In a chat**, `/skills` lists them, `/skill NAME [request]` runs one explicitly, and `/learn <topic, URL or path>` has the agent study a source and write a new skill.
-- **From the terminal**, `habakkuk run -skill NAME [request]` does the same, and `habakkuk skills [-agent A]` lists the skills an agent can use, where each comes from, and whether it is approved.
+- **In a chat**, `/skills` lists them and `/skill NAME [request]` runs one explicitly. `/learn <topic, URL or path>` has the agent study a source and write a new skill.
+- **From the terminal**, `habakkuk run -skill NAME [request]` does the same. `habakkuk skills [-agent A]` lists the skills an agent can use, where each one comes from, and whether it's approved.
 
 ## Installing skills from elsewhere
+
+Install a skill, read it, then approve it:
 
 ```bash
 habakkuk skills install github:owner/repo/skill     # also URLs, local paths and registry names
 habakkuk skills approve NAME                         # after reading it
 ```
 
-Installed skills are untrusted until `habakkuk skills approve`. A skill that ships scripts stays disabled until then; one without scripts loads with a caution in front of it. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
+An installed skill is untrusted until you run `habakkuk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
 
 ## The curator
 
-With `skills.curate` set, `habakkuk serve` merges near-duplicate skills the agents wrote and archives ones not loaded for `skills.archive_after_days` (default 90), with backups.
+The curator tidies up the skills that agents write. When `skills.curate` is set, `habakkuk serve` merges near-duplicate skills the agents wrote. It also archives skills that haven't been loaded for `skills.archive_after_days` (default 90). It keeps backups.
 
 ```yaml
 skills:
@@ -59,6 +61,6 @@ habakkuk skills restore NAME                    # undo a merge or archive
 habakkuk memory pin skill:NAME                  # keep the curator away from one skill
 ```
 
-Every change to an agent's own skills is in the [memory history](memory.md#memory-history-and-undo).
+Every change to an agent's own skills is recorded in the [memory history](memory.md#memory-history-and-undo).
 
-[Architecture: skills](../reference/architecture.md#skills) has the details.
+For the details, see [Architecture: skills](../reference/architecture.md#skills).

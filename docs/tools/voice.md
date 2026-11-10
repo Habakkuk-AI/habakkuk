@@ -1,16 +1,18 @@
 ---
 title: Voice
-description: "Talk to Habakkuk out loud: Live mode in the dashboard, habakkuk talk on a laptop or Raspberry Pi, voice notes in chats, and spoken replies."
+description: "Talk to Habakkuk out loud through Live mode in the dashboard, habakkuk talk on a laptop or Raspberry Pi, and voice notes with spoken replies in chats."
 order: 4
 ---
 
-Two ways to talk to Habakkuk out loud: Live mode in the dashboard, and `habakkuk talk` on the machine itself. Both hand the actual work to the agent with all its tools. Chat apps add a third: voice notes in, and voice notes out.
+You can talk to Habakkuk out loud. There are two ways to do it: Live mode in the dashboard, and `habakkuk talk` on the machine itself. Both hand the actual work to the agent, which has all its tools. Chat apps add a third way. You send a voice note, and a voice note can come back.
 
-The speech providers are configured on the [Speech](../models/speech.md) page.
+The [Speech](../models/speech.md) page explains how to configure the speech providers.
 
 ## Live mode in the dashboard
 
-A `realtime` section adds a **Live** button to the chat at `/app/`. The browser talks to a realtime speech model over WebRTC (interrupt it any time), using a short-lived secret Habakkuk mints, so your API key never reaches the page. When you ask for something real, the voice model calls Habakkuk, which runs a normal turn and hands back the answer to be spoken. What both of you say lands in the chat and in the conversation's session.
+Add a `realtime` section and the chat at `/app/` gets a **Live** button. Your browser then talks to a realtime speech model over WebRTC, and you can interrupt it at any time. The browser connects with a short-lived secret that Habakkuk mints, so your API key never reaches the page.
+
+When you ask for something real, the voice model calls Habakkuk. Habakkuk runs a normal turn and hands back the answer to be spoken. Everything the two of you say goes into the chat and into the conversation's session.
 
 ```yaml
 realtime:
@@ -20,16 +22,16 @@ realtime:
   key_env: OPENAI_API_KEY   # the default
 ```
 
-Other settings: `base_url`, `transcription` (the model that writes your words into the log), `instructions` (added to the voice model's own) and `ttl` (how long a minted secret lasts, default 10m).
+There are four more settings: `base_url`, `transcription` (the model that writes your words into the log), `instructions` (added to the voice model's own instructions) and `ttl` (how long a minted secret lasts, default 10m).
 
 > [!NOTE]
-> The page needs a secure context for the microphone: `localhost`, or HTTPS (for example `habakkuk expose tailscale`). The [desktop app](../interfaces/desktop-app.md) serves it over loopback, so the microphone works there even when Habakkuk itself is plain `http`.
+> The page needs a secure context to use the microphone. That means `localhost`, or HTTPS (for example `habakkuk expose tailscale`). The [desktop app](../interfaces/desktop-app.md) serves the page over loopback, so the microphone works there even when Habakkuk itself is on plain `http`.
 
-When the agent wants approval for a step, the voice model asks you and passes on your yes or no. A request that runs past four minutes tells you the answer will appear in the chat.
+If the agent wants approval for a step, the voice model asks you and passes on your yes or no. If a request runs past four minutes, you're told that the answer will appear in the chat.
 
 ## `habakkuk talk` on a laptop or a Raspberry Pi
 
-A local loop through `ffmpeg`. It listens on the default microphone, notices when you stop talking, transcribes with your `transcription` provider, runs the turn, and speaks the reply with `tts` (played with `afplay`, `ffplay`, `paplay` or `aplay`). Start talking while it speaks and it stops.
+This one is a local loop that runs through `ffmpeg`. It listens on the default microphone and notices when you stop talking. It transcribes what you said with your `transcription` provider and runs the turn. Then it speaks the reply with `tts`, played with `afplay`, `ffplay`, `paplay` or `aplay`. If you start talking while it speaks, it stops.
 
 ```bash
 habakkuk talk                          # every utterance is a request
@@ -49,17 +51,17 @@ talk:                     # all optional
   barge_in: true          # talk over a reply to stop it
 ```
 
-`-no-wake` ignores the configured wake phrases for one run.
+Pass `-no-wake` to ignore the configured wake phrases for one run.
 
-- The wake phrase is heard by transcribing every utterance, so in wake mode each one costs a transcription call. An offline wake-word engine is future work.
-- Use headphones if you can. There is no echo cancellation, so while Habakkuk speaks you have to talk a little louder to interrupt it.
-- Approvals are answered at the keyboard.
+- Habakkuk hears the wake phrase by transcribing every utterance. In wake mode, that means each one costs a transcription call. An offline wake-word engine is future work.
+- Use headphones if you can. There's no echo cancellation, so you have to talk a little louder to interrupt Habakkuk while it speaks.
+- You answer approvals at the keyboard.
 
 ## Voice notes and spoken replies in chats
 
-Voice notes sent to the bot are transcribed with the `transcription:` provider and become ordinary messages.
+When you send the bot a voice note, Habakkuk transcribes it with the `transcription:` provider. From there it's an ordinary message.
 
-The `speak` tool, and voice replies, use `tts:`. Turn voice replies on per channel:
+Voice replies and the `speak` tool both use `tts:`. You turn voice replies on for each channel:
 
 ```yaml
 channels:
@@ -70,8 +72,8 @@ channels:
     voice_text: true        # also send the text (default)
 ```
 
-- Voice notes go out as Ogg Opus. Other audio is converted with `ffmpeg` when it is installed, or sent as a plain audio file.
-- Telegram, WhatsApp (linked device and Cloud API) and Feishu show them as voice notes; other platforms get an audio file.
-- The spoken copy is stripped of Markdown. A reply longer than `tts.max_chars` (default 2000) stays text only, and if speaking fails, the text goes instead.
+- Voice notes go out as Ogg Opus. Audio in another format is converted with `ffmpeg` when that's installed. Otherwise it's sent as a plain audio file.
+- Telegram, WhatsApp (linked device and Cloud API) and Feishu show them as voice notes. Other platforms get an audio file.
+- Markdown is stripped from the spoken copy. A reply longer than `tts.max_chars` (default 2000) stays text only. If speaking fails, the text is sent in its place.
 
-[Architecture: media](../reference/architecture.md#media) describes Live mode, `habakkuk talk` and speech in depth.
+For Live mode, `habakkuk talk` and speech in depth, see [Architecture: media](../reference/architecture.md#media).

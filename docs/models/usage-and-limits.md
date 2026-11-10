@@ -1,20 +1,22 @@
 ---
 title: Usage and limits
-description: "Tokens and cost by model, agent and session, adding prices, and hard daily, monthly and per-turn spending caps for the install and each agent."
+description: "See tokens and cost by model, agent and session, add prices, and set hard daily, monthly and per-turn spending caps for the install and each agent."
 order: 5
 ---
 
+You can see what your model calls cost, and put a hard cap on that cost. Come here when you want to check your spend or keep an agent from running up a bill.
+
 ## Usage and cost
 
-Every model call's tokens (input, output, cache read and write) are recorded with its provider, model, agent and session in `usage.db`.
+Habakkuk records the tokens of every model call in `usage.db`: input, output, cache read and write. Each record also has the call's provider, model, agent and session.
 
 ```bash
 habakkuk usage [-days 30] [-agent A] [-session S]   # totals and cost by model and by agent, and spend against the limits
 ```
 
-In a chat, `/usage` shows the current conversation and `/budget` the spend against the limits.
+In a chat, send `/usage` to see the current conversation. Send `/budget` to see the spend against the limits.
 
-Costs come from a built-in table of list prices (standard tier, US dollars per million tokens), with long-prompt tiers where providers have them. Calls through a [subscription login](subscriptions.md) count as $0. Add or correct prices in config:
+Habakkuk works out costs from a built-in table of list prices. The prices are standard tier, in US dollars per million tokens, with long-prompt tiers where providers have them. A call made through a [subscription login](subscriptions.md) counts as $0. You can add or correct prices in config:
 
 ```yaml
 pricing:
@@ -24,7 +26,7 @@ pricing:
 
 ## Spending limits
 
-Hard caps on what model calls cost, so a schedule or a runaway tool loop cannot run up a bill overnight. Set them for the whole install and per agent, in US dollars (numbers or strings: `5`, `"5.00"`):
+Spending limits are hard caps on what your model calls cost. With them in place, a schedule or a runaway tool loop can't run up a bill overnight. You can set them for the whole install and for each agent. Amounts are in US dollars, written as numbers or strings (`5`, `"5.00"`):
 
 ```yaml
 timezone: America/Toronto   # days start at 00:00 here, months on the 1st
@@ -42,25 +44,25 @@ agents:
 
 ### How limits are enforced
 
-- **Every model call is checked first**: turns, sub-agents, compaction, automatic titles, the approval reviewer, memory review and meeting notes all go through the same router, which asks the limits before sending. Once a limit is reached the call is not sent. A call already under way is not cut off, so spend can pass a limit by what the calls running at that moment cost, and then stops.
-- **Spend is kept in memory**, loaded from `usage.db` at start and updated as each call finishes, so the check costs nothing measurable. Prices are the ones `habakkuk usage` uses.
-- **Who pays.** A call counts toward the agent that made it and toward the install. A sub-agent's calls count toward the sub-agent's daily and monthly limits, and toward the per-turn limit of the turn that delegated to it.
-- **Changing limits** in `config.yaml` applies within seconds, without a restart.
+- **Every model call is checked first.** Turns, sub-agents, compaction, automatic titles, the approval reviewer, memory review and meeting notes all go through the same router. The router checks the limits before it sends a call. Once a limit is reached, the call isn't sent. A call that's already under way isn't cut off, though. So spend can pass a limit by what the calls running at that moment cost, and then it stops.
+- **Spend is kept in memory.** Habakkuk loads it from `usage.db` at start and updates it as each call finishes, so the check costs nothing measurable. The prices are the same ones `habakkuk usage` uses.
+- **Who pays.** Each call counts toward the agent that made it, and also toward the install. A sub-agent's calls count toward the sub-agent's own daily and monthly limits. They also count toward the per-turn limit of the turn that delegated to it.
+- **Changing limits** doesn't need a restart. Edit them in `config.yaml` and the change applies within seconds.
 
 ### What you see
 
-- **A capped turn ends cleanly** with a reply saying which limit is used up, when it resets and where to raise it:
+- **A capped turn ends cleanly.** You get a reply that says which limit is used up, when it resets and where to raise it:
 
   > Paused: the daily budget of $5.00 for agent habakkuk is used up; it resets at 00:00 America/Toronto. Raise it with agents.habakkuk.budget.daily in config.yaml.
 
-  The job finishes; it is not retried. A per-turn limit stops only that turn; the next message starts a fresh allowance.
-- **Background work tells you once.** A scheduled task whose agent is out of budget is skipped without starting, and its chat gets one notice per limit and period; later skips are only logged. A board card is blocked with the reason. Memory review is skipped and tried again later.
-- **Warning at 80%.** When a daily or monthly limit passes 80%, the chat whose call crossed it gets one warning per period (the log, when there is no chat).
+  The job finishes, and it isn't retried. A per-turn limit stops only that turn. Your next message starts a fresh allowance.
+- **Background work tells you once.** If a scheduled task's agent is out of budget, the task is skipped without starting. Its chat gets one notice per limit and period, and later skips are only logged. A board card is blocked with the reason. Memory review is skipped, then tried again later.
+- **Warning at 80%.** When a daily or monthly limit passes 80%, the chat whose call crossed it gets one warning per period. If there's no chat, the warning goes to the log.
 
 ### Unknown prices
 
-A model missing from the price table counts as $0, with one warning per model in the log; add it under `pricing:`. With `unknown_price: block`, calls to such models are refused while any limit applies, and the next model in the chain is tried.
+If a model is missing from the price table, it counts as $0, and the log gets one warning per model. To fix that, add the model under `pricing:`. You can also set `unknown_price: block`. Then, while any limit applies, calls to such models are refused and the next model in the chain is tried.
 
 ### Checking spend
 
-See spend against the limits with `habakkuk usage` (today and this month for the install and each agent), `/budget` in a chat (this conversation's agent and the install), or `GET /api/budget` ([HTTP API](../reference/api.md#get-apibudgetagent)).
+There are three places to see spend against the limits. Run `habakkuk usage` for today and this month, for the install and each agent. Send `/budget` in a chat for this conversation's agent and the install. Or call `GET /api/budget` (see [HTTP API](../reference/api.md#get-apibudgetagent)).

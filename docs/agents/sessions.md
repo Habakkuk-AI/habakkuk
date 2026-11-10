@@ -1,21 +1,21 @@
 ---
 title: Sessions and chat commands
 nav_title: Sessions
-description: "How conversations map to sessions: idle timeouts, titles, compaction, fork and rewind, standing goals, export and search, and the chat commands that steer a turn."
+description: "How conversations become sessions, with idle timeouts, titles, compaction, fork and rewind, standing goals, export, search and the commands that steer a turn."
 order: 8
 ---
 
-A conversation maps to a session: the history the model sees. A chat channel starts a fresh session after `session_idle` of silence (default 24 hours; the web chat never), or when you send `/new`.
+Habakkuk keeps a history for each conversation, and a handful of chat commands let you steer a turn. Each conversation maps to a session, which is the history the model sees. A chat channel starts a fresh session after `session_idle` of silence. The default is 24 hours, and the web chat never starts one this way. A fresh session also starts when you send `/new`.
 
 ## Messages from elsewhere in the same chat
 
-A chat's session holds the turns that chat started. Other messages land in the same chat too:
+A chat's session holds the turns that the chat itself started. Other messages land in the same chat too:
 
-- the result of a [scheduled task](schedules.md), which runs in its own session, including a script schedule with `-on-output deliver` or `agent`;
-- another agent's report or `message_home` post, when this chat is its [home chat](multi-agent.md#teams-and-home-chats);
-- a background task's result, a board update, `habakkuk send` and the MCP `habakkuk_send` tool.
+- the result of a [scheduled task](schedules.md), which runs in its own session (this includes a script schedule with `-on-output deliver` or `agent`);
+- a report or `message_home` post from another agent, when this chat is that agent's [home chat](multi-agent.md#teams-and-home-chats);
+- the result of a background task, a board update, or something sent with `habakkuk send` or the MCP `habakkuk_send` tool.
 
-Habakkuk keeps a note of each one, in `state.db`, for the chat it went to: the same channel account, chat and thread. On your next message, the agent that answers the chat sees the notes it has not seen yet before your words, like this:
+Habakkuk keeps a note of each of these in `state.db`, for the chat it went to. That means the same channel account, chat and thread. When you send your next message, the agent that answers the chat sees the notes it hasn't seen yet, placed before your words. It looks like this:
 
 ```text
 [Earlier in this chat, at 18:44, your scheduled task "Inbox check" sent: "3 new emails, 1 needs an answer today."]
@@ -23,16 +23,18 @@ Habakkuk keeps a note of each one, in `state.db`, for the chat it went to: the s
 how did you do that?
 ```
 
-So "yes" or "how did you do that?" is read against the message you are answering, even when that message came from the agent's own scheduled run.
+That way, a reply such as "yes" or "how did you do that?" is read against the message you're answering. This works even when that message came from the agent's own scheduled run.
 
-- **Once each.** A note is shown to one turn, then marked seen. If that turn crashes before its message is saved, the retry shows the same notes, so none is lost and none appears twice.
-- **Never mid-turn.** Notes join your next message. They are never inserted into a turn that is running.
-- **Bounded.** Each note is cut to 1,200 characters and a turn takes at most 6,000 characters of notes. The newest are kept, and a line says how many older ones were left out.
-- **Not the chat's own replies.** What the chat's own session sent is already in its history and leaves no note.
+- **Once each.** A note is shown to one turn and then marked as seen. If that turn crashes before its message is saved, the retry shows the same notes. So no note is lost and no note appears twice.
+- **Never mid-turn.** Notes arrive with your next message. Habakkuk never inserts them into a turn that's already running.
+- **Bounded.** Each note is cut to 1,200 characters, and one turn takes at most 6,000 characters of notes. Habakkuk keeps the newest notes and adds a line that says how many older ones it left out.
+- **Not the chat's own replies.** Anything the chat's own session sent is already in its history, so it leaves no note.
 
-Notes are pruned with the rest of `state.db`, following transcript retention.
+Notes are pruned together with the rest of `state.db`, and they follow transcript retention.
 
 ## Steering a turn
+
+Send these commands in the chat to steer the agent:
 
 | Command | What it does |
 |---|---|
@@ -46,37 +48,37 @@ Notes are pruned with the rest of `state.db`, following transcript retention.
 | `/personality <name>\|off` | Switch persona for this conversation |
 | `/undo` | Put back the files the latest turn changed; repeat to go further back |
 
-The [CLI reference](../reference/cli.md#chat-commands) lists every chat command.
+For every chat command, see the [CLI reference](../reference/cli.md#chat-commands).
 
 ## Standing goals
 
-`/goal [-turns N] <text>` keeps the agent working on a goal turn after turn (default 10 turns, at most 100) until it replies that the goal is done or blocked. `/goal` shows the goal and the turns used; `/goal off` stops it after the current step. If the agent needs you, the goal pauses; answer, then send `/goal` again to resume.
+A standing goal keeps the agent working turn after turn. Send `/goal [-turns N] <text>` to set one. The agent keeps going until it replies that the goal is done or blocked. It gets 10 turns by default, and at most 100. `/goal` on its own shows the goal and the turns used. `/goal off` stops the goal after the current step. If the agent needs you, the goal pauses. Answer it, then send `/goal` again to resume.
 
 ## Titles
 
-A session's title starts as its first message. After the first turn, a short title is written in the background by `title_model` (default the agent's `fast_model`). `/title [text]` shows or sets it.
+A session's title starts out as its first message. After the first turn, `title_model` writes a short title in the background. By default that's the agent's `fast_model`. Send `/title [text]` to show the title or set it.
 
 ## Compaction
 
-Long sessions are compacted without rewriting anything: older messages are summarized into a record, and the model is sent the summary plus the recent turns. The full transcript stays for `habakkuk show`.
+When a session gets long, Habakkuk compacts it. Nothing is rewritten. Older messages are summarized into a record, and the model is sent that summary plus the recent turns. The full transcript is still there for `habakkuk show`.
 
-- It happens on its own once a prompt reaches the agent's `compact_at` (default 600000 tokens on `anthropic` providers, 150000 otherwise; `-1` turns it off).
-- `/compact` or `habakkuk sessions compact ID` does it now.
+- Compaction happens on its own once a prompt reaches the agent's `compact_at`. The default is 600000 tokens on `anthropic` providers and 150000 otherwise. `-1` turns it off.
+- To compact right away, send `/compact` or run `habakkuk sessions compact ID`.
 
 ## Fork and rewind
 
-- `/fork` copies the session into a new one, to try another direction.
-- `/rewind [N]` does the same without your last N messages (default 1).
+- `/fork` copies the session into a new one, so you can try another direction.
+- `/rewind [N]` does the same, but leaves out your last N messages (default 1).
 
-The original stays as it was in both cases.
+In both cases, the original session stays as it was.
 
 ## Export and search
 
-- `/export` sends the transcript as a Markdown file.
-- `habakkuk sessions export ID -format md|json|html [-o FILE]` writes it from the terminal.
+- `/export` sends you the transcript as a Markdown file.
+- `habakkuk sessions export ID -format md|json|html [-o FILE]` writes the transcript from the terminal.
 - `habakkuk sessions search [-agent A] QUERY` searches every session.
-- `habakkuk sessions archive|unarchive|rm ID...` manages them; `habakkuk sessions archived` lists archived ones.
-- The `session_search` tool lets an agent search its own past sessions.
+- `habakkuk sessions archive|unarchive|rm ID...` manages sessions, and `habakkuk sessions archived` lists the archived ones.
+- An agent can search its own past sessions with the `session_search` tool.
 
 ```bash
 habakkuk sessions               # recent sessions
@@ -85,6 +87,6 @@ habakkuk show <session>         # print a transcript
 
 ## Sub-agents
 
-`/subagents` lists the sub-agent tasks running for this conversation, and `/subagents stop ID` cancels one. See [Delegation](multi-agent.md#delegation).
+Send `/subagents` to list the sub-agent tasks running for this conversation. `/subagents stop ID` cancels one. See [Delegation](multi-agent.md#delegation).
 
-[Architecture: compaction](../reference/architecture.md#compaction) and [session tools](../reference/architecture.md#session-tools) have the details.
+For the details, see [Architecture: compaction](../reference/architecture.md#compaction) and [session tools](../reference/architecture.md#session-tools).

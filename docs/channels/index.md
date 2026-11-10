@@ -4,7 +4,7 @@ description: "Every chat app Habakkuk can talk on, how each one connects, how mu
 order: 2
 ---
 
-A channel is one account on one chat platform: a Telegram bot, a Slack app, a WhatsApp agent. Channels live under `channels:` in `config.yaml`, keyed by an account name you choose, with a `type`. `habakkuk serve` runs them, and `habakkuk channels` (or `/status` in a chat) shows their health.
+Every chat app Habakkuk can talk on is listed below, with advice on which one to start with. A channel is one account on one chat platform, such as a Telegram bot, a Slack app or a WhatsApp agent. You define channels under `channels:` in `config.yaml`. Each one sits under an account name you choose, and has a `type`. `habakkuk serve` runs them. To see their health, run `habakkuk channels` or send `/status` in a chat.
 
 ```yaml
 channels:
@@ -14,11 +14,11 @@ channels:
 ```
 
 > [!TIP]
-> **Start with a WhatsApp agent or Telegram.** Both connect by polling, so they need no public URL, and `habakkuk setup` checks the key or token for you. A WhatsApp agent takes about a minute; a Telegram bot takes two.
+> **Start with a WhatsApp agent or Telegram.** Both connect by polling, so you don't need a public URL, and `habakkuk setup` checks the key or token for you. A WhatsApp agent takes about a minute to set up. A Telegram bot takes two.
 
 ## All channels
 
-"Public URL" means the platform calls Habakkuk over the internet, so `habakkuk serve` needs an HTTPS address it can reach (see [Webhook channels](settings.md#webhook-channels)).
+In the table, "Public URL" means the platform calls Habakkuk over the internet. For those channels, `habakkuk serve` needs an HTTPS address the platform can reach. See [Webhook channels](settings.md#webhook-channels).
 
 | Channel | `type` | Connects by | Public URL | Setup |
 |---|---|---|---|---|
@@ -52,25 +52,25 @@ channels:
 
 ## What has been tested live
 
-Three channels have run against the real service so far:
+So far, three channels have run against the real service:
 
 - **WhatsApp linked device** (`whatsapp`), linked to a real account.
 - **WhatsApp agents** (`whatsappagent`).
-- **Slack** over Socket Mode (`slack`), including two Slack apps side by side.
+- **Slack** over Socket Mode (`slack`), including two Slack apps running side by side.
 
-The web chat is Habakkuk's own HTTP server, so its tests exercise the real thing.
+The web chat is Habakkuk's own HTTP server, so its tests already run against the real thing.
 
-Every other channel in the table is built against the platform's documented API and tested here with a fake platform server. None of them has run against the real service yet. Expect rough edges there, and please [report what you find](https://github.com/habakkuk-ai/habakkuk/issues/new/choose) with the output of `habakkuk logs -level warn -since 1h`.
+Every other channel in the table is built from the platform's documented API, and tested here against a fake platform server. None of them has run against the real service yet, so expect rough edges. If you hit one, please [report what you find](https://github.com/habakkuk-ai/habakkuk/issues/new/choose) and include the output of `habakkuk logs -level warn -since 1h`.
 
 ## How channels work
 
-- **Who may talk.** Direct messages from someone not in `allow_from` get a pairing code that you approve with `habakkuk pair CODE`. See [Access, groups and delivery](settings.md#who-may-talk-to-the-bot).
-- **Groups.** In groups the bot answers only when addressed (a mention, a reply, or the platform's equivalent). `groups: all` answers everything; `off` ignores groups.
-- **One conversation, one session.** Each chat (and each thread, where the platform has them) is a conversation with its own session. A fresh session starts after 24 hours of silence or when you send `/new`.
-- **Exactly once.** A redelivered message never runs twice, a reply is delivered once, and a long reply resumes at the first unsent chunk after a crash.
-- **Replies keep their context.** When you reply to (quote) a message, the agent sees what you quoted. Messages that reached the chat from elsewhere, such as a scheduled task's result or another agent's question, are shown to the agent on your next message. See [Access, groups and delivery](settings.md#replies-and-quotes) and [Sessions](../agents/sessions.md#messages-from-elsewhere-in-the-same-chat).
-- **Supervised.** Every adapter runs under a supervisor that restarts it with backoff and tears down a connection that stays silent too long.
-- **Several at once.** Run as many channels as you like, of the same or different types, and route each one (or each conversation) to a different [agent](../agents/multi-agent.md#who-answers-a-conversation).
+- **Who may talk.** When someone who isn't in `allow_from` sends a direct message, they get a pairing code. You approve it with `habakkuk pair CODE`. See [Access, groups and delivery](settings.md#who-may-talk-to-the-bot).
+- **Groups.** In a group, the bot answers only when you address it. That means a mention, a reply, or the platform's equivalent. With `groups: all` it answers everything, and with `off` it ignores groups.
+- **One conversation, one session.** Each chat is a conversation with its own session. So is each thread, on platforms that have threads. A fresh session starts after 24 hours of silence, or when you send `/new`.
+- **Exactly once.** If a platform delivers a message again, it doesn't run a second time. Each reply is delivered once. After a crash, a long reply resumes at the first chunk that wasn't sent.
+- **Replies keep their context.** When you reply to a message (quote it), the agent sees what you quoted. Some messages reach the chat from elsewhere, such as a scheduled task's result or another agent's question. The agent sees those on your next message. See [Access, groups and delivery](settings.md#replies-and-quotes) and [Sessions](../agents/sessions.md#messages-from-elsewhere-in-the-same-chat).
+- **Supervised.** Every adapter runs under a supervisor. The supervisor restarts the adapter with backoff, and tears down a connection that stays silent too long.
+- **Several at once.** You can run as many channels as you like, of the same type or different types. You can also route each channel, or each conversation, to a different [agent](../agents/multi-agent.md#who-answers-a-conversation).
 
 ## Next steps
 

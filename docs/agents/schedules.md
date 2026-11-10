@@ -1,16 +1,16 @@
 ---
 title: Schedules
-description: "Scheduled prompts and scripts: cron expressions, intervals and one-off times, at most one run per slot, script schedules that skip the model, and where results go."
+description: "Run prompts and scripts on a timer: cron expressions, intervals, one-off times, at most one run per slot, scripts that skip the model, and where results go."
 order: 5
 ---
 
-Schedules run an agent on a timer. They need `habakkuk serve` running: it polls the schedules every 15 seconds.
+A schedule runs an agent on a timer. This page shows how to create one, how its runs behave, and how to schedule a script in place of a prompt. Schedules need `habakkuk serve` running, because it polls them every 15 seconds.
 
 ## Creating a schedule
 
-Ask in a chat ("every weekday at 8, summarise my inbox"), and the agent creates the schedule with the `schedule_create` tool. Results go to the chat the schedule was created from.
+You can ask in a chat, for example "every weekday at 8, summarise my inbox". The agent creates the schedule with the `schedule_create` tool. Results go to the chat where the schedule was created.
 
-Or manage them from the terminal:
+You can also manage schedules from the terminal:
 
 ```bash
 habakkuk schedules                                  # list
@@ -18,7 +18,7 @@ habakkuk schedules add -agent habakkuk -name standup -when "0 9 * * 1-5" -prompt
 habakkuk schedules pause|resume|rm|run ID
 ```
 
-`-when` takes:
+`-when` takes one of these forms:
 
 | Form | Example |
 |---|---|
@@ -26,37 +26,37 @@ habakkuk schedules pause|resume|rm|run ID
 | An interval | `"@every 30m"` |
 | One time | `"at 2026-12-24 18:00"`, or with a zone: `"at 2026-12-24T23:00:00Z"` |
 
-Times are in the config's `timezone` (default the server's). `schedules add` prints the first run with its zone, and the UTC time when that zone is another one:
+Times are read in the config's `timezone`. If you haven't set one, that's the server's time zone. `schedules add` prints the first run with its zone. When that zone isn't UTC, it prints the UTC time too:
 
 ```
 sch_4f1c scheduled; first run Mon 2026-11-09 17:57 America/Toronto (22:57 UTC)
 The time was read in America/Toronto, the config timezone. For another zone, give an offset: at 2026-11-09T17:57:00Z is UTC.
 ```
 
-`-to` takes a `CHANNEL:CHAT[:THREAD]` target, as `habakkuk send` does. `habakkuk schedules run ID` queues an extra run now.
+`-to` takes a `CHANNEL:CHAT[:THREAD]` target, the same as `habakkuk send`. To queue an extra run right now, use `habakkuk schedules run ID`.
 
-`habakkuk schedules` shows each schedule's last result: `started` while a run is going, then `done`, `failed: <reason>`, or a script's own status. A one-off that has run shows as `ran once`.
+`habakkuk schedules` shows the last result of each schedule. That's `started` while a run is going. Afterwards it's `done`, `failed: <reason>`, or a script's own status. A one-off schedule that has run shows as `ran once`.
 
 ## How runs work
 
-- **At most once per slot.** For each due slot the scheduler enqueues a job whose ID is the schedule plus the slot time, so a slot runs at most once even with several processes polling or a crash in between.
-- **No late runs.** A slot more than an hour late (Habakkuk was down) is skipped, not run late.
-- **Fresh sessions.** Each run is a fresh session. What it sends to a chat is still shown to the agent that answers that chat on your next message there, so you can ask about it. See [Sessions](sessions.md#messages-from-elsewhere-in-the-same-chat).
-- **Unattended.** Anything that needs approval is denied unless the agent has an approval reviewer (`approvals: reviewer` or `reviewer_then_human`; see [Permissions and approvals](approvals.md#approvals)).
-- **Budgets.** A scheduled task whose agent is out of budget is skipped without starting, and its chat gets one notice per limit and period. See [Spending limits](../models/usage-and-limits.md#spending-limits).
+- **At most once per slot.** A slot is one time the schedule comes due. For each due slot, the scheduler queues a job whose ID is the schedule plus the slot time. That's why a slot runs at most once, even when several processes are polling or there's a crash in between.
+- **No late runs.** If a slot is more than an hour late because Habakkuk was down, it's skipped. Habakkuk doesn't run it late.
+- **Fresh sessions.** Each run gets a fresh session. Whatever the run sends to a chat is still shown to the agent that answers that chat, on your next message there. So you can ask about it. See [Sessions](sessions.md#messages-from-elsewhere-in-the-same-chat).
+- **Unattended.** Anything that needs approval is denied, unless the agent has an approval reviewer (`approvals: reviewer` or `reviewer_then_human`). See [Permissions and approvals](approvals.md#approvals).
+- **Budgets.** If the agent is out of budget, the scheduled task is skipped before it starts. Its chat gets one notice per limit and period. See [Spending limits](../models/usage-and-limits.md#spending-limits).
 
 ## Script schedules
 
-Script schedules run a command instead of a prompt. Use them for frequent jobs (sync a ledger, check an inbox, send reminders) where a model call per run would be slow and costly.
+A script schedule runs a command where an ordinary schedule runs a prompt. Use one for frequent jobs, such as syncing a ledger, checking an inbox or sending reminders, where a model call on every run would be slow and costly.
 
 ```bash
 habakkuk schedules add -agent habakkuk -name inbox -when "@every 10m" \
   -run ./check-inbox.sh -on-output deliver -timeout 2m -to telegram:123456789
 ```
 
-- **Who can add one.** Only the owner, through the CLI. `schedule_create` has no command field and refuses one, so an agent cannot turn scheduling into unattended shell access.
-- **Running.** The command runs with `/bin/sh -c` (PowerShell on Windows) in the workdir (`-workdir`, default the agent's workspace). It gets the environment plus `$HABAKKUK_HOME/.env` and `HABAKKUK_AGENT`, `HABAKKUK_SCHEDULE_ID` and `HABAKKUK_SCHEDULE_NAME`. A timeout (default 120s) kills everything it started.
-- **Output.** Empty stdout, or a line that is exactly `[SILENT]`, means nothing to say. Otherwise `-on-output` decides:
+- **Who can add one.** Only the owner can, through the CLI. `schedule_create` has no command field and refuses one. That keeps an agent from turning scheduling into unattended shell access.
+- **Running.** The command runs with `/bin/sh -c` (PowerShell on Windows) in the workdir. You set the workdir with `-workdir`, and the default is the agent's workspace. The command gets the environment plus `$HABAKKUK_HOME/.env`, along with `HABAKKUK_AGENT`, `HABAKKUK_SCHEDULE_ID` and `HABAKKUK_SCHEDULE_NAME`. If the command hits the timeout (default 120s), everything it started is killed.
+- **Output.** Empty stdout means the script has nothing to say. So does a line that's exactly `[SILENT]`. Otherwise `-on-output` decides what happens:
 
 | `-on-output` | What happens |
 |---|---|
@@ -64,10 +64,10 @@ habakkuk schedules add -agent habakkuk -name inbox -when "@every 10m" \
 | `agent` | a turn starts with the schedule's prompt and the output appended |
 | `silent` | nothing is sent |
 
-- **Failures.** A non-zero exit or a timeout is recorded and not retried. The third failure in a row sends one notice to the chat, and the first success after it says the script works again.
-- **No overlap.** A slot that comes due while the previous run is still going is skipped.
+- **Failures.** A non-zero exit or a timeout is recorded, and the run isn't retried. The third failure in a row sends one notice to the chat. The first success after that tells the chat the script works again.
+- **No overlap.** If a slot comes due while the previous run is still going, it's skipped.
 
 > [!NOTE]
-> Script schedules cannot yet be declared in `config.yaml`, and there is no command to edit one in place: remove it and add it again.
+> You can't declare script schedules in `config.yaml` yet, and there's no command to edit one in place. To change one, remove it and add it again.
 
-[Architecture: schedules](../reference/architecture.md#schedules) has the details.
+For the details, see [Architecture: schedules](../reference/architecture.md#schedules).

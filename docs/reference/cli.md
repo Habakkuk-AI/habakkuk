@@ -1,16 +1,18 @@
 ---
 title: CLI
-description: "Every habakkuk command and its flags, and every slash command available in a chat."
+description: "Every habakkuk command with its flags, and every slash command you can send in a chat."
 order: 1
 ---
 
-`habakkuk help` prints this list. `habakkuk` with no arguments prints a short screen instead: on a new computer, what Habakkuk is and the one command to run next (`habakkuk setup`); once set up, whether `serve` is running and the everyday commands. `hk` is the short name: the installers put it beside `habakkuk`, and every command below works with either (`hk chat`, `hk doctor`). `HABAKKUK_HOME` (default `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows) selects the home every command works on.
+Every command you can run in a terminal is here, with its flags, along with every slash command you can send in a chat. Come here when you know what you want to do and need the exact spelling.
 
-Any command can run on another machine: `hk -r NAME COMMAND` runs it on a saved remote, over ssh (every command) or HTTPS (`status` and `chat`). See [Remote CLI](../interfaces/remote-cli.md).
+`habakkuk help` prints this list. Run `habakkuk` with no arguments and you get a short screen instead. On a new computer, it tells you what Habakkuk is and the one command to run next (`habakkuk setup`). Once you're set up, it tells you whether `serve` is running and shows the everyday commands. `hk` is the short name. The installers put it beside `habakkuk`, and every command below works with either (`hk chat`, `hk doctor`). `HABAKKUK_HOME` selects the home that every command works on. The default is `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows.
+
+You can run any command on another machine. `hk -r NAME COMMAND` runs it on a saved remote. Over ssh that works for every command, and over HTTPS for `status` and `chat`. See [Remote CLI](../interfaces/remote-cli.md).
 
 ## Global flags
 
-These come before the command.
+Put these before the command.
 
 | Flag | |
 |---|---|
@@ -131,7 +133,7 @@ habakkuk doctor --upgrade-check     check that this binary can run on $HABAKKUK_
 habakkuk version                    version, commit, build date and database schema versions
 ```
 
-Where each command is explained:
+Each command is explained in a guide. This table tells you which one:
 
 | Commands | Guide |
 |---|---|
@@ -166,7 +168,7 @@ Where each command is explained:
 
 ## Chat commands
 
-These work in every chat channel, the web chat and `habakkuk chat`. `/help` lists them in the chat's language. The terminal UI has a few of its own; see [CLI and TUI](../interfaces/cli-and-tui.md#commands).
+You can send these in every chat channel, in the web chat and in `habakkuk chat`. Send `/help` to list them in the chat's language. The terminal UI has a few commands of its own. See [CLI and TUI](../interfaces/cli-and-tui.md#commands).
 
 | Command | What it does |
 |---|---|
@@ -199,4 +201,4 @@ These work in every chat channel, the web chat and `habakkuk chat`. `/help` list
 | `/approvals [summary\|full]` | Show or change what approval requests show in this chat (owner only; no restart needed) |
 | `/help` (`/start`) | List the commands |
 
-Plugins can add more commands; see [Plugins](../tools/plugins.md#manifest).
+Plugins can add more commands. See [Plugins](../tools/plugins.md#manifest).

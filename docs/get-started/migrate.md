@@ -4,9 +4,9 @@ description: "Bring your agents, memory, skills, schedules, MCP servers, channel
 order: 7
 ---
 
-If you already run [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://github.com/openclaw/openclaw), `habakkuk migrate` reads its home folder and sets up the same things in Habakkuk. It shows you a plan first and writes nothing until you say yes. Running it again is safe: what is already there is left alone.
+If you already run [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://github.com/openclaw/openclaw), this page shows you how to bring your setup over. `habakkuk migrate` reads the other agent's home folder and sets up the same things in Habakkuk. It shows you a plan first, and it writes nothing until you say yes. You can run it again safely, because it leaves alone what's already there.
 
-It can also copy your own files out of the old folder, so the new agent stops depending on it.
+It can also copy your own files out of the old folder. That way, the new agent stops depending on the old folder.
 
 ```bash
 habakkuk migrate --dry-run     # see what would move, change nothing
@@ -14,9 +14,11 @@ habakkuk migrate               # show the plan, ask, then import
 habakkuk migrate --files copy  # also bring your own files over from the old folder
 ```
 
-On a new install, `habakkuk setup` notices either home and offers to import it before its own steps, so you can also just run `habakkuk setup`.
+On a new install, `habakkuk setup` notices either home and offers to import it before it starts its own steps. So running `habakkuk setup` works too.
 
 ## What moves
+
+This table shows what the import reads from each agent and what it becomes in Habakkuk.
 
 | From | Hermes Agent | OpenClaw | Becomes in Habakkuk |
 |---|---|---|---|
@@ -32,35 +34,35 @@ On a new install, `habakkuk setup` notices either home and offers to import it b
 | Keys and tokens | `.env` | `.env`, `env.vars`, values written into the config | `$HABAKKUK_HOME/.env`, under Habakkuk's variable names |
 | Your own files | folders and files in the home that the imported text names, such as `workspaces/`, `scripts/` and `state/` | the same; each agent's workspace folder stays where it is | `$HABAKKUK_HOME/files/<name>/`, with `--files copy` (see [Your files in the old folder](#your-files-in-the-old-folder)) |
 
-Source folders are found the way their own tools find them: `~/.hermes` or `$HERMES_HOME`, and `~/.openclaw`, `$OPENCLAW_STATE_DIR` or `~/.openclaw-<profile>` for `$OPENCLAW_PROFILE`. Pass `--source DIR` for anywhere else.
+The import looks for each source folder where that agent's own tools look. That's `~/.hermes` or `$HERMES_HOME`, and `~/.openclaw`, `$OPENCLAW_STATE_DIR` or `~/.openclaw-<profile>` for `$OPENCLAW_PROFILE`. If yours is anywhere else, pass `--source DIR`.
 
 ## Your files in the old folder
 
-The text you import often names files inside the old agent's folder. A persona file says the briefs are in `~/.hermes/workspaces/briefs`. A schedule runs `~/.hermes/scripts/inbox_sync.py`. That script keeps its position in `~/.hermes/state/inbox.json`. If nothing is done about this, the new agent keeps reading and writing inside the old agent's folder, and you can never remove it.
+The text you import often names files inside the old agent's folder. For example, a persona file says the briefs are in `~/.hermes/workspaces/briefs`. A schedule runs `~/.hermes/scripts/inbox_sync.py`, and that script keeps its position in `~/.hermes/state/inbox.json`. Leave this as it is and the new agent keeps reading and writing inside the old agent's folder, so you can never remove that folder.
 
-The plan has a section for this, **Files in ... that the imported text names**. The import looks through everything it brings over: persona files, the profile, memory notes, every text file in each skill, schedule commands and prompts, and MCP server commands. It finds the old folder written as a full path (`/home/ada/.hermes/...`), as `~/.hermes/...`, and as `$HOME/.hermes/...` or `${HOME}/.hermes/...`. On Windows it also finds `%USERPROFILE%\.hermes\...`, with either slash and in any letter case. It groups what it finds by the first name under the old folder (`workspaces`, `scripts`, `state`) and sorts each one:
+The plan has a section for this, called **Files in ... that the imported text names**. To fill it, the import looks through everything it brings over: persona files, the profile, memory notes, every text file in each skill, schedule commands and prompts, and MCP server commands. It spots the old folder written as a full path (`/home/ada/.hermes/...`), as `~/.hermes/...`, and as `$HOME/.hermes/...` or `${HOME}/.hermes/...`. On Windows it also spots `%USERPROFILE%\.hermes\...`, with either slash and in any letter case. It groups what it finds by the first name under the old folder (`workspaces`, `scripts`, `state`), then sorts each group into one of two kinds:
 
-- **Your own data** can move. Anything the old agent does not keep for itself counts: folders of notes and reports, the scripts your schedules run, the state files those scripts keep.
-- **Parts of the old agent** never move: its program and virtual environment, `node_modules`, caches, logs, session and state databases, sockets, lock and process files, its `.env` and sign-in stores, its config, chat logins such as a WhatsApp session, and the skills that came with it. What is already imported another way (`SOUL.md`, memory files, your skills, schedules) is not copied a second time. The plan lists each of these that the text names, with the reason, so you can see what still depends on the old folder.
+- **Your own data** can move. That's anything the old agent doesn't keep for itself, such as folders of notes and reports, the scripts your schedules run, and the state files those scripts keep.
+- **Parts of the old agent** never move. These are its program and virtual environment, `node_modules`, caches, logs, session and state databases, sockets, lock and process files, its `.env` and sign-in stores, its config, chat logins such as a WhatsApp session, and the skills that came with it. Anything already imported another way (`SOUL.md`, memory files, your skills, schedules) isn't copied a second time. When the text names one of these, the plan lists it with the reason, so you can see what still depends on the old folder.
 
-With `--files copy`, each of your own entries is copied to `$HABAKKUK_HOME/files/<name>/` (`--files-dir DIR` picks another place), and every reference in the imported text is rewritten to the new place. A reference written with `~/` or `$HOME` keeps that form when the new place is under your home folder. Text files inside the copies are rewritten too, so a script that names its own state file by full path keeps working. Scripts that are copied are searched as well: a folder that only a copied script names comes along.
+With `--files copy`, the import copies each of your own entries to `$HABAKKUK_HOME/files/<name>/`. To pick another place, pass `--files-dir DIR`. It then rewrites every reference in the imported text to the new place. A reference written with `~/` or `$HOME` keeps that form when the new place is under your home folder. Text files inside the copies are rewritten too, so a script that names its own state file by full path keeps working. The import also searches the scripts it copies, so a folder that only a copied script names comes along as well.
 
-The copy is careful:
+The copy is careful about what it touches:
 
-- The old folder is only read. Nothing in it is changed or removed.
-- File modes, modification times and symlinks are kept. A link is copied as a link and never followed, so nothing outside the old folder is pulled in. A link to something that moves points at the copy.
-- A git repository inside your files is copied whole.
-- Sockets, pipes and devices are left out. So is any file over 1 GB, unless you raise the limit with `--files-max`. The plan names what is left out.
-- A file the old agent keeps for itself inside one of your folders is left out too. Hermes Agent's gateway keeps one in `state/`, next to the state files of your scripts.
-- It can be stopped and run again. A file is copied only when it is missing in the copy or newer in the old folder. Nothing in the copy is ever deleted. A file that changed in the copy since is kept, because the new agent works there now.
-- It checks the free space first and refuses to start when there is not enough.
-- Only text files up to 1 MB have their references rewritten. Larger files and binary files are copied byte for byte.
+- It only reads the old folder. Nothing in there is changed or removed.
+- It keeps file modes, modification times and symlinks. A link is copied as a link and isn't followed, so nothing outside the old folder gets pulled in. A link to something that moves points at the copy.
+- If there's a git repository inside your files, it's copied whole.
+- It leaves out sockets, pipes and devices. It also leaves out any file over 1 GB, unless you raise the limit with `--files-max`. The plan names everything that's left out.
+- It leaves out a file the old agent keeps for itself inside one of your folders, too. Hermes Agent's gateway keeps one in `state/`, next to the state files of your scripts.
+- You can stop it and run it again. It copies a file only when the file is missing from the copy or newer in the old folder. It never deletes anything in the copy. If a file has changed in the copy since, that version is kept, because the new agent works there now.
+- It checks the free space first. If there isn't enough, it refuses to start.
+- It rewrites references only in text files up to 1 MB. Larger files and binary files are copied byte for byte.
 
-A Hermes Agent profile is a home of its own inside `profiles/`. Its folders are named with it: `profiles/coder/scripts` goes to `files/profiles/coder/scripts`.
+A Hermes Agent profile is a home of its own inside `profiles/`. Its folders keep the profile in their name, so `profiles/coder/scripts` goes to `files/profiles/coder/scripts`.
 
-Each OpenClaw agent's workspace folder is already handled: Habakkuk uses it where it is, and `config.yaml` points at it. It is not copied again. The plan lists it under what is not moved.
+Each OpenClaw agent's workspace folder is already handled. Habakkuk uses it where it is, and `config.yaml` points at it, so it isn't copied again. The plan lists it under what is not moved.
 
-`habakkuk backup` does not include `files/`. Back that folder up the way you back up your other documents.
+`habakkuk backup` doesn't include `files/`. Back that folder up the same way you back up your other documents.
 
 ## What does not move
 
@@ -75,7 +77,7 @@ Each OpenClaw agent's workspace folder is already handled: Habakkuk uses it wher
 | Board cards, plugins, hooks, `HEARTBEAT.md` | No direct equivalent | `habakkuk board add`, habakkuk plugins, `hooks` in `config.yaml`, `habakkuk schedules add` |
 | Other channels (email, iMessage, ...) | Not mapped yet | `habakkuk setup channel`, or the channels guide |
 
-Turned-off schedules and MCP servers, one-off schedules whose time has passed, and skills that came with the other agent are left out and listed at the end of the plan.
+A few more things are left out: schedules and MCP servers that are turned off, one-off schedules whose time has passed, and skills that came with the other agent. The plan lists them at the end.
 
 ## The command
 
@@ -100,14 +102,14 @@ habakkuk migrate [--from hermes|openclaw] [--source DIR] [--agent NAME]
 | `--force` | Replace agents, persona files, skills, notes, schedules and `.env` values that already exist and differ. |
 | `-y` | Do not ask. Keys are copied only with `--secrets copy`, and files only with `--files copy`. |
 
-Without `--secrets`, an interactive run asks once whether to copy the keys. Without `--files`, it asks once whether to copy your files. With `-y` and no `--files`, the files stay where they are and the report tells you how to bring them over later: run `habakkuk migrate --files copy`. That later run also fixes what was imported before. Text that still names the old folder is rewritten in place, and a schedule keeps its ID and stays on or paused. This covers text you changed since the import: your wording is kept, and only the paths into the copied folders change.
+If you leave out `--secrets`, an interactive run asks once whether to copy the keys. If you leave out `--files`, it asks once whether to copy your files. With `-y` and no `--files`, your files stay where they are. The report tells you how to bring them over later, which is to run `habakkuk migrate --files copy`. That later run also fixes what was imported before. It rewrites in place any text that still names the old folder, and each schedule keeps its ID and stays on or paused. Text you changed since the import is covered too. Your wording is kept, and only the paths into the copied folders change.
 
 > [!NOTE]
-> Keys are only ever shown by name. Their values go straight into `.env` and never into `config.yaml`, the plan, the report or the logs. A memory entry that looks like it holds a key or password is not imported.
+> You only ever see keys by name. Their values go straight into `.env`. They don't appear in `config.yaml`, the plan, the report or the logs. A memory entry that looks like it holds a key or password isn't imported.
 
 ## A worked example
 
-A Hermes home with one profile, `coder`:
+This example starts from a Hermes home with one profile, `coder`:
 
 ```console
 $ habakkuk migrate --dry-run
@@ -176,7 +178,7 @@ config.yaml will be created.
 Dry run: nothing was written.
 ```
 
-Then import, copying the keys and your files:
+Next, run the import, and copy the keys and your files with it:
 
 ```console
 $ habakkuk migrate --secrets copy --files copy -y
@@ -203,56 +205,56 @@ Next:
   habakkuk migrate --dry-run       see what still points into /home/ada/.hermes before you remove it
 ```
 
-After this, `SOUL.md` says the briefs are in `~/.habakkuk/files/workspaces/briefs`, the schedule runs `/home/ada/.habakkuk/files/scripts/inbox_sync.py`, and that script reads `/home/ada/.habakkuk/files/state/inbox.json`. The three things under "Still points into" are what is left to do by hand. Here `report.sh` loads the old `.env` and calls the old agent's own command, so that one script needs editing before the old folder can go.
+After this run, `SOUL.md` says the briefs are in `~/.habakkuk/files/workspaces/briefs`. The schedule runs `/home/ada/.habakkuk/files/scripts/inbox_sync.py`, and that script reads `/home/ada/.habakkuk/files/state/inbox.json`. The three things under "Still points into" are what's left for you to do by hand. In this example, `report.sh` loads the old `.env` and calls the old agent's own command. You need to edit that one script before the old folder can go.
 
 > [!WARNING]
-> Stop the old agent before `habakkuk serve` starts the same channels. A Telegram, Discord or Slack bot can only be polled by one program at a time, and two agents answering one chat confuses everyone.
+> Stop the old agent before `habakkuk serve` starts the same channels. Only one program at a time can poll a Telegram, Discord or Slack bot. And if two agents answer one chat, everyone gets confused.
 
-Schedules are imported paused so nothing runs twice while both agents are installed. A script schedule gets a ten-minute time limit (or its interval, when an `@every` interval is shorter) instead of the usual two minutes, because the old agent let scripts run longer. Resume each one once the old agent is stopped. Without `--files copy`, a script schedule still runs the script from the old folder. With it, the script is copied and the schedule runs the copy.
+Schedules come in paused, so nothing runs twice while both agents are installed. The usual time limit for a script schedule is two minutes. An imported one gets ten minutes (or its interval, when an `@every` interval is shorter), because the old agent let scripts run longer. Once the old agent is stopped, resume each schedule. Without `--files copy`, a script schedule still runs the script from the old folder. With it, the script is copied and the schedule runs the copy.
 
-After the import, read each agent's `SOUL.md` and `AGENTS.md`: instructions written for the old agent may name its tools or commands, which Habakkuk does not have.
+After the import, read through each agent's `SOUL.md` and `AGENTS.md`. Instructions written for the old agent may name its tools or commands, and Habakkuk doesn't have those.
 
 ## Running it again
 
-The import compares everything with what is already in `$HABAKKUK_HOME`:
+When you run the import again, it compares everything with what's already in `$HABAKKUK_HOME`. Each item falls into one of three cases:
 
-- **Already there** (`=`): the same file, note, skill, schedule, server or channel exists. Nothing happens.
-- **Conflict** (`!`): something different exists under the same name, for example a `SOUL.md` you wrote. It is left alone and listed; `--force` replaces it. One thing does change in a conflict when files are copied: a path in it that leads into a copied folder is rewritten to the copy, and the plan says so on that line. Everything else in it stays as you wrote it. Replaced files are kept as `NAME.bak`, replaced skills as `<skill>.bak`, and `config.yaml` is always kept as `config.yaml.bak` before it is edited.
-- **Added to** (`~`): the user profile and an agent's toolsets are only ever added to, never cut.
+- **Already there** (`=`): the same file, note, skill, schedule, server or channel already exists, so nothing happens.
+- **Conflict** (`!`): something different exists under the same name, for example a `SOUL.md` you wrote. The import leaves it alone and lists it. Pass `--force` to replace it. One thing in a conflict does change when files are copied. If it has a path that leads into a copied folder, that path is rewritten to the copy, and the plan says so on that line. Everything else in it stays as you wrote it. Replaced files are kept as `NAME.bak`, and replaced skills as `<skill>.bak`. `config.yaml` is always kept as `config.yaml.bak` before it's edited.
+- **Added to** (`~`): the import only ever adds to the user profile and to an agent's toolsets. It doesn't cut anything from them.
 
-`config.yaml` is edited in place, the same way `habakkuk setup` edits it, so your comments and settings stay.
+The import edits `config.yaml` in place, the same way `habakkuk setup` does, so your comments and settings stay.
 
-Copied files follow the same idea. A second `--files copy` brings over only what is new or changed in the old folder, and shows `=` for a folder with nothing to copy. It never deletes from the copy and never replaces a file that changed there since. The import keeps a small record, `migrated-files.json` in `$HABAKKUK_HOME`, of which folder went where. Later runs read it, with or without `--files`, so text that already names the copies is seen as already there.
+Copied files work the same way. A second `--files copy` brings over only what's new or changed in the old folder, and it shows `=` for a folder with nothing to copy. It doesn't delete from the copy, and it doesn't replace a file that changed there since. The import keeps a small record of which folder went where, in `migrated-files.json` in `$HABAKKUK_HOME`. Later runs read that record, with or without `--files`. That's how text that already names the copies is seen as already there.
 
 ## Troubleshooting
 
-**The old agent's folder is still needed**: run `habakkuk migrate --dry-run` and read the Files section. Entries marked `-` under "Not moved" are what the imported text and the copied scripts still name there. If your own folders are listed as not copied, run `habakkuk migrate --files copy`. What remains after that is part of the old agent, and each one needs a decision from you:
+**The old agent's folder is still needed**: run `habakkuk migrate --dry-run` and read the Files section. The entries marked `-` under "Not moved" are the things the imported text and the copied scripts still name there. If the list shows your own folders as not copied, run `habakkuk migrate --files copy`. Whatever remains after that is part of the old agent. You need to decide what to do about each one:
 
 - its `.env`: the keys the import uses are already in `$HABAKKUK_HOME/.env`. Point the script at that file, or set the other variables there.
-- its program, for example a script that calls the old agent's own command: change the script to use `habakkuk run` or `habakkuk send`, or keep the old agent installed.
-- its config, logs or session database named in a persona file or note: edit the text. Habakkuk has its own.
-- "(the folder itself)": the text names the old folder as a whole. Read that text and decide what it means now.
+- its program, for example when a script calls the old agent's own command: change the script to use `habakkuk run` or `habakkuk send`, or keep the old agent installed.
+- its config, logs or session database, named in a persona file or note: edit the text, because Habakkuk has its own.
+- "(the folder itself)": the text names the old folder as a whole. Read that text and decide what it should mean now.
 
-When the Files section lists nothing under "Not moved" and every folder shows `=`, nothing that was imported names the old folder any more. Check that the old agent is stopped and that your schedules ran once from the new place before you remove it.
+Once the Files section lists nothing under "Not moved" and every folder shows `=`, nothing you imported names the old folder any more. Before you remove it, check that the old agent is stopped and that your schedules have run once from the new place.
 
-**"not enough room in ..."**: the copy needs more free space than the disk has. Free some space, pass `--files-dir` with a folder on a bigger disk, or use `--files skip` and move the files yourself.
+**"not enough room in ..."**: the copy needs more free space than the disk has. You can free some space, pass `--files-dir` with a folder on a bigger disk, or use `--files skip` and move the files yourself.
 
-**A file was left out as too large**: raise the limit, for example `--files-max 8G`, or `--files-max 0` for no limit, and run `habakkuk migrate --files copy` again. Only the missing files are copied.
+**A file was left out as too large**: raise the limit and run `habakkuk migrate --files copy` again. For example, pass `--files-max 8G`, or `--files-max 0` for no limit. The second run copies only the missing files.
 
-**A reference was not rewritten**: only paths that start with the old folder are found. A script that builds the path from pieces, or reads it from a variable of the old agent, is not changed. A folder name with a space is followed when the text writes it plainly or in quotes (`"~/.hermes/My Notes/todo.md"`), not when the space is escaped (`My\ Notes`); the plan lists that one under "Not moved" and asks you to edit the text. Search your copied scripts for the old folder's name and fix what is left by hand.
+**A reference was not rewritten**: the import finds only paths that start with the old folder. It doesn't change a script that builds the path from pieces, or reads it from a variable of the old agent. A folder name with a space is followed when the text writes it plainly or in quotes (`"~/.hermes/My Notes/todo.md"`). It isn't followed when the space is escaped (`My\ Notes`). The plan lists that one under "Not moved" and asks you to edit the text. Search your copied scripts for the old folder's name, and fix what's left by hand.
 
-**"found both Hermes Agent and OpenClaw"**: pass `--from hermes` or `--from openclaw`, and run it again for the other one if you want both.
+**"found both Hermes Agent and OpenClaw"**: pass `--from hermes` or `--from openclaw`. If you want both, run it again for the other one.
 
-**"found no setup to import"**: the home is somewhere else. Pass `--from` and `--source DIR`.
+**"found no setup to import"**: the home is somewhere else, so pass `--from` and `--source DIR`.
 
-**"config.yaml does not parse as YAML" or "openclaw.json does not parse as JSON5"**: the source config is damaged. Fix it (the message says where), then run the import again.
+**"config.yaml does not parse as YAML" or "openclaw.json does not parse as JSON5"**: the source config is damaged. The message says where. Fix it, then run the import again.
 
-**"... does not load, so the import cannot edit it safely"**: your Habakkuk `config.yaml` has an error. Run `habakkuk doctor`, fix it, and run the import again.
+**"... does not load, so the import cannot edit it safely"**: there's an error in your Habakkuk `config.yaml`. Run `habakkuk doctor`, fix the error, and run the import again.
 
-**An agent shows "no model found"**: its provider has no Habakkuk equivalent, or it used a subscription sign-in. Its files are imported anyway; give it a model with `habakkuk setup model -agent NAME`, then run `habakkuk migrate` again to add its channels.
+**An agent shows "no model found"**: its provider has no Habakkuk equivalent, or it used a subscription sign-in. Its files are imported anyway. Give it a model with `habakkuk setup model -agent NAME`, then run `habakkuk migrate` again to add its channels.
 
-**A skill shows "the security scan flagged ..."**: the import uses the same scan as `habakkuk skills install`. Read the flagged file; if you trust it, install it with `habakkuk skills install PATH` (add `-force` for high-risk findings).
+**A skill shows "the security scan flagged ..."**: the import runs the same scan as `habakkuk skills install`. Read the flagged file. If you trust it, install it with `habakkuk skills install PATH`, adding `-force` for high-risk findings.
 
-**A schedule's delivery was dropped**: it sent to a channel that was not imported. Add the channel, then recreate the schedule with `habakkuk schedules add ... -to CHANNEL:CHAT`.
+**A schedule's delivery was dropped**: the schedule sent to a channel that wasn't imported. Add the channel, then create the schedule again with `habakkuk schedules add ... -to CHANNEL:CHAT`.
 
-**Variables "the config names but ... held no value for"**: they were set in your shell, not in the old `.env`. Add them to `$HABAKKUK_HOME/.env`.
+**Variables "the config names but ... held no value for"**: these were set in your shell and weren't in the old `.env`. Add them to `$HABAKKUK_HOME/.env`.

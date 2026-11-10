@@ -1,12 +1,12 @@
 ---
 title: Decision model
-description: "Use a fast decision model (TypeSafe's Jev) for Habakkuk's own small choices: which model a message needs, whether a tool call is routine, and whether a chat is worth remembering."
+description: "Let a fast decision model (TypeSafe's Jev) make Habakkuk's small choices: model routing, routine tool calls and which chats are worth remembering."
 order: 3
 ---
 
-Habakkuk makes many small yes/no decisions around your conversations. By default it makes them with word rules or a full model call. A decision model answers typed questions with a probability in well under a second, for a fraction of a cent, so these decisions get both cheaper and better.
+Habakkuk makes many small yes/no decisions around your conversations. By default it makes them with word rules or a full model call. A decision model answers a typed question with a probability. It does that in well under a second, for a fraction of a cent, so these decisions get both cheaper and better. This page shows how to turn one on and what it decides.
 
-Habakkuk supports TypeSafe's Jev. It never writes replies; your agents' models still do that.
+The decision model Habakkuk supports is TypeSafe's Jev. It never writes replies. Your agents' models still do that.
 
 ```yaml
 judge:
@@ -17,7 +17,7 @@ judge:
   memory: true                   # skip memory reviews of chats with nothing to keep (default true)
 ```
 
-Put the key in `$HABAKKUK_HOME/.env` as `TYPESAFE_API_KEY` (or name another variable with `key_env`). Without a key, or when the API is slow or down, everything works as it does without a `judge:` section.
+Put your key in `$HABAKKUK_HOME/.env` as `TYPESAFE_API_KEY`. To use another variable, name it with `key_env`. If there's no key, or the API is slow or down, everything works the way it does without a `judge:` section.
 
 ## What it decides
 
@@ -28,11 +28,11 @@ Put the key in `$HABAKKUK_HOME/.env` as `TYPESAFE_API_KEY` (or name another vari
 | **Memory.** Is this chat worth a memory review? | A model call reviews every quiet session | A chat it rates under `skip_memory_below` (0.15) is skipped; the rest are reviewed as before. |
 
 > [!IMPORTANT]
-> The decision model can only make approvals faster, never looser. It never denies or asks on its own, never decides for a turn that has read outside content (a web page, an email), and the commands Habakkuk always blocks stay blocked. Raise `approve_above` towards 1 to use it less, or set `approvals: false` to keep every review on the reviewer model.
+> The decision model can make approvals faster. It can't make them looser. It never denies or asks on its own. It never decides for a turn that has read outside content (a web page, an email). The commands Habakkuk always blocks stay blocked. To use it less, raise `approve_above` towards 1. To keep every review on the reviewer model, set `approvals: false`.
 
 ## Cost
 
-Input costs $0.042 per million tokens and output is free. A routing decision is about 100 to 200 tokens, so a million decisions cost a few dollars. Calls are recorded in `usage.db` under the provider `typesafe`, show up in `habakkuk usage`, and count toward [spending limits](usage-and-limits.md).
+Input costs $0.042 per million tokens, and output is free. A routing decision uses about 100 to 200 tokens, so a million decisions cost a few dollars. Habakkuk records these calls in `usage.db` under the provider `typesafe`. You'll see them in `habakkuk usage`, and they count toward your [spending limits](usage-and-limits.md).
 
 ## Settings
 

@@ -4,13 +4,13 @@ description: "Connect a Telegram bot in two minutes: long polling with no public
 order: 3
 ---
 
-Telegram is the quickest channel after a WhatsApp agent. Habakkuk uses long polling, so it needs no public URL, and the bot gets the most complete feature set of any channel.
+After a WhatsApp agent, a Telegram bot is the quickest channel to set up. Habakkuk uses long polling, so you don't need a public URL. The bot also gets the most complete feature set of any channel.
 
 ## Set it up
 
-1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, pick a name, and copy the token it gives you.
+1. In Telegram, open a chat with [@BotFather](https://t.me/BotFather) and send `/newbot`. Pick a name, then copy the token it gives you.
 2. Open your new bot and press **Start**.
-3. Run `habakkuk setup` and pick **Telegram bot**. It checks the token with `getMe`, finds your Start message and lets you in. Or add the channel by hand:
+3. Run `habakkuk setup` and pick **Telegram bot**. Setup checks the token with `getMe`, finds your Start message and lets you in. If you'd rather add the channel by hand, use this:
 
 ```yaml
 channels:
@@ -27,14 +27,14 @@ habakkuk serve
 
 ## Access
 
-`allow_from` takes numeric Telegram user ids. Anyone else who writes to the bot gets a pairing code to approve with `habakkuk pair CODE`. Send `/whoami` to the bot to see your id.
+`allow_from` takes numeric Telegram user ids. Anyone else who writes to the bot gets a pairing code, which you approve with `habakkuk pair CODE`. To see your own id, send `/whoami` to the bot.
 
 ## Groups
 
-In groups the bot answers mentions and replies (`groups: mention`). Forum topics are separate conversations, each with its own session.
+In a group, the bot answers when you mention it or reply to it. That's the `groups: mention` setting. Each forum topic is a separate conversation with its own session.
 
 > [!TIP]
-> Telegram bots have privacy mode on by default, so in groups they only receive commands, mentions and replies. For `groups: all`, turn privacy mode off in BotFather (`/setprivacy`) and add the bot to the group again.
+> Telegram bots start with privacy mode on, so in groups they only receive commands, mentions and replies. If you want `groups: all`, turn privacy mode off in BotFather with `/setprivacy`. Then add the bot to the group again.
 
 ## What works
 
@@ -49,7 +49,7 @@ In groups the bot answers mentions and replies (`groups: mention`). Forum topics
 | Polls | Native polls (the `poll` tool) |
 | Voice replies | Voice notes, with `voice_replies: mirror` or `always` |
 
-A `/start` reaches the agent while it has not met its user, so the first-chat welcome runs. Afterwards it shows the command list.
+While the agent hasn't met its user yet, a `/start` goes through to the agent, so the first-chat welcome runs. After that, it shows the command list.
 
 ## Troubleshooting
 

@@ -4,19 +4,19 @@ description: "Connect a Matrix account with an access token: invites from allowe
 order: 7
 ---
 
-Habakkuk reads Matrix with `/sync` long polling, so it needs no public URL and works with any homeserver.
+Habakkuk reads Matrix with `/sync` long polling, so you don't need a public URL and it works with any homeserver.
 
 ## Set it up
 
-1. Make an account for the bot on your homeserver.
-2. Get an access token, for example:
+1. Create an account for the bot on your homeserver.
+2. Get an access token for it. Here's one way:
 
 ```bash
 curl -s -X POST https://matrix.example.org/_matrix/client/v3/login -H 'Content-Type: application/json' \
   -d '{"type":"m.login.password","identifier":{"type":"m.id.user","user":"habakkuk"},"password":"...","initial_device_display_name":"habakkuk"}'
 ```
 
-3. Put the `access_token` in `MATRIX_ACCESS_TOKEN` in `.env`, and configure the channel:
+3. Put the `access_token` in `.env` as `MATRIX_ACCESS_TOKEN`. Then configure the channel:
 
 ```yaml
 channels:
@@ -28,21 +28,21 @@ channels:
     allow_from: ["@you:example.org"]  # also who may invite the bot into rooms
 ```
 
-4. Invite the bot from an account in `allow_from` (or one approved with `habakkuk pair`). It joins on its own and ignores invitations from anyone else.
+4. Invite the bot from an account that's in `allow_from`, or one you've approved with `habakkuk pair`. The bot joins on its own. It ignores invitations from anyone else.
 
 > [!IMPORTANT]
-> End-to-end encryption is not supported yet. Create the room without encryption. In an encrypted room the bot says once that it cannot read it, and stays quiet after that.
+> End-to-end encryption isn't supported yet, so create the room without encryption. In an encrypted room, the bot says once that it can't read the room. After that it stays quiet.
 
 ## Access
 
-`allow_from` takes Matrix user ids (`@you:example.org`). The same list decides whose invitations the bot accepts. A room with only you and the bot is a direct chat.
+`allow_from` takes Matrix user ids, such as `@you:example.org`. The bot also uses this list to decide whose invitations it accepts. A room with only you and the bot in it counts as a direct chat.
 
 ## What works
 
-- Text and files in; text and files up to 50 MB out.
-- Mentions and replies in rooms, and threads.
-- Typing indicator.
-- The sync position is kept in `channels/matrix-<name>.json`, so a restart picks up where it stopped.
+- The bot receives text and files. It sends text, and files up to 50 MB.
+- In rooms, mentions and replies work. So do threads.
+- It shows a typing indicator.
+- Habakkuk keeps the sync position in `channels/matrix-<name>.json`, so after a restart it picks up where it stopped.
 
 ## Troubleshooting
 

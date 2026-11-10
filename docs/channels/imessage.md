@@ -4,16 +4,16 @@ description: "Reach Habakkuk over iMessage through a BlueBubbles server on a Mac
 order: 12
 ---
 
-Habakkuk reaches iMessage through [BlueBubbles](https://bluebubbles.app), a server that runs on a Mac signed in to iMessage. The server posts new messages to Habakkuk's HTTP server (the webhook URL carries a secret); replies, files and typing go through its REST API. The channel type is `bluebubbles`.
+Habakkuk reaches iMessage through [BlueBubbles](https://bluebubbles.app), a server that runs on a Mac signed in to iMessage. BlueBubbles posts each new message to Habakkuk's HTTP server, at a webhook URL that carries a secret. Replies, files and typing go back through the BlueBubbles REST API. The channel type is `bluebubbles`.
 
 > [!NOTE]
-> iMessage is a [webhook channel](settings.md#webhook-channels): the BlueBubbles server must reach Habakkuk's HTTP server. When both run on your own network, a `public_url` on that network is enough.
+> iMessage is a [webhook channel](settings.md#webhook-channels), so the BlueBubbles server has to reach Habakkuk's HTTP server. If both run on your own network, a `public_url` on that network is enough.
 
 ## Set it up
 
-1. Install BlueBubbles Server on a Mac that stays on, sign in to iMessage there, and set a server password.
-2. Pick a webhook secret and put it and the password in `.env`.
-3. In BlueBubbles, add a webhook for new messages to `<public_url>/channels/<name>?secret=<webhook secret>`.
+1. Install BlueBubbles Server on a Mac that stays on. Sign in to iMessage there and set a server password.
+2. Pick a webhook secret. Put the secret and the server password in `.env`.
+3. In BlueBubbles, add a webhook for new messages. Point it at `<public_url>/channels/<name>?secret=<webhook secret>`.
 4. Configure the channel:
 
 ```yaml
@@ -33,17 +33,17 @@ http:
 
 ## Access
 
-`allow_from` takes the sender's phone number without the `+`, or their email address. Anyone else gets a pairing code.
+`allow_from` takes the sender's phone number without the `+`, or their email address. Everyone else gets a pairing code.
 
 ## Group chats
 
-In group chats a message is for Habakkuk when it names it: it contains `mention` (default `Habakkuk`).
+In a group chat, Habakkuk treats a message as addressed to it when the message names it. That means the message contains the `mention` text, which is `Habakkuk` by default.
 
 ## What works
 
-- Text and attachments in and out.
-- With `private_api: true` (the BlueBubbles Private API set up on the Mac): typing indicator and threaded replies.
-- Approvals are answered with **yes** or **no**.
+- Text and attachments work in both directions.
+- With `private_api: true`, you also get a typing indicator and threaded replies. This needs the BlueBubbles Private API set up on the Mac.
+- You answer approvals with **yes** or **no**.
 
 ## Troubleshooting
 

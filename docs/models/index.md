@@ -1,10 +1,10 @@
 ---
 title: Models
-description: "How Habakkuk talks to model providers, the directory of built-in presets, and where to read about routing, subscriptions, spending limits and speech."
+description: "Connect Habakkuk to model providers, look up the built-in presets, and find the pages on routing, subscriptions, spending limits and speech."
 order: 4
 ---
 
-A provider is a model API: Anthropic, OpenAI, Gemini, a local Ollama server, any OpenAI-compatible service. Providers live under `providers:` in `config.yaml`, and an agent names its model as `<provider>/<model id>`.
+A provider is a model API. Anthropic, OpenAI and Gemini are providers. So is a local Ollama server, or any OpenAI-compatible service. You list your providers under `providers:` in `config.yaml`. Each agent then names its model as `<provider>/<model id>`.
 
 ```yaml
 providers:
@@ -17,21 +17,21 @@ agents:
     fallbacks: [local/llama3.3]
 ```
 
-`habakkuk models` lists each provider with its credential status and, where the API can list them, its models. Nothing in Habakkuk assumes one vendor.
+Run `habakkuk models` to see each provider and its credential status. Where the API can list its models, you see those too. Habakkuk doesn't assume any one vendor.
 
 ## In this section
 
 <!-- cards -->
-- [Providers](providers.md): provider types, presets, custom and local APIs, key rotation and fallbacks.
-- [Routing](routing.md): a cheap model for quick messages, a strong one for real work.
-- [Decision model](decision-model.md): a fast yes/no model for Habakkuk's own choices, such as routing and routine approvals.
-- [Subscription logins](subscriptions.md): use a ChatGPT or GitHub Copilot plan instead of an API key.
-- [Usage and limits](usage-and-limits.md): tokens and cost per model and agent, and hard spending caps.
-- [Speech](speech.md): transcription for voice notes, and text-to-speech for spoken replies.
+- [Providers](providers.md): set up a provider by type or preset, add custom and local APIs, and configure key rotation and fallbacks.
+- [Routing](routing.md): send quick messages to a cheap model and real work to a strong one.
+- [Decision model](decision-model.md): let a fast yes/no model make Habakkuk's own choices, such as routing and routine approvals.
+- [Subscription logins](subscriptions.md): sign in with a ChatGPT or GitHub Copilot plan instead of using an API key.
+- [Usage and limits](usage-and-limits.md): see tokens and cost per model and agent, and set hard spending caps.
+- [Speech](speech.md): set up transcription for voice notes and text-to-speech for spoken replies.
 
 ## Provider directory
 
-Each preset fills in the API type, base URL and key variable. Set `preset:`, or name the provider after the preset. Names in brackets work too.
+A preset fills in the API type, base URL and key variable for you. To use one, set `preset:`, or give the provider the same name as the preset. The names in brackets work too.
 
 | Preset | Base URL | Key variable |
 |---|---|---|
@@ -63,4 +63,4 @@ Each preset fills in the API type, base URL and key variable. Set `preset:`, or 
 | `vercel` (`vercel-ai-gateway`) | `https://ai-gateway.vercel.sh/v1` | `AI_GATEWAY_API_KEY` |
 | `cloudflare` (`cloudflare-ai-gateway`) | set `base_url: https://gateway.ai.cloudflare.com/v1/ACCOUNT_ID/GATEWAY_ID/compat` | `CLOUDFLARE_AI_GATEWAY_KEY` |
 
-Any field you set wins over the preset. A service that is not listed works too, if it speaks one of the [provider types](providers.md#provider-types).
+If you set a field yourself, your value wins over the preset. A service that isn't listed here works too, as long as it speaks one of the [provider types](providers.md#provider-types).

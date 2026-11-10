@@ -4,12 +4,12 @@ description: "Give Habakkuk a mailbox: IMAP with IDLE or polling, SMTP replies t
 order: 8
 ---
 
-Habakkuk reads a mailbox over IMAP (IDLE when the server has it, else polling) and answers over SMTP. Each thread is a conversation, and replies keep it together. No public URL is needed.
+Give Habakkuk a mailbox of its own and you can email it. It reads mail over IMAP, using IDLE when the server has it and polling when it doesn't. It answers over SMTP. Each email thread is one conversation, and replies stay in that thread. You don't need a public URL.
 
 ## Set it up
 
-1. Make a mailbox for the agent, and an app password if your provider uses them.
-2. Put the password in `.env` and configure the channel:
+1. Create a mailbox for the agent. If your provider uses app passwords, create one of those too.
+2. Put the password in `.env`, then configure the channel:
 
 ```yaml
 channels:
@@ -39,17 +39,17 @@ channels:
 
 ## Access
 
-`allow_from` takes email addresses. Mail is ignored when it comes from lists, auto-responders and bounces, and when the receiving server recorded no passing DMARC or aligned DKIM result. That keeps a forged `From:` from reaching the agent. `allow_unauthenticated: true` turns the check off.
+`allow_from` takes email addresses. Habakkuk ignores mail that comes from lists, auto-responders and bounces. It also ignores mail when the receiving server recorded no passing DMARC or aligned DKIM result, so a forged `From:` can't reach the agent. To turn that check off, set `allow_unauthenticated: true`.
 
 > [!IMPORTANT]
-> A session bound to an email channel starts **tainted**, since everything in an inbox is outside content. In a tainted turn, commands and writes outside the workspace need your approval, and the agent cannot write trusted memory. See [Security](../deploy/security.md#outside-content-taints-a-turn).
+> A session that belongs to an email channel starts **tainted**, because everything in an inbox is outside content. In a tainted turn, commands and writes outside the workspace need your approval, and the agent can't write trusted memory. See [Security](../deploy/security.md#outside-content-taints-a-turn).
 
 ## What works
 
-- Text and attachments in and out.
-- Replies keep the thread's `In-Reply-To` and `References` and a `Re:` subject, so mail clients thread them.
-- No typing indicator or buttons: approvals are answered by replying **yes** or **no**.
-- Where the mailbox was read up to is kept in `channels/email-<name>.json`.
+- Text and attachments work in both directions.
+- Each reply carries the thread's `In-Reply-To` and `References` and a `Re:` subject, so mail clients keep it in the thread.
+- There's no typing indicator and there are no buttons. To answer an approval, reply **yes** or **no**.
+- Habakkuk keeps its place in the mailbox (where it has read up to) in `channels/email-<name>.json`.
 
 ## Troubleshooting
 

@@ -4,15 +4,15 @@ description: "Connect a Discord bot over the Gateway: the Message Content intent
 order: 5
 ---
 
-Discord connects over the Gateway websocket, with resume. No public URL is needed.
+Habakkuk talks on Discord through a bot you create. The bot connects over the Gateway websocket, with resume, so you don't need a public URL.
 
 ## Set it up
 
-1. At the [Discord developer portal](https://discord.com/developers/applications), create an application and add a bot.
-2. Under the bot's settings, switch on the **Message Content** intent.
+1. Go to the [Discord developer portal](https://discord.com/developers/applications). Create an application and add a bot to it.
+2. In the bot's settings, turn on the **Message Content** intent.
 3. Copy the bot's token.
-4. Invite the bot to your server (OAuth2 > URL Generator) with the `bot` scope and these permissions: View Channels, Send Messages, Send Messages in Threads, Read Message History and Attach Files.
-5. Run `habakkuk setup` and pick **Discord bot** (it checks the token), or add the channel by hand:
+4. Invite the bot to your server. Under OAuth2 > URL Generator, choose the `bot` scope and these permissions: View Channels, Send Messages, Send Messages in Threads, Read Message History and Attach Files.
+5. Run `habakkuk setup` and pick **Discord bot**. It checks the token for you. Or add the channel by hand:
 
 ```yaml
 channels:
@@ -23,11 +23,11 @@ channels:
 
 ## Access
 
-`allow_from` takes Discord user ids (enable Developer Mode in Discord, then right-click a user and copy the id). Anyone else who sends a direct message gets a pairing code.
+`allow_from` takes Discord user ids. To find one, turn on Developer Mode in Discord, then right-click a user and copy the id. Anyone else who sends the bot a direct message gets a pairing code.
 
 ## Servers and threads
 
-In servers the bot answers mentions and replies. A thread is its own conversation; once the bot has replied in a thread, later messages there count as addressed to it.
+In a server, the bot answers when you mention it or reply to it. Each thread is its own conversation. Once the bot has replied in a thread, it treats later messages there as addressed to it.
 
 ## What works
 

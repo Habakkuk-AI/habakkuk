@@ -1,10 +1,10 @@
 ---
 title: Security
-description: "What Habakkuk lets an agent do by default: approvals for chat-driven and tainted turns, guests, vetted skills, private files, no surprise network calls, a locked-down local server, the audit and secret managers."
+description: "What an agent may do by default, with approvals, guests, vetted skills, private files, network calls, the local server, the audit and secret managers."
 order: 3
 ---
 
-Habakkuk is safe by default. `habakkuk security` shows what it allows on your machine: the effective tool policy of each agent, then an audit with fixes. `habakkuk status` shows the policy too.
+Habakkuk is safe by default. This page explains what an agent is allowed to do before you change anything, and how to check it on your own machine. Run `habakkuk security` to see what Habakkuk allows there. It prints the effective tool policy of each agent, then an audit with fixes. `habakkuk status` shows the policy too.
 
 ```bash
 habakkuk security             # tool policy per agent, then the audit
@@ -14,7 +14,7 @@ habakkuk security -network    # every outbound endpoint, and whether your config
 
 ## Risky capabilities
 
-Five kinds of tool call can hurt the machine Habakkuk runs on:
+Five kinds of tool call can harm the machine Habakkuk runs on. The rest of this page calls them risky capabilities:
 
 | Capability | What it covers |
 |---|---|
@@ -26,7 +26,7 @@ Five kinds of tool call can hurt the machine Habakkuk runs on:
 
 ## Chat channels are least-privilege
 
-A turn that comes from a messaging channel (anything but the CLI, the TUI and the local dashboard) needs approval for every risky capability, whatever the permission mode, `full` included. You approve in the chat. To let your own chat messages act like the CLI, opt in per agent:
+A turn that comes from a messaging channel needs approval for every risky capability. A messaging channel here means anything except the CLI, the TUI and the local dashboard. The rule applies in every permission mode, `full` included. You give the approval in the chat. If you want your own chat messages to act like the CLI, opt in for each agent:
 
 ```yaml
 agents:
@@ -36,70 +36,70 @@ agents:
 
 ## Strangers never get them
 
-A sender let in by `allow_from: ["*"]` (rather than by id or `habakkuk pair`) is a **guest**. Guests' turns are refused every risky capability, with or without approval. Guests cannot answer your pending approvals, and cannot use `/remember`, `/forget` or `/agent`. A turn with no sender behind it (a schedule) on an account open to everyone counts as a guest's.
+A sender who is let in by `allow_from: ["*"]`, and not by id or `habakkuk pair`, is a **guest**. A guest's turn is refused every risky capability, with or without approval. Guests can't answer your pending approvals, and they can't use `/remember`, `/forget` or `/agent`. A turn with no sender behind it (a schedule) counts as a guest's turn when it runs on an account that's open to everyone.
 
-One exception: a `whatsappagent` channel only ever hears from the person who created the agent (WhatsApp refuses everyone else), so its sender is always treated as the owner, even with `allow_from: "*"`. Its schedules run as the owner's too, and the audit never counts it as an open channel.
+There's one exception. A `whatsappagent` channel only ever hears from the person who created the agent, because WhatsApp refuses everyone else. So its sender is always treated as the owner, even with `allow_from: "*"`. Its schedules run as the owner's too, and the audit never counts it as an open channel.
 
 ## Outside content taints a turn
 
-Once a turn has read outside content (a web page, a search result, an MCP or other network tool, an email, a webhook or Home Assistant payload, a device's output), `exec`, `process` and writes outside the workspace need a human's approval. That holds even in `full` mode and even with `approvals: reviewer`: a model is not asked, since it could be steered by the same text. With nobody attending, such calls are denied.
+A turn is tainted once it has read outside content. Outside content is a web page, a search result, an MCP or other network tool, an email, a webhook or Home Assistant payload, or a device's output. From then on, `exec`, `process` and writes outside the workspace need a human's approval. This holds even in `full` mode and even with `approvals: reviewer`. A model isn't asked, because the same text could steer it. When nobody is attending, these calls are denied.
 
-A tainted turn also cannot write trusted memory, change the user profile or set the agent's identity, and `message_home` sends only a short status. A delegated task inherits its parent's taint and origin.
+A tainted turn also can't write trusted memory, change the user profile or set the agent's identity. Its `message_home` sends only a short status. A delegated task inherits its parent's taint and origin.
 
-The taint follows the turn across a restart. A turn that read a web page, then was interrupted by a deploy or a crash, is still tainted when it resumes: Habakkuk sets it again from the turn's own transcript, from any hosted search result and any call to a tool that can bring outside content in.
+The taint stays with the turn across a restart. Say a turn reads a web page and is then interrupted by a deploy or a crash. It's still tainted when it resumes. Habakkuk sets the taint again from the turn's own transcript, from any hosted search result and any call to a tool that can bring outside content in.
 
-`allow_tainted_exec: true` on an agent turns this off; the audit flags it.
+Setting `allow_tainted_exec: true` on an agent turns this off. The audit flags it.
 
 ## Trusted folders for notes
 
-`trusted_write_paths` lets an agent write notes to named folders outside its workspace without approval, from a chat and after reading outside content ([how it works](../agents/approvals.md#trusted-folders-for-notes)).
+`trusted_write_paths` lets an agent write notes to named folders outside its workspace without approval. That applies from a chat, and after the agent has read outside content. See [how it works](../agents/approvals.md#trusted-folders-for-notes).
 
-This is a real loosening, and you should know what it gives up. A web page or email the agent reads can steer what it writes, and with this setting nobody is asked first. Text planted by an attacker can end up in a trusted folder.
+This setting really does loosen the rules, so you should know what it gives up. A web page or an email the agent reads can steer what it writes, and with this setting nobody is asked first. Text planted by an attacker can end up in a trusted folder.
 
-What keeps that from doing more harm:
+These limits keep that from doing more harm:
 
-- Only the file tools are covered. Commands still need approval, so a planted file cannot be run by the agent without you.
-- Scripts, programs, executables and hidden files are not written there.
-- Habakkuk's own folders are never covered, so a page cannot rewrite the agent's memory, skills, hooks or config this way.
+- The setting covers only the file tools. Commands still need approval, so the agent can't run a planted file without you.
+- Scripts, programs, executables and hidden files aren't written there.
+- The setting never covers Habakkuk's own folders, so a page can't rewrite the agent's memory, skills, hooks or config this way.
 - Symlinks are resolved before the check.
 
-What it does not protect against:
+It doesn't protect you against these:
 
-- **Another program that acts on files in that folder.** A build tool, a sync job, a static site generator, a script of your own that reads `todo.md`. If something runs or loads what is in the folder, do not trust the folder.
-- **Wrong or misleading notes.** The agent may write down something a page told it. Read a note with that in mind, as you would an email.
-- **Overwritten notes.** A trusted folder can be edited as well as added to. Keep it in version control or a backup if the notes matter.
+- **Another program that acts on files in that folder.** That could be a build tool, a sync job, a static site generator, or a script of your own that reads `todo.md`. If something runs or loads what's in the folder, don't trust the folder.
+- **Wrong or misleading notes.** The agent may write down something a page told it. Keep that in mind when you read a note, as you would with an email.
+- **Overwritten notes.** A trusted folder can be edited as well as added to. If the notes matter, keep the folder in version control or a backup.
 
-Use it for folders that hold only notes. `habakkuk security` lists each agent's trusted folders and flags them on an agent that chats or webhooks can reach.
+Use this setting for folders that hold only notes. `habakkuk security` lists each agent's trusted folders. It flags them on an agent that chats or webhooks can reach.
 
 ## Skills and plugins from outside
 
-Outside skills and plugins are pinned and checked. An install prints the source, the commit, the tree hash, every file and the scripts among them, and scans them. A high-risk finding (`curl | sh`, decoded payloads run, credentials or the environment sent out, obfuscation, program binaries) refuses the install without `-force`. The lock file records the commit and hash. Updates show a diff and apply only when you say yes.
+Habakkuk pins and checks skills and plugins that come from outside. When you install one, it prints the source, the commit, the tree hash, every file and which of the files are scripts. Then it scans them. A high-risk finding stops the install unless you pass `-force`. The high-risk findings are `curl | sh`, decoded payloads that are run, credentials or the environment being sent out, obfuscation, and program binaries. The lock file records the commit and the hash. An update shows you a diff and applies only when you say yes.
 
-A skill that ships scripts stays disabled until `habakkuk skills approve`; plugins stay off until `habakkuk plugins enable`. `habakkuk skills audit` rescans everything and catches files changed after install. See [Plugins](../tools/plugins.md).
+A skill that ships scripts stays disabled until you run `habakkuk skills approve`. Plugins stay off until you run `habakkuk plugins enable`. `habakkuk skills audit` scans everything again and catches files that changed after install. See [Plugins](../tools/plugins.md).
 
 ## Private files
 
-Everything Habakkuk writes under `$HABAKKUK_HOME` that holds chats, memory, credentials, tokens or keys (databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles, backups) is created `0600` in folders `0700`. `habakkuk doctor` and `habakkuk security` warn about anything wider, and `habakkuk security -fix` tightens it. On Windows the audit skips these Unix checks; your profile folder is private to you by default.
+Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles and backups. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `habakkuk doctor` and `habakkuk security` warn you about anything wider, and `habakkuk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
 
 ## No surprise network calls
 
-Habakkuk sends no usage telemetry and checks for updates only when you run `habakkuk update`. It contacts:
+Habakkuk doesn't send usage telemetry, and it checks for updates only when you run `habakkuk update`. Here's what it contacts:
 
 - your model providers and the channels you configured;
 - services you named in `config.yaml`: a `search:` provider, `tts`, `images`, `video`, `realtime`, `memory.embeddings`, `telemetry.otlp_endpoint`, MCP servers, A2A peers, Home Assistant;
 - the pages an agent reads with `fetch_url` or the browser.
 
-There is no default web search provider: the `web_search` tool exists only once `search:` names one. `habakkuk security -network` lists every endpoint and whether your config turns it on.
+There's no default web search provider. The `web_search` tool exists only once `search:` names one. Run `habakkuk security -network` to list every endpoint and see whether your config turns it on.
 
 ## The local HTTP server
 
-The HTTP server listens on loopback unless a token is set, and then refuses requests addressed to other host names (DNS rebinding). Every request a browser sends from another origin (another site, another port on localhost, a sandboxed frame) is refused, including WebSocket handshakes and form posts. CORS is never granted, and the dashboard's changes need JSON bodies, which cross-site pages cannot send without a refused preflight.
+The HTTP server listens on loopback unless a token is set, and then refuses requests addressed to other host names (DNS rebinding). It refuses every request a browser sends from another origin, including WebSocket handshakes and form posts. Another origin means another site, another port on localhost, or a sandboxed frame. It never grants CORS. The dashboard's changes need JSON bodies, and a cross-site page can't send those without a preflight, which is refused.
 
-So a web page you visit cannot drive the agent, read your chats or pair a device, with or without a token. Programs (curl, SDKs, webhook senders, devices) authenticate with the token, a webhook secret or a device secret.
+This means a web page you visit can't drive the agent, read your chats or pair a device, with or without a token. Programs (curl, SDKs, webhook senders, devices) authenticate with the token, a webhook secret or a device secret.
 
 ## The audit
 
-`habakkuk security` (also `habakkuk security audit`) checks:
+`habakkuk security` runs the audit, and so does `habakkuk security audit`. It checks:
 
 - file modes under `$HABAKKUK_HOME`;
 - agents in `full` mode or reachable by outsiders, open channels, and trusted folders (`trusted_write_paths`);
@@ -107,11 +107,11 @@ So a web page you visit cannot drive the agent, read your chats or pair a device
 - risky MCP servers, and skills and hooks others can write;
 - backups and free disk space.
 
-It exits non-zero while a high or critical finding remains, so it can run in a check.
+It exits non-zero for as long as a high or critical finding remains, so you can run it in a check.
 
 ## Secret managers
 
-Settings ending in `_env` name a variable. `secrets:` can resolve those variables from a secret manager instead of `.env`:
+A setting whose name ends in `_env` holds the name of a variable. With `secrets:`, Habakkuk can resolve those variables from a secret manager instead of `.env`:
 
 ```yaml
 secrets:                          # resolve *_env variables from secret managers
@@ -125,8 +125,8 @@ secrets:                          # resolve *_env variables from secret managers
     TELEGRAM_BOT_TOKEN: pass:habakkuk/telegram
 ```
 
-A variable is read from the process environment first, then a reference, then `.env`. Secret values are redacted from the log and from the dashboard's config page.
+Habakkuk reads a variable from the process environment first, then from a reference, then from `.env`. It redacts secret values from the log and from the dashboard's config page.
 
 ## Reporting a vulnerability
 
-See [SECURITY.md](../../SECURITY.md) in the repository.
+To report one, see [SECURITY.md](../../SECURITY.md) in the repository.

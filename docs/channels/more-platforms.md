@@ -4,13 +4,13 @@ description: "Set up LINE, Mattermost, IRC, ntfy, Messenger, Instagram, Feishu a
 order: 14
 ---
 
-Each platform below takes its settings in a block named after its type. The rules in [Access, groups and delivery](settings.md) apply to all of them, and [What each platform supports](settings.md#what-each-platform-supports) lists what each one can send and receive.
+The platforms that don't have a page of their own are set up here, one short section each. Each platform takes its settings in a block named after its type. The rules in [Access, groups and delivery](settings.md) apply to all of them. For what each one can send and receive, see [What each platform supports](settings.md#what-each-platform-supports).
 
-Platforms marked **webhook** receive at `<public_url>/channels/<name>` and need an `http` section with a `public_url` the platform can reach (see [Webhook channels](settings.md#webhook-channels)). `habakkuk doctor` prints each URL.
+A platform marked **webhook** receives at `<public_url>/channels/<name>`. It needs an `http` section with a `public_url` the platform can reach. See [Webhook channels](settings.md#webhook-channels). Run `habakkuk doctor` to print each URL.
 
 ## LINE
 
-**Webhook.** In the LINE Developers console, create a Messaging API channel, issue a long-lived channel access token, and set the webhook URL to `<public_url>/channels/<name>`. Requests are signed with the channel secret. Replies use the event's reply token while it is fresh (free) and push messages after.
+**Webhook.** In the LINE Developers console, create a Messaging API channel. Issue a long-lived channel access token, then set the webhook URL to `<public_url>/channels/<name>`. Requests are signed with the channel secret. Habakkuk replies with the event's reply token while the token is fresh, which is free. After that it sends push messages.
 
 ```yaml
 channels:
@@ -19,11 +19,11 @@ channels:
     line: {channel_secret_env: LINE_CHANNEL_SECRET, access_token_env: LINE_ACCESS_TOKEN}
 ```
 
-Senders are LINE user ids. In groups the bot answers mentions. It sends text and JPEG and PNG images, and shows typing in one-to-one chats.
+Senders are identified by their LINE user id. In groups, the bot answers when you mention it. It sends text, plus JPEG and PNG images. In one-to-one chats it shows typing.
 
 ## Mattermost
 
-Create a bot account (or a personal access token for a user) and put its token in `.env`. Habakkuk connects over the WebSocket API, so no public URL is needed.
+Create a bot account, or a personal access token for a user. Put the token in `.env`. Habakkuk connects over the WebSocket API, so you don't need a public URL.
 
 ```yaml
 channels:
@@ -32,7 +32,7 @@ channels:
     mattermost: {url: "https://chat.example.com", token_env: MATTERMOST_TOKEN}
 ```
 
-Senders are user ids; usernames also match in `allow_from`. In channels the bot answers mentions, then follows the thread.
+Senders are identified by user id, and a username matches in `allow_from` too. In channels, the bot answers when you mention it, then follows the thread.
 
 ## IRC
 
@@ -47,11 +47,11 @@ channels:
       channels: ["#habakkuk"]
 ```
 
-Other settings: `username` (default the nick) and `sasl_user` (default the nick). A message in a channel is for Habakkuk when it has the bot's nick at the start or in the line. Senders are nicks; with SASL on the network, the account name also matches in `allow_from`. Long replies are split into lines.
+There are two other settings, `username` and `sasl_user`. Both default to the nick. In a channel, Habakkuk treats a message as addressed to it when the bot's nick is at the start of the line or somewhere in it. Senders are identified by nick. With SASL on the network, the account name matches in `allow_from` too. Habakkuk splits long replies into lines.
 
 ## ntfy
 
-ntfy publishes replies and notifications to a topic. With a `subscribe` topic set, messages published there become chat messages. It is handy for one-way alerts to your phone.
+The ntfy channel publishes replies and notifications to a topic. If you also set a `subscribe` topic, messages published there come in as chat messages. It's handy for one-way alerts to your phone.
 
 ```yaml
 channels:
@@ -61,14 +61,14 @@ channels:
     ntfy: {topic: habakkuk-out, subscribe: habakkuk-in, token_env: NTFY_TOKEN}
 ```
 
-`url` defaults to `https://ntfy.sh`; set it for your own server. `token_env` is for protected topics. `subscribe` may equal `topic`.
+`url` defaults to `https://ntfy.sh`. Set it when you use your own server. `token_env` is for protected topics. `subscribe` can be the same as `topic`.
 
 > [!CAUTION]
-> Anyone who knows an unprotected topic name can publish to it. Use a protected topic (with `token_env`) or a long random name for `subscribe`.
+> Anyone who knows the name of an unprotected topic can publish to it. For `subscribe`, use a protected topic (with `token_env`) or a long random name.
 
 ## Messenger and Instagram
 
-**Webhook.** Both use a Meta app, like the [WhatsApp Business Cloud API](whatsapp.md#business-cloud-api). In the app, subscribe the webhook to `<public_url>/channels/<name>` with a verify token of your choice (put it in the `verify_token_env` variable) and the `messages` field. Requests are checked against `X-Hub-Signature-256` with the app secret. Both use a Page access token.
+**Webhook.** Both use a Meta app, the same way the [WhatsApp Business Cloud API](whatsapp.md#business-cloud-api) does. In the app, subscribe the webhook to `<public_url>/channels/<name>` with the `messages` field. Choose a verify token and put it in the `verify_token_env` variable. Habakkuk checks each request against `X-Hub-Signature-256`, using the app secret. Both platforms use a Page access token.
 
 ```yaml
 channels:
@@ -80,11 +80,11 @@ channels:
     instagram: {access_token_env: IG_PAGE_TOKEN, app_secret_env: META_APP_SECRET, verify_token_env: META_VERIFY_TOKEN}
 ```
 
-`page_id` (optional) is the Page or Instagram account id, to ignore events for others. Replies outside the platforms' 24-hour window fail with the reason, since Habakkuk does not use message tags such as `human_agent`. Approvals show as quick replies. Instagram fetches the files Habakkuk sends from one-hour URLs under the channel's path.
+`page_id` is optional. Set it to the Page or Instagram account id, and Habakkuk ignores events for others. A reply outside the platforms' 24-hour window fails and gives the reason, because Habakkuk doesn't use message tags such as `human_agent`. Approvals show as quick replies. Instagram fetches the files Habakkuk sends from URLs under the channel's path. Each URL lasts one hour.
 
 ## Feishu and Lark
 
-**Webhook.** Create a custom app with the bot capability, add the `im:message` permissions, and subscribe to `im.message.receive_v1` with the request URL `<public_url>/channels/<name>`. Set an Encrypt Key and put it in `encrypt_key_env`, so events arrive encrypted and signed.
+**Webhook.** Create a custom app with the bot capability and add the `im:message` permissions. Subscribe to `im.message.receive_v1`, with `<public_url>/channels/<name>` as the request URL. Then set an Encrypt Key and put it in `encrypt_key_env`. That way events arrive encrypted and signed.
 
 ```yaml
 channels:
@@ -99,11 +99,11 @@ channels:
       # reply_in_thread: true        # answer each group mention in a thread under it
 ```
 
-Senders are open ids (`ou_...`). In groups the bot answers mentions. It sends Markdown posts, images, files and voice.
+Senders are identified by open id, which looks like `ou_...`. In groups, the bot answers when you mention it. It sends Markdown posts, images, files and voice.
 
 ## DingTalk
 
-**Webhook.** Add a robot to an internal app, choose HTTP mode, and set the message receiving address to `<public_url>/channels/<name>`.
+**Webhook.** Add a robot to an internal app and choose HTTP mode. Then set the message receiving address to `<public_url>/channels/<name>`.
 
 ```yaml
 channels:
@@ -112,11 +112,11 @@ channels:
     dingtalk: {client_id: dingabcdef123456, client_secret_env: DINGTALK_CLIENT_SECRET}
 ```
 
-`client_id` is the app's AppKey and `client_secret_env` its AppSecret; `robot_code` defaults to `client_id`. Senders are staff ids. DingTalk only sends the robot group messages that mention it.
+`client_id` is the app's AppKey, and `client_secret_env` is its AppSecret. `robot_code` defaults to `client_id`. Senders are identified by staff id. In groups, DingTalk only sends the robot the messages that mention it.
 
 ## WeCom
 
-**Webhook.** Set the application's API receiving URL to `<public_url>/channels/<name>` with a Token and EncodingAESKey, and add the server's public IP to the app's trusted IPs.
+**Webhook.** Set the application's API receiving URL to `<public_url>/channels/<name>`, with a Token and an EncodingAESKey. Then add the server's public IP to the app's trusted IPs.
 
 ```yaml
 channels:
@@ -125,11 +125,11 @@ channels:
     wecom: {corp_id: ww0123456789abcdef, agent_id: 1000002, secret_env: WECOM_SECRET, token_env: WECOM_TOKEN, aes_key_env: WECOM_AES_KEY}
 ```
 
-Senders are member user ids. `markdown: true` sends Markdown, which WeChat users see as plain text.
+Senders are identified by member user id. With `markdown: true`, Habakkuk sends Markdown. WeChat users see it as plain text.
 
 ## Zulip
 
-Create a generic bot, put its API key in `.env`, and subscribe it to the streams it should read. Habakkuk long-polls the event queue, so no public URL is needed.
+Create a generic bot and put its API key in `.env`. Subscribe the bot to the streams you want it to read. Habakkuk long-polls the event queue, so you don't need a public URL.
 
 ```yaml
 channels:
@@ -138,11 +138,11 @@ channels:
     zulip: {url: "https://example.zulipchat.com", email: habakkuk-bot@example.zulipchat.com, api_key_env: ZULIP_API_KEY}
 ```
 
-A stream is the conversation `stream:<id>` and each topic a thread. Direct messages are `dm:<user ids>`. Senders are user ids. In streams the bot answers mentions.
+Each stream is the conversation `stream:<id>`, and each topic in it is a thread. Direct messages are the conversation `dm:<user ids>`. Senders are identified by user id. In streams, the bot answers when you mention it.
 
 ## Rocket.Chat
 
-Create a bot user and make it a personal access token (Profile > Personal Access Tokens). Set `user_id` and `token_env` from it.
+Create a bot user. Then make a personal access token for it, under Profile > Personal Access Tokens. Use it to set `user_id` and `token_env`.
 
 ```yaml
 channels:
@@ -151,17 +151,17 @@ channels:
     rocketchat: {url: "https://chat.example.com", user_id: aobEdbYhXfu5hkeqG, token_env: ROCKETCHAT_TOKEN}
 ```
 
-The bot follows every room it is in over the realtime API. Rooms are conversations and threads are threads. It answers mentions and replies in threads.
+The bot follows every room it's in, over the realtime API. Each room is a conversation, and threads stay threads. The bot answers when you mention it, and it replies in threads.
 
 ## Nextcloud Talk
 
-**Webhook.** Install a bot with a 40 to 128 character secret, also put in `secret_env`:
+**Webhook.** Install a bot with a secret that's 40 to 128 characters long. Put the same secret in `secret_env`:
 
 ```bash
 occ talk:bot:install --feature webhook --feature response --feature reaction Habakkuk <secret> <public_url>/channels/<name>
 ```
 
-Enable it in the rooms it should read.
+Then enable the bot in each room you want it to read.
 
 ```yaml
 channels:
@@ -171,11 +171,11 @@ channels:
     nextcloudtalk: {url: "https://cloud.example.com", secret_env: TALK_BOT_SECRET}
 ```
 
-Talk does not tell bots which rooms are one-to-one, so a message is for Habakkuk when it says `@Habakkuk` (`mention`), or set `groups: all`. Bots cannot send files. Reactions work.
+Talk doesn't tell a bot which rooms are one-to-one. So Habakkuk treats a message as addressed to it when the message says `@Habakkuk` (the `mention` setting). Or you can set `groups: all`. Bots can't send files. Reactions work.
 
 ## Twitch
 
-Make an account for the bot and a user access token for it with the `chat:read` and `chat:edit` scopes, and list the channels to join.
+Create an account for the bot. Make a user access token for it with the `chat:read` and `chat:edit` scopes. Then list the channels you want it to join.
 
 ```yaml
 channels:
@@ -185,7 +185,7 @@ channels:
     twitch: {login: habakkuk_bot, token_env: TWITCH_TOKEN, channels: [mystream]}
 ```
 
-Chat is public, so only messages naming the bot (`@habakkuk_bot ...` or `habakkuk_bot: ...`) reach the agent. Senders are numeric user ids, and replies are paced under Twitch's rate limit.
+Twitch chat is public, so the agent only gets messages that name the bot, written as `@habakkuk_bot ...` or `habakkuk_bot: ...`. Senders are identified by numeric user id. Habakkuk paces its replies to stay under Twitch's rate limit.
 
 > [!WARNING]
-> With `allow_from: ["*"]`, every chatter is a guest: no commands, no writes outside the workspace, no computer use. Keep it that way for a public chat.
+> With `allow_from: ["*"]`, every chatter is a guest. A guest gets no commands, no writes outside the workspace and no computer use. Keep it that way for a public chat.

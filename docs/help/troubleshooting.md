@@ -4,9 +4,11 @@ description: "Common problems by symptom, with the exact message Habakkuk prints
 order: 2
 ---
 
-Run `habakkuk doctor` first. It checks the config, every provider's keys, the databases, each channel's credentials, the HTTP section and MCP servers, prints one line per item, and exits non-zero when something is wrong. Then `habakkuk channels` for live channel health and `habakkuk logs -f -level warn` for what `serve` is doing.
+Something not working? This page lists common problems by what you see, with the cause and the fix for each.
 
-Each channel page also has a troubleshooting table: [WhatsApp](../channels/whatsapp.md), [Telegram](../channels/telegram.md#troubleshooting), [Slack](../channels/slack.md#troubleshooting), [Discord](../channels/discord.md#troubleshooting), [Signal](../channels/signal.md#troubleshooting), [Matrix](../channels/matrix.md#troubleshooting).
+Before you look one up, run `habakkuk doctor`. It checks the config, every provider's keys, the databases, each channel's credentials, the HTTP section and MCP servers. It prints one line per item and exits non-zero when something is wrong. After that, run `habakkuk channels` for live channel health, and `habakkuk logs -f -level warn` to see what `serve` is doing.
+
+If the problem is with one chat app, look at its channel page too. Each one has its own troubleshooting table: [WhatsApp](../channels/whatsapp.md), [Telegram](../channels/telegram.md#troubleshooting), [Slack](../channels/slack.md#troubleshooting), [Discord](../channels/discord.md#troubleshooting), [Signal](../channels/signal.md#troubleshooting), [Matrix](../channels/matrix.md#troubleshooting).
 
 ## Setup and config
 

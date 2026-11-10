@@ -1,11 +1,11 @@
 ---
 title: Subscription logins
 nav_title: Subscriptions
-description: "Use a ChatGPT or GitHub Copilot plan instead of an API key: device-code sign-in, where tokens are kept, and why there is no Claude plan login."
+description: "Sign in with a ChatGPT or GitHub Copilot plan by device code instead of an API key, see where tokens are kept, and why there's no Claude plan login."
 order: 4
 ---
 
-A provider can use an account sign-in instead of API keys. Two plans are supported: ChatGPT and GitHub Copilot.
+If you have a ChatGPT or GitHub Copilot plan, a provider can use that account sign-in instead of API keys. Those are the two plans Habakkuk supports. Start by signing in:
 
 ```bash
 habakkuk auth login chatgpt     # ChatGPT plan: device code, then the Responses API the plan uses
@@ -27,13 +27,13 @@ agents:
     model: chatgpt/gpt-5.6-sol
 ```
 
-`habakkuk setup` finds existing sign-ins and offers them as a model choice.
+If you've already signed in, `habakkuk setup` finds the sign-in and offers it as a model choice.
 
 ## How tokens are kept
 
-Tokens are kept in `$HABAKKUK_HOME/auth.json` (owner-only, replaced atomically) and refreshed shortly before they expire, under a file lock so two Habakkuk processes never refresh at once. `habakkuk doctor` reports a provider whose login is missing (`NOT LOGGED IN (run habakkuk auth login chatgpt)`).
+Habakkuk keeps your tokens in `$HABAKKUK_HOME/auth.json`. The file is owner-only, and it's replaced atomically. Habakkuk refreshes the tokens shortly before they expire. It holds a file lock while it does, so two Habakkuk processes never refresh at once. If a provider's login is missing, `habakkuk doctor` reports it (`NOT LOGGED IN (run habakkuk auth login chatgpt)`).
 
-Calls through a subscription login count as $0 in [usage and cost](usage-and-limits.md).
+A call made through a subscription login counts as $0 in [usage and cost](usage-and-limits.md).
 
 > [!NOTE]
-> There is no Claude subscription login. Anthropic's terms do not allow third-party apps to use Claude plan credentials, so use an API key.
+> There's no Claude subscription login. Anthropic's terms don't allow third-party apps to use Claude plan credentials, so use an API key instead.

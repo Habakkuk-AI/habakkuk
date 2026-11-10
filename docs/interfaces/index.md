@@ -1,10 +1,10 @@
 ---
 title: Interfaces
-description: "The ways to use Habakkuk besides chat apps: the terminal UI, one-shot commands, the web dashboard, the desktop app, voice, editors and APIs."
+description: "Use Habakkuk without a chat app: the terminal UI, one-shot commands, the web dashboard, the desktop app, voice, editors and APIs."
 order: 6
 ---
 
-Chat apps are one way in. Habakkuk also has its own interfaces, all talking to the same agents, sessions and memory.
+Chat apps are one way to reach your agents. Habakkuk also has interfaces of its own, and they all talk to the same agents, sessions and memory. Use the table to pick one, then follow the link to its page.
 
 | Interface | Best for | Page |
 |---|---|---|
@@ -21,7 +21,7 @@ Chat apps are one way in. Habakkuk also has its own interfaces, all talking to t
 ## In this section
 
 <!-- cards -->
-- [CLI and TUI](cli-and-tui.md): the terminal chat, its keys and commands, and one-shot runs.
-- [Dashboard](dashboard.md): the `http` section, the control dashboard and the other endpoints it serves.
-- [Desktop app](desktop-app.md): Habakkuk Desktop for macOS, Windows and Linux.
-- [Remote CLI](remote-cli.md): `hk -r NAME` runs commands on the Habakkuk on your server.
+- [CLI and TUI](cli-and-tui.md): chat in the terminal, learn its keys and commands, and do one-shot runs.
+- [Dashboard](dashboard.md): add the `http` section to get the control dashboard and the other endpoints it serves.
+- [Desktop app](desktop-app.md): get Habakkuk Desktop for macOS, Windows and Linux.
+- [Remote CLI](remote-cli.md): use `hk -r NAME` to run commands on the Habakkuk on your server.

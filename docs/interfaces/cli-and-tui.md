@@ -1,8 +1,10 @@
 ---
 title: CLI and TUI
-description: "Chat with an agent in the full-screen terminal UI, its keys and commands, approvals at the keyboard, plain line-by-line chat, and one-shot runs from scripts."
+description: "Chat with an agent in the terminal: the full-screen UI, its keys and commands, approvals, plain line-by-line chat, and one-shot runs from scripts."
 order: 1
 ---
+
+Habakkuk works from a terminal too. Use `habakkuk chat` when you want to talk to an agent. Use `habakkuk run` when a script or cron job needs one answer.
 
 ## The terminal UI
 
@@ -14,7 +16,7 @@ habakkuk chat -session ID         # continue a given session
 habakkuk tui                      # always the full-screen UI
 ```
 
-`habakkuk chat` runs turns in the terminal while it is open; it does not need `habakkuk serve`. Tool calls show as cards you can expand, and the model's thinking can be shown or hidden. The first conversation with a new agent opens with its [welcome](../agents/agents.md#the-first-chat).
+`habakkuk chat` runs turns in your terminal for as long as it's open, so it doesn't need `habakkuk serve`. Each tool call shows as a card you can expand. You can show or hide the model's thinking. Your first conversation with a new agent opens with its [welcome](../agents/agents.md#the-first-chat).
 
 ### Keys
 
@@ -30,7 +32,7 @@ habakkuk tui                      # always the full-screen UI
 | Ctrl+O | Expand all tool output |
 | Ctrl+T | Show all thinking |
 
-Start a message with `//` to send it literally when it begins with `/`.
+Does your message begin with `/`? Start it with `//` and it's sent literally.
 
 ### Commands
 
@@ -52,11 +54,11 @@ Start a message with `//` to send it literally when it begins with `/`.
 
 ### Approvals
 
-When a call needs approval, the UI shows the request with three choices: **allow once** (`a` or `y`), **allow for this session** (`s`), or **deny** (`d`, `n` or Esc). Arrow keys and Enter work too.
+When a call needs your approval, the UI shows you the request. You have three choices: **allow once** (`a` or `y`), **allow for this session** (`s`), or **deny** (`d`, `n` or Esc). You can also choose with the arrow keys and Enter.
 
 ### Plain chat
 
-`habakkuk chat -plain` (or any `habakkuk chat` whose input is piped) is a line-by-line chat with no full-screen UI, which suits scripts and dumb terminals.
+`habakkuk chat -plain` gives you a line-by-line chat with no full-screen UI. You get the same thing from any `habakkuk chat` whose input is piped. It suits scripts and dumb terminals.
 
 ## One-shot runs
 
@@ -66,8 +68,8 @@ habakkuk run -agent research "compare these two papers"
 habakkuk run -skill weekly-report                          # follow a skill
 ```
 
-`habakkuk run` prints the answer and exits, so it fits scripts and cron jobs. Nobody is there to approve, so calls that need approval are denied unless the agent has an [approval reviewer](../agents/approvals.md#approvals).
+`habakkuk run` prints the answer and exits, which makes it a good fit for scripts and cron jobs. There's nobody at the keyboard to approve anything, so a call that needs approval is denied. The exception is an agent that has an [approval reviewer](../agents/approvals.md#approvals).
 
 ## Everything else
 
-The [CLI reference](../reference/cli.md) lists every command and flag. `habakkuk` with no arguments prints the same list.
+For every command and flag, see the [CLI reference](../reference/cli.md). You get the same list when you run `habakkuk` with no arguments.

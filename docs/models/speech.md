@@ -1,14 +1,14 @@
 ---
 title: Speech
-description: "Configure speech-to-text for voice notes and habakkuk talk, and text-to-speech for the speak tool and spoken replies."
+description: "Set up speech-to-text for voice notes and habakkuk talk, and text-to-speech for the speak tool and spoken replies."
 order: 6
 ---
 
-Speech has two sides, each with its own section in `config.yaml`. How you use them (voice notes, `habakkuk talk`, Live mode) is on the [Voice](../tools/voice.md) page.
+Speech has two sides: speech-to-text and text-to-speech. Each has its own section in `config.yaml`, and this page shows you how to set up both. For how you use them (voice notes, `habakkuk talk`, Live mode), see the [Voice](../tools/voice.md) page.
 
 ## Speech-to-text
 
-Voice notes from chats, dashboard recordings and `habakkuk talk` are transcribed through a provider of type `openai` with an `/audio/transcriptions` endpoint:
+Habakkuk transcribes voice notes from chats, dashboard recordings and `habakkuk talk`. It does this through a provider of type `openai` that has an `/audio/transcriptions` endpoint:
 
 ```yaml
 transcription:
@@ -17,13 +17,13 @@ transcription:
   prompt: "Names and words to spell right: Habakkuk, Toronto"   # optional
 ```
 
-`provider` names an entry under `providers:`, so the key comes from there. A local server with the same endpoint works too.
+`provider` is the name of an entry under `providers:`, so that's where the key comes from. A local server that has the same endpoint works too.
 
-Without a `transcription` section, the agent is told a voice note arrived that it cannot hear, and asks you to type it. If transcription fails, the agent gets the reason.
+If there's no `transcription` section, the agent is told that a voice note arrived and that it can't hear it. It then asks you to type the message. If transcription fails, the agent is told the reason.
 
 ## Text-to-speech
 
-The `speak` tool and spoken replies (`voice_replies` on a channel) use `tts:`:
+Two things use the `tts:` section: the `speak` tool, and spoken replies (`voice_replies` on a channel).
 
 ```yaml
 tts:
@@ -45,8 +45,8 @@ tts:
 | `max_chars` | The longest text spoken (default 2000); longer replies stay text only |
 
 > [!NOTE]
-> `edge` uses a free online voice service with no key. Like every provider, it is contacted only once you name it here.
+> `edge` uses a free online voice service that needs no key. As with every provider, Habakkuk contacts it only once you name it here.
 
 ## Live voice
 
-The dashboard's Live mode uses a realtime speech model of its own, configured under `realtime:`. See [Voice: Live mode](../tools/voice.md#live-mode-in-the-dashboard).
+Live mode in the dashboard has a realtime speech model of its own. You configure it under `realtime:`. See [Voice: Live mode](../tools/voice.md#live-mode-in-the-dashboard).

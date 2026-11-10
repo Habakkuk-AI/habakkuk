@@ -1,10 +1,10 @@
 ---
 title: Dashboard
-description: "The http section turns on a control dashboard at /app/: chat, sessions, board, schedules, memory, skills, usage, approvals and config, plus the other endpoints the same server offers."
+description: "Turn on the control dashboard at /app/ with an http section, see what its pages do, and find the other endpoints the same server offers."
 order: 2
 ---
 
-An `http` section makes `habakkuk serve` also serve a chat page, a control dashboard, a JSON API and webhooks. `habakkuk setup` adds one on loopback to every new home, so the dashboard is there from the first `habakkuk serve` (`serve` prints its address):
+With an `http` section in your config, `habakkuk serve` also serves a chat page, a control dashboard, a JSON API and webhooks. You probably have one already. `habakkuk setup` adds an `http` section on loopback (an address only this computer can reach) to every new home. So the dashboard is there from your first `habakkuk serve`, and `serve` prints its address. The section looks like this:
 
 ```yaml
 http:
@@ -14,20 +14,20 @@ http:
 ```
 
 > [!IMPORTANT]
-> Without `token_env` the server refuses any address but loopback, and answers only requests whose `Host` is a loopback name, so a web page cannot reach it through DNS rebinding. To reach it from elsewhere, set a token and put it behind HTTPS (a reverse proxy, or `habakkuk expose tailscale`). See [Remote access](../deploy/remote-access.md).
+> Without `token_env`, the server accepts only a loopback address. It also answers only requests whose `Host` is a loopback name, so a web page can't reach it through DNS rebinding. To reach the server from anywhere else, set a token and put it behind HTTPS. You can do that with a reverse proxy, or with `habakkuk expose tailscale`. See [Remote access](../deploy/remote-access.md).
 
 ## The dashboard
 
-`http://127.0.0.1:8484/app/` is a control dashboard with these pages: overview, chat, sessions, board, schedules, memory, skills, usage, approvals and config. It is plain HTML, CSS and JavaScript embedded in the binary, over the JSON API under `/api/` with the same token ([HTTP API](../reference/api.md)).
+Open `http://127.0.0.1:8484/app/` and you get a control dashboard. Its pages are overview, chat, sessions, board, schedules, memory, skills, usage, approvals and config. The dashboard is plain HTML, CSS and JavaScript embedded in the binary. It works over the JSON API under `/api/` and uses the same token (see [HTTP API](../reference/api.md)).
 
-- **Overview** starts with a **Get started** panel on a new install: say hi, turn on a morning brief, teach your agent something. Each one opens Chat with the message ready to send. The panel goes away by itself once the agent has answered a message, or you have a schedule or a second chat channel. Hide removes it sooner.
-- **Empty pages explain themselves.** Chat, Sessions, Schedules, Memory, Skills and the Board each say what belongs there when they are empty and offer a one-click message that fills them.
-- **Chat** shows tool calls live, sends files as attachments and voice recordings for transcription, reads replies aloud through `tts`, and with `realtime:` offers Live mode (see [Voice](../tools/voice.md#live-mode-in-the-dashboard)).
-- **Approvals** waiting in any chat can be answered from the dashboard.
-- **Config** shows the configuration with the values of every secret variable, secret-named field and URL credential redacted. For each chat channel it has two settings you can change there: what the chat shows while the agent works (a short status line, every step, or nothing) and what approval requests show (a plain summary, or the exact command). Saving edits `config.yaml` in place and applies from the next message, with no restart.
-- A service worker makes it installable as an app.
+- **Overview** opens with a **Get started** panel on a new install. The panel has three suggestions: say hi, turn on a morning brief, and teach your agent something. Each one opens Chat with the message ready to send. The panel goes away by itself once the agent has answered a message, or once you have a schedule or a second chat channel. To remove it sooner, use Hide.
+- **Empty pages explain themselves.** When Chat, Sessions, Schedules, Memory, Skills or the Board is empty, the page says what belongs there. It also offers a message you can send with one click to fill it.
+- **Chat** shows tool calls as they happen. It sends files as attachments and voice recordings for transcription, and it reads replies aloud through `tts`. With `realtime:` it also offers Live mode (see [Voice](../tools/voice.md#live-mode-in-the-dashboard)).
+- **Approvals** that are waiting in any chat can be answered from the dashboard.
+- **Config** shows your configuration. The values of every secret variable, secret-named field and URL credential are redacted. For each chat channel, there are two settings you can change on this page. The first is what the chat shows while the agent works: a short status line, every step, or nothing. The second is what approval requests show: a plain summary, or the exact command. When you save, the dashboard edits `config.yaml` in place. The change applies from the next message, and you don't need to restart.
+- A service worker lets you install the dashboard as an app.
 
-[Habakkuk Desktop](desktop-app.md) wraps the same dashboard in a native window with notifications.
+Want the dashboard in a window of its own? [Habakkuk Desktop](desktop-app.md) wraps the same dashboard in a native window and adds notifications.
 
 ## Everything the server offers
 
@@ -47,4 +47,4 @@ http:
 
 ## Security
 
-The server is locked down for browsers. Every request a browser sends from another origin (another site, another port on localhost, a sandboxed frame) is refused, including WebSocket handshakes and form posts. CORS is never granted, and the dashboard's changes need JSON bodies. A web page you visit cannot drive the agent, read your chats or pair a device, with or without a token. See [Security](../deploy/security.md#the-local-http-server).
+The server is locked down for browsers. It refuses every request a browser sends from another origin. Another origin means another site, another port on localhost, or a sandboxed frame. The rule covers WebSocket handshakes and form posts too. The server never grants CORS, and any change the dashboard makes needs a JSON body. So a web page you visit can't drive the agent, read your chats or pair a device, with or without a token. See [Security](../deploy/security.md#the-local-http-server).

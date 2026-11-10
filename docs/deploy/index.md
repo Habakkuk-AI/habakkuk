@@ -1,14 +1,14 @@
 ---
 title: Deploy
-description: "Keep habakkuk serve running on a server or a home machine: service managers and containers, remote access, security, backups and updates, and monitoring."
+description: "Keep habakkuk serve running on a server or a home machine, with service managers or containers, remote access, security, backups, updates and monitoring."
 order: 7
 ---
 
-`habakkuk serve` is the long-running process. It runs the channels, the job workers (resuming interrupted turns), schedules, the board, background memory review, retention, and the HTTP server when there is an `http` section.
+This section shows you how to keep Habakkuk running all the time, on a server or on a machine at home. The process you keep running is `habakkuk serve`. It runs the channels, the job workers (which resume interrupted turns), schedules, the board, background memory review and retention. It also runs the HTTP server when your config has an `http` section.
 
-- Run **one** `serve` per `$HABAKKUK_HOME`.
-- It stops cleanly on `SIGINT` or `SIGTERM`, and anything in flight resumes on the next start.
-- A small machine is enough: it is one static binary with SQLite storage, and the models run at your providers (or on a separate model server).
+- Run only **one** `serve` for each `$HABAKKUK_HOME`.
+- It shuts down cleanly on `SIGINT` or `SIGTERM`. Work that was in progress resumes the next time it starts.
+- A small machine is enough. Habakkuk is one static binary with SQLite storage, and the models run at your providers (or on a separate model server).
 
 ## Pick a setup
 
@@ -22,8 +22,8 @@ order: 7
 ## In this section
 
 <!-- cards -->
-- [Run it on a server](server.md): systemd, launchd and Docker, and what `serve` needs.
-- [Remote access](remote-access.md): reverse proxies, tunnels and `habakkuk expose tailscale`.
-- [Security](security.md): what an agent may do by default, the audit, and secret managers.
-- [Backups and updates](backups-and-updates.md): `habakkuk backup`, restore, updates and retention.
-- [Observability](observability.md): status, health checks, logs, metrics and traces.
+- [Run it on a server](server.md): set it up under systemd, launchd or Docker, and see what `serve` needs.
+- [Remote access](remote-access.md): reach it from outside through a reverse proxy, a tunnel or `habakkuk expose tailscale`.
+- [Security](security.md): what an agent is allowed to do by default, the audit, and secret managers.
+- [Backups and updates](backups-and-updates.md): back up with `habakkuk backup`, restore, update, and see how retention works.
+- [Observability](observability.md): check status and health, read the logs, and collect metrics and traces.

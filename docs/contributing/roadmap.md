@@ -1,10 +1,10 @@
 ---
 title: Roadmap
-description: "Release phases, what each one ships, and known gaps."
+description: "The release phases, what ships in each one, and the known gaps."
 order: 3
 ---
 
-The repo stays private until 0.3, then opens under the Apache License 2.0.
+Habakkuk ships in phases. Below is what goes into each one, and the gaps that are already known. The repo stays private until 0.3. Then it opens under the Apache License 2.0.
 
 | Phase | Ships | Done when |
 |---|---|---|
@@ -16,11 +16,11 @@ The repo stays private until 0.3, then opens under the Apache License 2.0.
 
 ## Known gaps
 
-- Replies arrive when the turn finishes; there is no streaming of partial text into the chat. Progress shows as a draft message edited with each tool step (Telegram, Slack; `progress: draft`, the default), a typing indicator (Telegram, WhatsApp), or one "still working" notice after 60 seconds (Slack with `progress: off`).
-- Steering notes (`/steer`) taken by a turn that then loses its lease before writing them are lost; the window is one model call.
-- `send_file` delivery is at-least-once at the last step: a crash after the platform accepted a file but before the job completed sends it again. A model that repeats the call after a restart (a new tool call ID) also sends it again.
-- Script schedules are added with the CLI only; they cannot yet be declared in `config.yaml`, and there is no command to edit one in place (remove and add again).
+- A reply arrives when the turn finishes. Partial text isn't streamed into the chat. Progress shows up as a draft message that's edited with each tool step (Telegram, Slack; `progress: draft`, the default), a typing indicator (Telegram, WhatsApp), or one "still working" notice after 60 seconds (Slack with `progress: off`).
+- A steering note (`/steer`) is lost if a turn takes it and then loses its lease before writing it. The window for this is one model call.
+- `send_file` delivery is at-least-once at the last step. If a crash happens after the platform accepted a file but before the job completed, the file is sent again. It's also sent again if a model repeats the call after a restart (a new tool call ID).
+- You can add script schedules with the CLI only. You can't declare them in `config.yaml` yet. There's no command to edit one in place, so remove it and add it again.
 
 ## Known gaps on Windows
 
-Windows builds are new and have only run on CI so far. Two things need someone with a Windows machine: the browser does not follow popups opened by a page (the port-based launch Windows uses), and the dashboard's live activity stream timed out in one CI test. Both tests are skipped on Windows with a pointer here. Computer use is not supported on Windows yet.
+Windows builds are new, and so far they've only run on CI. Two things need someone with a Windows machine. First, the browser doesn't follow popups opened by a page (the port-based launch Windows uses). Second, the dashboard's live activity stream timed out in one CI test. Both tests are skipped on Windows, with a pointer here. Computer use isn't supported on Windows yet.

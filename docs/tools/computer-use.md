@@ -1,10 +1,10 @@
 ---
 title: Computer use
-description: "Let agents see a desktop through screenshots and drive it with the mouse and keyboard: the Linux, macOS and private virtual desktop backends, and the safety rules."
+description: "Let agents see a desktop through screenshots and drive it with the mouse and keyboard, on Linux, macOS or a private virtual desktop, within the safety rules."
 order: 3
 ---
 
-Agents that list the toolset `computer` see a desktop through screenshots and drive it with the mouse and keyboard: any app, not just web pages.
+Use this page when an agent needs to work in desktop apps as well as web pages. An agent with the `computer` toolset sees a desktop through screenshots and drives it with the mouse and keyboard, so it can use any app.
 
 ```yaml
 agents:
@@ -17,10 +17,10 @@ computer:
   confirm_apps: ["1Password", "Terminal"]   # always ask a human first
 ```
 
-Other settings: `display` (the X display for `linux`), `native` (see below) and `timeout`.
+There are three more settings: `display` (the X display for `linux`), `native` (explained below) and `timeout`.
 
 > [!NOTE]
-> Computer use is not supported on Windows yet. Use the [browser](browser.md) tools, or run Habakkuk in WSL.
+> Computer use doesn't work on Windows yet. Use the [browser](browser.md) tools there, or run Habakkuk in WSL.
 
 ## The tools
 
@@ -32,7 +32,7 @@ Other settings: `display` (the X display for `linux`), `native` (see below) and 
 | `computer_scroll`, `computer_wait` | Scroll, wait |
 | `computer_open` | Open an app or a URL |
 
-When every model in the agent's chain is a Claude 5 or later model on an `anthropic` provider, the agent gets the provider's native computer-use tool instead (`native: false` turns that off). `computer_open` stays.
+If every model in the agent's chain is a Claude 5 or later model on an `anthropic` provider, the agent gets the provider's native computer-use tool in place of these. Set `native: false` to turn that off. The agent keeps `computer_open` either way.
 
 ## Backends
 
@@ -55,14 +55,14 @@ sudo apt install xvfb xdotool imagemagick openbox
 habakkuk computer view   # prints the x11vnc (and noVNC) command to watch or take over
 ```
 
-With `xvfb`, each agent gets a display of its own from `:99` up, readable only with a cookie Habakkuk writes, plus a window manager (`openbox` and others) when one is installed. `habakkuk doctor` checks the commands the backend needs.
+With `xvfb`, each agent gets its own display, numbered from `:99` up. The display can only be read with a cookie that Habakkuk writes. The agent also gets a window manager (`openbox` and others) when one is installed. `habakkuk doctor` checks for the commands the backend needs.
 
 ## Safety
 
-- Every computer action is `exec` risk: `ask` and `workspace` modes ask first unless an approval reviewer allows it. A turn may take at most `max_actions` actions.
-- Text that looks like an API key, token, private key, payment card number or one of Habakkuk's configured secrets is never typed, whoever approves.
-- Actions while an app in `confirm_apps` is in front, or opening one, always need a human, even in `full` mode.
-- Screenshots count as untrusted content, like web pages.
-- Agents whose commands run in a Docker or SSH sandbox cannot use the computer, which is on this machine.
+- Every computer action counts as `exec` risk. In `ask` and `workspace` modes the agent asks first, unless an approval reviewer allows the action. A turn can take at most `max_actions` actions.
+- Habakkuk never types text that looks like an API key, token, private key, payment card number or one of its configured secrets. That holds whoever approves.
+- A human always has to approve an action taken while an app in `confirm_apps` is in front, and the opening of one. This applies even in `full` mode.
+- Screenshots are treated as untrusted content, the same as web pages.
+- An agent whose commands run in a Docker or SSH sandbox can't use the computer, because the computer is on this machine.
 
-[Architecture: computer](../reference/architecture.md#computer) has the details.
+For the details, see [Architecture: computer](../reference/architecture.md#computer).

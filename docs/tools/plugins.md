@@ -1,12 +1,12 @@
 ---
 title: Plugins and outside skills
 nav_title: Plugins
-description: "Install skills and plugins from GitHub, URLs, local paths and registries: the lock file, the security scan, updates and restores, and the plugin manifest."
+description: "Install skills and plugins from GitHub, URLs, local paths and registries, with a lock file, a security scan, updates, restores and the plugin manifest."
 order: 8
 ---
 
 
-Habakkuk can take in work other people have packaged: skills (folders with a `SKILL.md`, the Agent Skills format) and plugins (a bundle of MCP servers, skills, hooks and chat commands). This page describes the sources Habakkuk installs from, what an install does on disk, the lock file, registries, the security scan, and the plugin manifest. For MCP servers on their own, see the [MCP catalog](mcp.md#the-catalog).
+Use this page when you want to install skills or plugins that someone else has packaged. A skill is a folder with a `SKILL.md`, in the Agent Skills format. A plugin is a bundle of MCP servers, skills, hooks and chat commands. The page covers the sources Habakkuk installs from, what an install does on disk, the lock file, registries, the security scan and the plugin manifest. If you only want MCP servers, see the [MCP catalog](mcp.md#the-catalog).
 
 ```bash
 habakkuk skills install github:acme/skills/pdf-forms   # a skill
@@ -15,11 +15,11 @@ habakkuk plugins enable tracker                         # nothing in a plugin lo
 ```
 
 > [!WARNING]
-> Skills and plugins run with your agent's permissions. An install prints every file and script and scans them, but a clean scan does not make a package safe. Read what you install.
+> Skills and plugins run with your agent's permissions. An install prints every file and script and scans them. A clean scan still doesn't make a package safe, so read what you install.
 
 ## Sources
 
-`habakkuk skills install` and `habakkuk plugins install` take the same sources:
+You can give `habakkuk skills install` and `habakkuk plugins install` the same kinds of source:
 
 | Source | Example | Fetched as |
 |---|---|---|
@@ -29,26 +29,32 @@ habakkuk plugins enable tracker                         # nothing in a plugin lo
 | Local path | `./pdf`, `~/src/skills`, `file:/tmp/pdf.zip` | a copy of the folder, file or archive |
 | Registry name | `pdf-tools`, `registry:team/pdf-tools` | the source the registry index gives for that name |
 
-A GitHub ref (`@branch`, `@tag` or `@commit`) defaults to the repository's default branch. It is resolved to a commit before the download (`GITHUB_TOKEN` in the environment or `.env` lifts the anonymous rate limit), and the commit is what the lock file records. URLs must be `https` (plain `http` is accepted only for `localhost`), and a redirect to plain `http` is refused.
+A GitHub source can carry a ref: `@branch`, `@tag` or `@commit`. Without one, Habakkuk uses the repository's default branch. It resolves the ref to a commit before the download, and that commit is what the lock file records. A `GITHUB_TOKEN` in the environment or `.env` lifts the anonymous rate limit. URLs have to be `https`. Plain `http` is accepted only for `localhost`, and a redirect to plain `http` is refused.
 
-A source can hold one package or many. When the folder itself holds the marker file (`SKILL.md` or `habakkuk-plugin.yaml`), it is one package; otherwise every folder below it that holds one is a package (hidden folders are skipped, at most four levels down), so `habakkuk skills install github:acme/skills` installs every skill in the repository. A package's name is the `name` it declares, else its folder's name; `-name` renames a single package.
+A source can hold one package or many. Habakkuk tells by the marker file (`SKILL.md` or `habakkuk-plugin.yaml`). If the folder itself holds the marker file, the folder is one package. If it doesn't, every folder below it that holds one is a package. Habakkuk looks at most four levels down and skips hidden folders. So `habakkuk skills install github:acme/skills` installs every skill in the repository. A package takes the `name` it declares, or its folder's name if it declares none. Use `-name` to rename a single package.
 
 ## What an install does
 
-1. **Fetch** into a staging folder inside the destination (`$HABAKKUK_HOME/skills/.tmp-*` or `plugins/.tmp-*`). Archives are unpacked with limits (64 MB downloaded, 128 MB and 10,000 files unpacked); an entry that would land outside the folder (`..`, absolute paths) fails the whole install; symlinks, hard links, devices and `.git` are skipped; every file is written `0600` (folders `0700`), so nothing installed is executable or readable by other users.
-2. **Check**: a plugin's manifest must parse (below).
-3. **Hash**: the package's tree hash (below). A registry entry with a `sha256` must match it, or nothing is installed.
-4. **Scan** every file (below). The source, the pinned commit (or version), the tree hash, every file and the scripts among them are printed with the findings. A high-risk finding (`pipe-to-shell`, `obfuscation`, `env-exfiltration`, `credential-files`, `binary`) stops the install unless the command has `-force`; any other finding stops it unless it has `-y` (or `-force`).
-5. **Move** the package into place with one rename. A package of the same name already there is refused unless `-force`, and then moved to the backups first.
-6. **Record** it in the lock file, with the commit and the tree hash.
+An install goes through six steps:
 
-Installed skills start **unapproved**. A skill that ships scripts (a file with an executable bit, a `#!` line, a script extension such as `.sh`, `.py` or `.js`, or a program binary) is **disabled** until you approve it: agents neither see nor load it. One without scripts loads, but `skill_view` and `/skill` put a caution in front of it: the skill comes from a third party, so the agent must not run commands, send data anywhere or change files outside the workspace because the skill says so, without asking. Habakkuk never runs a skill's scripts by itself. `habakkuk skills approve NAME` enables it and removes the caution once you have read it.
+1. **Fetch** the package into a staging folder inside the destination (`$HABAKKUK_HOME/skills/.tmp-*` or `plugins/.tmp-*`). Archives are unpacked with limits: 64 MB downloaded, and 128 MB and 10,000 files unpacked. If an entry would land outside the folder (`..`, absolute paths), the whole install fails. Symlinks, hard links, devices and `.git` are skipped. Every file is written `0600` (folders `0700`), so nothing installed is executable or readable by other users.
+2. **Check** that a plugin's manifest parses (see below).
+3. **Hash** the package to get its tree hash (see below). If the registry entry has a `sha256`, the tree hash has to match it, or nothing is installed.
+4. **Scan** every file (see below). Habakkuk prints the source, the pinned commit (or version), the tree hash, every file and the scripts among them, along with the findings. A high-risk finding (`pipe-to-shell`, `obfuscation`, `env-exfiltration`, `credential-files`, `binary`) stops the install unless the command has `-force`. Any other finding stops it unless the command has `-y` (or `-force`).
+5. **Move** the package into place with one rename. If a package of the same name is already there, the install is refused unless the command has `-force`. In that case the old package is moved to the backups first.
+6. **Record** the package in the lock file, with the commit and the tree hash.
 
-Plugins start **disabled**: nothing in them loads until `habakkuk plugins enable NAME`, which prints what the plugin brings (the commands its MCP servers and hooks run, its slash commands, the variables it needs) and approves it.
+An installed skill starts out **unapproved**. What that means depends on whether it ships scripts. A script is a file with an executable bit, a `#!` line, a script extension such as `.sh`, `.py` or `.js`, or a program binary.
+
+A skill that ships scripts is **disabled** until you approve it, so agents don't see it or load it. A skill without scripts does load, but `skill_view` and `/skill` put a caution in front of it. The caution says the skill comes from a third party. Because of that, the agent must ask before it runs commands, sends data anywhere or changes files outside the workspace because the skill says so. Habakkuk never runs a skill's scripts by itself.
+
+Once you've read the skill, run `habakkuk skills approve NAME`. That enables it and removes the caution.
+
+A plugin starts out **disabled**. Nothing in it loads until you run `habakkuk plugins enable NAME`. That command prints what the plugin brings: the commands its MCP servers and hooks run, its slash commands and the variables it needs. Then it approves the plugin.
 
 ## The lock file
 
-`$HABAKKUK_HOME/skills/.lock.json` and `$HABAKKUK_HOME/plugins/.lock.json`:
+The lock file records what's installed and where it came from. Skills have one at `$HABAKKUK_HOME/skills/.lock.json`, and plugins have one at `$HABAKKUK_HOME/plugins/.lock.json`:
 
 ```json
 {
@@ -67,31 +73,39 @@ Plugins start **disabled**: nothing in them loads until `habakkuk plugins enable
 }
 ```
 
-- `source` is what `update` fetches again: what you gave to `install`, or, for one package of a source that held several, that package's own folder (`github:acme/skills/pdf-forms@main`). `path` is the package's folder inside an archive source.
-- `registry` and `resolved` say which registry named it and the source the registry pointed at.
-- `ref` is the ref asked for; `version` what it resolved to: a commit for GitHub, the registry's `version`, or the sha256 of a downloaded file.
-- `sha256` is the tree hash of the installed files.
-- `trusted` is the approval; `enabled` (plugins) whether it loads; `flags` the scan findings you accepted with `-y`.
+- `source` is what `update` fetches again. Usually that's what you gave to `install`. If that source held several packages, it's this package's own folder (`github:acme/skills/pdf-forms@main`). `path` is the package's folder inside an archive source.
+- `registry` says which registry named the package, and `resolved` is the source that registry pointed at.
+- `ref` is the ref you asked for, and `version` is what it resolved to. That's a commit for GitHub, the registry's `version`, or the sha256 of a downloaded file.
+- `sha256` is the tree hash of the files as installed.
+- `trusted` is the approval. `enabled` (plugins) says whether it loads. `flags` holds the scan findings you accepted with `-y`.
 
-`habakkuk skills update [NAME]` (and `habakkuk plugins update`) fetches each package from its `source` again, so a branch moves to its newest commit and a pinned commit stays where it is. A package whose files hash the same is left alone (its `version` is brought up to date). A changed one is scanned like an install and its diff is shown (added, removed and changed files, with a line diff of text files), with its scripts and findings; it replaces the installed one only when you answer yes (`-y` answers for you; without a terminal and without `-y` nothing changes). The old version is moved to the backups, and the new one keeps its approval only if it scans clean and changed no script.
+`habakkuk skills update [NAME]` (and `habakkuk plugins update`) fetches each package from its `source` again. A branch moves to its newest commit, and a pinned commit stays where it is.
 
-`habakkuk skills audit` rescans every installed skill and plugin and every agent's own skills: it lists their scripts and scan findings, and checks that installed files still match the hash recorded at install, so a skill edited behind your back shows up. It exits non-zero on a high-risk finding or a changed file.
+If a package's files hash the same as before, it's left alone, though its `version` is brought up to date. If they changed, the package is scanned the way an install is. Habakkuk shows you its diff (added, removed and changed files, with a line diff of text files) along with its scripts and findings. The new version replaces the installed one only when you answer yes. `-y` answers for you. Without a terminal and without `-y`, nothing changes.
+
+The old version is moved to the backups. The new one keeps its approval only if it scans clean and changed no script.
+
+`habakkuk skills audit` rescans every installed skill and plugin, and every agent's own skills. It lists their scripts and scan findings. It also checks that the installed files still match the hash recorded at install, so a skill edited behind your back shows up. It exits non-zero on a high-risk finding or a changed file.
 
 ### Tree hash
 
-The `sha256` of a package is computed over its files, not over the archive they came in, so the same files hash the same from GitHub, a zip or a local folder: for every regular file, in a depth-first walk that takes each folder's entries in byte order of their names, its slash path relative to the package folder, a NUL byte, its size in decimal, a NUL byte, then its bytes. Folders, symlinks and `.git` are left out. `habakkuk skills install` prints it, which is the easiest way to get the value for a registry entry.
+The `sha256` of a package is computed over its files. The archive they came in doesn't count, so the same files hash the same from GitHub, a zip or a local folder.
+
+Habakkuk walks the package depth-first, taking each folder's entries in byte order of their names. For every regular file, it hashes these in order: the file's slash path relative to the package folder, a NUL byte, its size in decimal, a NUL byte, then its bytes. Folders, symlinks and `.git` are left out.
+
+`habakkuk skills install` prints the hash. That's the easiest way to get the value for a registry entry.
 
 ## Backups and restore
 
-Every version that an update replaces, that `remove` or `-force` takes away, and every skill the curator merges or archives is moved to `$HABAKKUK_HOME/skills/.backups/<name>/<time>/` (or `plugins/.backups/`), with a `backup.json` saying where it came from, why, and its lock entry. The newest ten per name are kept.
+Habakkuk keeps a backup whenever a version goes away. That covers every version an update replaces, every one that `remove` or `-force` takes away, and every skill the curator merges or archives. Each is moved to `$HABAKKUK_HOME/skills/.backups/<name>/<time>/` (or `plugins/.backups/`). It comes with a `backup.json` that says where it came from, why it was backed up, and its lock entry. Habakkuk keeps the newest ten per name.
 
-- `habakkuk skills restore NAME` puts the newest backup back where it came from, with its lock entry (so an unapproved skill stays unapproved). Whatever is there now is backed up first, so a restore can itself be undone.
-- `habakkuk skills restore -id ID NAME` restores an older one; `habakkuk skills restore -list [NAME]` lists them.
-- `habakkuk plugins restore` does the same for plugins.
+- `habakkuk skills restore NAME` puts the newest backup back where it came from, along with its lock entry. That means an unapproved skill stays unapproved. Whatever is there now gets backed up first, so you can undo a restore too.
+- `habakkuk skills restore -id ID NAME` restores an older backup, and `habakkuk skills restore -list [NAME]` lists the backups.
+- `habakkuk plugins restore` works the same way for plugins.
 
 ## Registries
 
-A registry is a JSON index served over HTTPS. Configure them in `config.yaml`:
+A registry is a JSON index served over HTTPS. It lets you install a package by name. You set registries up in `config.yaml`:
 
 ```yaml
 skills:
@@ -101,9 +115,9 @@ skills:
       url: https://skills.example.com/index.json
 ```
 
-Habakkuk ships with no default registry. A build can set one with `-ldflags "-X github.com/habakkuk-ai/habakkuk/internal/config.DefaultRegistryURL=https://..."`.
+Habakkuk doesn't ship with a default registry. A build can set one with `-ldflags "-X github.com/habakkuk-ai/habakkuk/internal/config.DefaultRegistryURL=https://..."`.
 
-The index:
+The index looks like this:
 
 ```json
 {
@@ -124,16 +138,16 @@ The index:
 }
 ```
 
-- `name` is what `habakkuk skills install NAME` asks for (registries are tried in order; `registry:team/NAME` asks one).
-- `source` is any non-registry source above. It must hold exactly one package.
-- `sha256`, when present, is the tree hash the installed files must have; a mismatch installs nothing. Pin `source` to a commit or a versioned archive when you set it, or the next upstream change breaks the install.
-- `version` is recorded in the lock file (GitHub sources record the commit instead).
+- `name` is what `habakkuk skills install NAME` asks for. Registries are tried in order, and `registry:team/NAME` asks one registry only.
+- `source` can be any of the sources above except a registry name. It has to hold exactly one package.
+- `sha256` is optional. When it's there, it's the tree hash the installed files must have, and a mismatch installs nothing. If you set it, pin `source` to a commit or a versioned archive. Otherwise the next upstream change breaks the install.
+- `version` is recorded in the lock file. For GitHub sources, the commit is recorded in its place.
 
-`habakkuk skills search QUERY` and `habakkuk plugins search QUERY` list the entries whose name, description or tags contain every word of the query, name matches first.
+`habakkuk skills search QUERY` and `habakkuk plugins search QUERY` list the entries whose name, description or tags contain every word of the query. Entries that match on the name come first.
 
 ## The security scan
 
-Every file of a package is read before it is installed, and each line is checked for:
+Before a package is installed, Habakkuk reads every file in it and checks each line for these things:
 
 | Rule | Looks for |
 |---|---|
@@ -145,11 +159,11 @@ Every file of a package is read before it is installed, and each line is checked
 | `obfuscation` | `base64 -d \| sh`, `eval` of decoded data, `exec(base64.b64decode(...))`, long `\x` escapes, long `String.fromCharCode` lists, runs of 240 or more base64 characters outside images |
 | `binary` | an executable program (ELF, Mach-O, PE) |
 
-It is a tripwire, not a sandbox. A clean scan does not make a package safe and a finding does not make it malicious (installers often document `curl | sh`); a finding means: read that file before you pass `-y` (or `-force` for a high-risk one).
+The scan is a tripwire. It isn't a sandbox. A clean scan doesn't make a package safe, and a finding doesn't make it malicious. Installers often document `curl | sh`, for example. What a finding does mean is this: read that file before you pass `-y` (or `-force` for a high-risk one).
 
 ## Plugins
 
-A plugin is a folder with a `habakkuk-plugin.yaml`:
+A plugin is a folder with a `habakkuk-plugin.yaml` in it. For example:
 
 ```
 tracker/
@@ -206,19 +220,21 @@ commands:
     timeout: 2m
 ```
 
-Unknown keys are errors, as in `config.yaml`.
+An unknown key is an error, the same as in `config.yaml`. Here's what each part does:
 
-- **MCP servers.** Each server becomes an MCP server of the running config named after the plugin: the server whose key is the plugin's name, or the plugin's only server, is `<plugin>` (toolset `mcp:<plugin>`); others are `<plugin>-<key>` (`mcp:tracker-search`). Everything in the [MCP section of the architecture](../reference/architecture.md#mcp) applies: the server gets `PATH`, `HOME` and its `env`, secrets are named, never stored, and `habakkuk doctor` reports missing ones. Agents that use the default toolsets (no `toolsets` in `config.yaml`) get every enabled plugin's toolsets; an agent that lists its toolsets opts in by listing `mcp:<plugin>`. A server whose name is already in `config.yaml` is left out (the config wins) and `habakkuk plugins list` says so.
-- **Skills** in the skills folder are shared with every agent, below `$HABAKKUK_HOME/skills` and the agent's own skills in precedence. Enabling the plugin approves them.
-- **Hooks** are added after the hooks in `config.yaml` and run with `/bin/sh -c` from the plugin folder (Habakkuk prefixes `cd <plugin folder> &&`).
-- **Commands.** A `prompt` command sends its prompt to the agent as a message of the conversation (`{{args}}` is replaced by what follows the command, or the arguments are appended when the prompt has no `{{args}}`), so the reply arrives like any other. A `run` command runs the shell command in the plugin folder with the arguments as `$1...` (pass them on with `"$@"`) and in `HABAKKUK_ARGS`, plus `HABAKKUK_HOME`, `HABAKKUK_SESSION`, `HABAKKUK_AGENT` and `HABAKKUK_PLUGIN_DIR`, in the background; its output (stdout and stderr, first 16 KB) is the reply. Like an MCP server it sees `PATH`, `HOME`, `LANG`, `TMPDIR` and `USER`, not Habakkuk's environment. It is killed with its process group at `timeout` (default 60s, at most 10m). A command whose name is one of Habakkuk's own (`/new`, `/retry`, `/skill`, `/model`...) is left out with a warning in the log. Commands work in every chat channel and in `habakkuk chat`.
-- `${PLUGIN_DIR}` in a server's `command` and `args`, and in hook commands, is replaced by the plugin folder.
+- **MCP servers.** Each server becomes an MCP server of the running config, named after the plugin. The server whose key is the plugin's name, or the plugin's only server, is called `<plugin>` (toolset `mcp:<plugin>`). Any other server is called `<plugin>-<key>` (`mcp:tracker-search`). Everything in the [MCP section of the architecture](../reference/architecture.md#mcp) applies. The server gets `PATH`, `HOME` and its `env`. Secrets are given by name, so their values are never stored. `habakkuk doctor` reports missing ones. An agent on the default toolsets (no `toolsets` in `config.yaml`) gets the toolsets of every enabled plugin. An agent that lists its toolsets opts in by listing `mcp:<plugin>`. If a server's name is already in `config.yaml`, the config wins and the plugin's server is left out. `habakkuk plugins list` says so.
+- **Skills** in the skills folder are shared with every agent. In precedence, they come below `$HABAKKUK_HOME/skills` and the agent's own skills. Enabling the plugin approves them.
+- **Hooks** are added after the hooks in `config.yaml`. They run with `/bin/sh -c` from the plugin folder, because Habakkuk prefixes each one with `cd <plugin folder> &&`.
+- **Commands.** There are two kinds. A `prompt` command sends its prompt to the agent as a message of the conversation, so the reply arrives like any other. `{{args}}` is replaced by what follows the command. If the prompt has no `{{args}}`, the arguments are appended. A `run` command runs the shell command in the plugin folder, in the background. It gets the arguments as `$1...` (pass them on with `"$@"`) and in `HABAKKUK_ARGS`. It also gets `HABAKKUK_HOME`, `HABAKKUK_SESSION`, `HABAKKUK_AGENT` and `HABAKKUK_PLUGIN_DIR`. Its output (stdout and stderr, first 16 KB) is the reply. Like an MCP server, it sees `PATH`, `HOME`, `LANG`, `TMPDIR` and `USER`. It doesn't get Habakkuk's environment. At `timeout` (default 60s, at most 10m) it's killed along with its process group. If a command has the same name as one of Habakkuk's own (`/new`, `/retry`, `/skill`, `/model`...), it's left out and a warning goes in the log. Commands work in every chat channel and in `habakkuk chat`.
+- `${PLUGIN_DIR}` is replaced by the plugin folder. This works in a server's `command` and `args`, and in hook commands.
 
 ### Loading
 
-Enabled plugins are merged into the configuration whenever it is loaded, without editing `config.yaml`: `config.Load` reads `plugins/.lock.json`, and for each plugin that is both enabled and approved it reads the manifest and adds its servers, hooks, skill folder and commands. A plugin whose manifest no longer parses, or a part that clashes with `config.yaml`, is left out and listed by `habakkuk plugins list`; it never stops Habakkuk from starting.
+Enabled plugins are merged into the configuration every time it's loaded. `config.yaml` itself isn't edited. `config.Load` reads `plugins/.lock.json`. For each plugin that's both enabled and approved, it reads the manifest and adds the plugin's servers, hooks, skill folder and commands.
 
-`habakkuk serve` notices an enable or disable within a few seconds: hooks change in place, and MCP servers, commands and skills need a restart, which the log says.
+If a plugin's manifest no longer parses, the plugin is left out. So is any part that clashes with `config.yaml`. `habakkuk plugins list` shows what was left out, and Habakkuk still starts.
+
+`habakkuk serve` notices an enable or disable within a few seconds. Hooks change in place. MCP servers, commands and skills need a restart, and the log says so.
 
 ### Commands
 
@@ -247,4 +263,4 @@ habakkuk skills restore [-id ID] NAME | restore -list [NAME]
 habakkuk skills curate [-dry-run] [-agent A]
 ```
 
-Installed skills are shared skills (`$HABAKKUK_HOME/skills/<name>/`); an agent's own skill of the same name still wins for that agent.
+Installed skills are shared skills, kept in `$HABAKKUK_HOME/skills/<name>/`. If an agent has its own skill of the same name, that one still wins for that agent.

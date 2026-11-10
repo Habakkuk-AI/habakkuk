@@ -4,22 +4,22 @@ description: "Eight concrete setups, from a personal assistant on WhatsApp to a 
 order: 5
 ---
 
-Each setup below uses only what ships in the binary. Start from a working install ([Quickstart](quickstart.md)), then add the pieces shown. Keys always go in `$HABAKKUK_HOME/.env`, never in `config.yaml`.
+Here are eight setups you can copy, each with the config and commands it takes. Every one uses only what ships in the binary. Start from a working install (see the [Quickstart](quickstart.md)), then add the pieces shown. Keys always go in `$HABAKKUK_HOME/.env` and stay out of `config.yaml`.
 
 ## A personal assistant on WhatsApp
 
-An agent with its own chat in your WhatsApp, with no phone number to give up and no public URL.
+This gives you an agent with its own chat in your WhatsApp. You don't give up a phone number, and you don't need a public URL.
 
-1. In WhatsApp, open Settings > Agents > Create agent, and send it "hi".
-2. Open its chat, then Chat info > API key, and copy the key.
-3. Run the wizard and pick **WhatsApp agent**:
+1. In WhatsApp, open Settings > Agents > Create agent. Send the new agent "hi".
+2. Open its chat, go to Chat info > API key, and copy the key.
+3. Run the setup wizard and pick **WhatsApp agent**:
 
 ```bash
 habakkuk setup
 habakkuk setup service      # Linux and macOS: write a systemd or launchd file, and print how to install it
 ```
 
-The channel it writes looks like this:
+The wizard writes a channel that looks like this:
 
 ```yaml
 channels:
@@ -28,11 +28,11 @@ channels:
     token_env: WHATSAPP_AGENT_KEY
 ```
 
-Only you, the agent's creator, can write to it. See [WhatsApp](../channels/whatsapp.md#whatsapp-agents).
+You created the agent, so only you can write to it. See [WhatsApp](../channels/whatsapp.md#whatsapp-agents).
 
 ## A daily briefing
 
-A message every weekday morning with what you asked for. Set your time zone, make sure the agent can search the web, and add a schedule.
+Your agent sends you a message every weekday morning with what you asked for. To get there, set your time zone, make sure the agent can search the web, and add a schedule.
 
 ```yaml
 timezone: America/Toronto
@@ -41,7 +41,7 @@ search:                     # not needed when the agent's model is on an anthrop
   key_env: BRAVE_API_KEY
 ```
 
-Ask in a chat ("every weekday at 7:30, send me the top three stories about renewable energy and today's weather in Toronto"), and the agent creates the schedule with `schedule_create`. Or add it from the terminal:
+One way to add the schedule is to ask in a chat: "every weekday at 7:30, send me the top three stories about renewable energy and today's weather in Toronto". The agent then creates it with `schedule_create`. The other way is to add it from the terminal:
 
 ```bash
 habakkuk schedules add -agent habakkuk -name briefing -when "30 7 * * 1-5" \
@@ -50,15 +50,15 @@ habakkuk schedules add -agent habakkuk -name briefing -when "30 7 * * 1-5" \
 habakkuk schedules run <id>     # try it now
 ```
 
-`habakkuk serve` must be running. See [Schedules](../agents/schedules.md) and [Media and web search](../tools/media.md#web-search).
+For this to work, `habakkuk serve` has to be running. See [Schedules](../agents/schedules.md) and [Media and web search](../tools/media.md#web-search).
 
 ## A team of business agents on WhatsApp, run from Slack
 
-Marketing, sales and support each have their own WhatsApp agent chat. An orchestrator answers you on Slack and delegates to them.
+In this setup, marketing, sales and support each have their own WhatsApp agent chat. A fourth agent, the orchestrator, answers you on Slack and delegates to them.
 
-1. Create three WhatsApp agents (Settings > Agents), and send each one a message.
-2. Create a Slack app with Socket Mode (see [Slack](../channels/slack.md)).
-3. Configure the agents and channels:
+1. Create three WhatsApp agents under Settings > Agents, and send each one a message.
+2. Set up a Slack app with Socket Mode (see [Slack](../channels/slack.md)).
+3. Add the agents and channels to your config:
 
 ```yaml
 agents:
@@ -84,11 +84,11 @@ channels:
   wa-support:   {type: whatsappagent, token_env: WA_SUPPORT_KEY, agent: support}
 ```
 
-Ask the orchestrator on Slack "what's up with the campaign?" and it delegates to marketing. The answer comes back to Slack, and a short report lands in the Marketing chat on WhatsApp, so each agent's chat keeps the history of its own work. See [Multi-agent teams](../agents/multi-agent.md#teams-and-home-chats).
+Now ask the orchestrator on Slack "what's up with the campaign?". It delegates the question to marketing. The answer comes back to Slack, and a short report lands in the Marketing chat on WhatsApp. That way, each agent's chat keeps the history of its own work. See [Multi-agent teams](../agents/multi-agent.md#teams-and-home-chats).
 
 ## A research agent
 
-A second agent with a browser and web search, that you reach with `/agent research` or that your main agent delegates to.
+This is a second agent with a browser and web search. You reach it with `/agent research`, or your main agent delegates to it.
 
 ```yaml
 search:                            # web_search for models without hosted search
@@ -108,11 +108,11 @@ browser:
 habakkuk run -agent research "Compare the three most used open-source CRMs. A table, then a recommendation."
 ```
 
-On a server, install Chromium first (`apt install chromium` on Debian). For long jobs, put a card on the [board](../agents/board.md) assigned to `research`: the result comes back to the conversation that asked. See [Browser](../tools/browser.md).
+On a server, install Chromium first. On Debian, that's `apt install chromium`. For long jobs, put a card on the [board](../agents/board.md) and assign it to `research`. The result comes back to the conversation that asked. See [Browser](../tools/browser.md).
 
 ## A home-automation agent
 
-Lights, climate and media from a chat, and a turn that starts on its own when the doorbell rings.
+With this setup, you control lights, climate and media from a chat. A turn also starts on its own when the doorbell rings.
 
 ```yaml
 agents:
@@ -131,11 +131,11 @@ homeassistant:
       deliver: telegram:123456789
 ```
 
-Then ask "turn off the living room lights" in any chat. See [Integrations: Home Assistant](../tools/integrations.md#home-assistant).
+Once that's in your config, ask "turn off the living room lights" in any chat. See [Integrations: Home Assistant](../tools/integrations.md#home-assistant).
 
 ## A meeting note-taker
 
-The agent joins Google Meet, Zoom or Teams calls as a named guest, reads the live captions, and sends notes with decisions and action items.
+Your agent can join Google Meet, Zoom or Teams calls as a named guest. It reads the live captions and sends notes with the decisions and action items.
 
 ```yaml
 agents:
@@ -145,11 +145,11 @@ meeting:
   name: Habakkuk (notetaker)
 ```
 
-Ask "join https://meet.google.com/abc-defg-hij and note the decisions", or "every weekday at 9:55, join my standup at <link>", which becomes a schedule. See [Meetings](../tools/meetings.md).
+To use it, ask "join https://meet.google.com/abc-defg-hij and note the decisions". You can also ask "every weekday at 9:55, join my standup at <link>", and that becomes a schedule. See [Meetings](../tools/meetings.md).
 
 ## A coding agent in a sandbox, in your editor
 
-An agent whose commands run in a Docker container, with workspace snapshots before every change, used from an editor that speaks the Agent Client Protocol.
+This agent runs its commands in a Docker container and takes a snapshot of the workspace before every change. You use it from an editor that speaks the Agent Client Protocol.
 
 ```yaml
 agents:
@@ -166,11 +166,11 @@ habakkuk checkpoints -agent coder
 habakkuk rollback -agent coder <id>
 ```
 
-`/undo` in a chat puts back the files the last turn changed. See [Files and shell](../tools/files-and-shell.md) and [Integrations: code editors](../tools/integrations.md#code-editors-acp).
+In a chat, send `/undo` to put back the files the last turn changed. See [Files and shell](../tools/files-and-shell.md) and [Integrations: code editors](../tools/integrations.md#code-editors-acp).
 
 ## A watcher that only speaks when something changes
 
-A script schedule runs a command without calling a model, and posts only when the script prints something. It costs nothing while there is nothing to say.
+A script schedule runs a command without calling a model. It posts only when the script prints something, so it costs nothing while there's nothing to say.
 
 ```bash
 cat > ~/habakkuk-workspace/check-site.sh <<'EOF'
@@ -184,4 +184,4 @@ habakkuk schedules add -agent habakkuk -name site-check -when "@every 5m" \
   -run ./check-site.sh -on-output deliver -timeout 30s -to telegram:123456789
 ```
 
-The script runs in the agent's workspace (here `~/habakkuk-workspace`, as `habakkuk setup` writes it); `-workdir DIR` picks another folder. With `-on-output agent -prompt "..."`, the output starts a turn instead, so the agent can look into it. Only you can add script schedules, from the CLI. See [Script schedules](../agents/schedules.md#script-schedules).
+The script runs in the agent's workspace. Here that's `~/habakkuk-workspace`, as `habakkuk setup` writes it. To run it in another folder, pass `-workdir DIR`. If you use `-on-output agent -prompt "..."`, the output starts a turn instead, so the agent can look into it. Script schedules can only be added by you, from the CLI. See [Script schedules](../agents/schedules.md#script-schedules).

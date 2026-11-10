@@ -1,22 +1,24 @@
 ---
 title: Media and web search
 nav_title: Media and search
-description: "Read images and documents, generate images and video, and search the web: hosted search on Anthropic models, or the web_search tool with Brave, Tavily, Exa, SearXNG or DuckDuckGo."
+description: "Read images and documents, generate images and video, and search the web with Anthropic's hosted search or Brave, Tavily, Exa, SearXNG or DuckDuckGo."
 order: 6
 ---
 
+An agent can work with media and the web. It can read images and documents, generate images and video, search the web, fetch pages and speak. Some of these need a short section in your config, shown below.
+
 ## Reading images and documents
 
-Every agent's `core` toolset has:
+Two tools in every agent's `core` toolset do the reading:
 
-- `view_image`: the model sees an image file from the workspace (or a URL);
-- `read_document`: the text of a PDF, Word (`.docx`), Excel (`.xlsx`, as tab-separated rows per sheet), PowerPoint (`.pptx`, per slide) or HTML file.
+- `view_image` shows the model an image file from the workspace (or a URL).
+- `read_document` returns the text of a PDF, Word (`.docx`), Excel (`.xlsx`, as tab-separated rows per sheet), PowerPoint (`.pptx`, per slide) or HTML file.
 
-Images and PDFs that people send in chats also go to the model directly. Document content is treated as data, never as instructions.
+When someone sends an image or a PDF in a chat, it also goes straight to the model. Habakkuk treats what's in a document as data, so it's never followed as instructions.
 
 ## Generating images
 
-With an `images:` section, agents get `image_generate`:
+Add an `images:` section and agents get `image_generate`:
 
 ```yaml
 images:
@@ -26,11 +28,11 @@ images:
   size: 1024x1024           # the default size
 ```
 
-`base_url` overrides the endpoint; `edit_model` (fal only) is used when an image to edit is given. Generated files land in the workspace, and the agent can send them with `send_file`.
+There are two more settings. `base_url` overrides the endpoint. `edit_model` (fal only) is the model used when there's an image to edit. Generated files are saved in the workspace, and the agent can send them with `send_file`.
 
 ## Generating video
 
-With a `video:` section, agents get `video_generate`:
+Add a `video:` section and agents get `video_generate`:
 
 ```yaml
 video:
@@ -42,14 +44,14 @@ video:
   timeout: 10m              # how long to wait for a video
 ```
 
-`image_model` (fal only) is used when a starting image is given.
+`image_model` (fal only) is the model used when there's a starting image.
 
 ## Web search
 
-How an agent searches depends on its main model:
+The way an agent searches the web depends on its main model:
 
-- **On an `anthropic` provider**, the agent uses Anthropic's hosted web search and fetch tools. No `search:` section is needed.
-- **On any other provider**, the agent gets the `web_search` tool, which exists only once a `search:` section names a provider:
+- **On an `anthropic` provider**, the agent uses Anthropic's hosted web search and fetch tools. You don't need a `search:` section.
+- **On any other provider**, the agent gets the `web_search` tool. That tool exists only after a `search:` section names a provider:
 
 ```yaml
 search:
@@ -63,17 +65,17 @@ search:
 | `searxng` | Your own instance in `url`; no key |
 | `duckduckgo` | No key; scrapes the plain results page, best effort. DuckDuckGo may refuse automated searches |
 
-`web: false` on an agent turns web search off for it. Search results are outside content: they [taint the turn](../deploy/security.md#outside-content-taints-a-turn).
+Set `web: false` on an agent to turn web search off for that agent. Search results are outside content, so they [taint the turn](../deploy/security.md#outside-content-taints-a-turn).
 
 > [!NOTE]
-> Habakkuk contacts no search provider by default. Each one is used only once you name it in `search:`.
+> By default, Habakkuk doesn't contact any search provider. It uses one only after you name it in `search:`.
 
 ## Fetching pages
 
-`fetch_url` (in `core`) fetches a page or file over HTTP(S). It refuses loopback, LAN and cloud metadata addresses unless `tools.allow_private_urls` is set. For pages that need JavaScript or a sign-in, use the [browser](browser.md).
+`fetch_url` is in `core`. It fetches a page or file over HTTP(S). It won't fetch loopback, LAN or cloud metadata addresses unless you set `tools.allow_private_urls`. If a page needs JavaScript or a sign-in, use the [browser](browser.md).
 
 ## Speaking
 
-With a `tts:` section, agents get `speak`, which sends a voice message. See [Voice](voice.md) and [Speech](../models/speech.md#text-to-speech).
+Add a `tts:` section and agents get `speak`, a tool that sends a voice message. For more, see [Voice](voice.md) and [Speech](../models/speech.md#text-to-speech).
 
-[Architecture: media](../reference/architecture.md#media) has every option.
+For every option, see [Architecture: media](../reference/architecture.md#media).

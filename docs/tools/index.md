@@ -1,10 +1,12 @@
 ---
 title: Tools
-description: "The toolsets an agent can use, which one to reach for, and where each is explained: files and shell, browser, computer use, voice, meetings, media, MCP, plugins and integrations."
+description: "Which toolsets an agent can use, which one fits the job you have in mind, and the page that explains each of them."
 order: 5
 ---
 
-Tools come in toolsets, and an agent lists the ones it gets under `toolsets`. Without the setting it gets `core`, `memory`, `skills`, `schedule`, `delegate` and `board`. A list replaces the default, so add the defaults you want to keep:
+Start here to pick the right tools for an agent. Each one has a page of its own, linked below.
+
+Tools come in groups called toolsets. An agent gets the toolsets you list under `toolsets`. If you leave the setting out, it gets `core`, `memory`, `skills`, `schedule`, `delegate` and `board`. Your list replaces that default, so include any of the defaults you still want:
 
 ```yaml
 agents:
@@ -12,7 +14,7 @@ agents:
     toolsets: [core, memory, skills, schedule, delegate, board, browser]
 ```
 
-What a tool may do on its own is decided by the agent's [permission mode and approvals](../agents/approvals.md).
+The agent's [permission mode and approvals](../agents/approvals.md) decide what a tool can do without asking you first.
 
 ## If you need X, use Y
 
@@ -50,11 +52,13 @@ What a tool may do on its own is decided by the agent's [permission mode and app
 | `a2a` | `a2a_discover`, `a2a_send` |
 | `mcp:<server>` | One per MCP server, named `mcp__<server>__<tool>` |
 
-An agent with a [home chat](../agents/multi-agent.md#teams-and-home-chats) also gets `message_home`.
+If an agent has a [home chat](../agents/multi-agent.md#teams-and-home-chats), it gets `message_home` as well.
 
 ## Tool search
 
-An agent whose toolsets hold more tools than `tool_search_over` (default 60; `-1` turns it off), usually from MCP servers, is offered only the `core` tools plus `tool_search` and `tool_describe`. The tools it finds are added for the rest of the session.
+Some agents end up with a lot of tools, usually because of MCP servers. When an agent's toolsets hold more tools than `tool_search_over`, it's offered only the `core` tools plus `tool_search` and `tool_describe`. Any tool it finds that way is added for the rest of the session. The default limit is 60, and `-1` turns it off.
+
+You set the limit on the agent:
 
 ```yaml
 agents:
