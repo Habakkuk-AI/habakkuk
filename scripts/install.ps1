@@ -150,11 +150,12 @@ function Install-Habakkuk {
     }
 
     Write-Host ''
-    Write-Host 'Next steps:'
-    Write-Host '  habakkuk init                 # writes %APPDATA%\Habakkuk\config.yaml'
-    Write-Host '  notepad $env:APPDATA\Habakkuk\.env   # add ANTHROPIC_API_KEY=... (or another provider''s key)'
-    Write-Host '  habakkuk doctor               # checks config, keys and channels'
-    Write-Host '  habakkuk chat'
+    Write-Host 'Next, the one-minute setup:'
+    Write-Host ''
+    Write-Host '  habakkuk setup'
+    Write-Host ''
+    Write-Host 'It finds your API keys and local models, connects WhatsApp, Telegram or'
+    Write-Host 'another app, and checks that your agent answers.'
 }
 
 Install-Habakkuk -Version $Version -Dir $Dir -NoPath:$NoPath.IsPresent -NoHk:$NoHk.IsPresent

@@ -168,6 +168,7 @@ say "Installed $("$dir/habakkuk" version 2>/dev/null || echo habakkuk) to $dir/h
 
 # hk is the short name: a link to habakkuk beside it. Another program called
 # hk is never replaced.
+cmd=habakkuk # what the next steps tell people to type
 if [ "$no_hk" != 1 ]; then
 	hk="$dir/hk"
 	if [ -L "$hk" ]; then
@@ -187,6 +188,7 @@ if [ "$no_hk" != 1 ]; then
 			say "Added $hk, but $found comes first on your PATH, so hk runs that program. Use habakkuk."
 		else
 			say "Added hk, the short name: hk chat is habakkuk chat."
+			cmd=hk
 		fi
 	else
 		say "Left $hk alone: it is another program. Use habakkuk, or pass --no-hk to skip this note."
@@ -200,11 +202,10 @@ case ":${PATH:-}:" in
 	say "  echo 'export PATH=\"$dir:\$PATH\"' >> ~/.profile && . ~/.profile"
 	;;
 esac
-cat <<'EOF'
-
-Next steps:
-  habakkuk init                                        # writes ~/.habakkuk/config.yaml
-  echo 'ANTHROPIC_API_KEY=...' >> ~/.habakkuk/.env      # or another provider's key
-  habakkuk doctor                                      # checks config, keys and channels
-  habakkuk chat
-EOF
+say ""
+say "Next, the one-minute setup:"
+say ""
+say "  $cmd setup"
+say ""
+say "It finds your API keys and local models, connects WhatsApp, Telegram or"
+say "another app, and checks that your agent answers."
