@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -514,4 +515,63 @@ func mergeIDs(have, add []string) []string {
 		}
 	}
 	return out
+}
+
+// setDisplay is `habakkuk setup channel NAME -progress ... -approvals-detail
+// ...`: it changes what one existing channel shows in its chats and nothing
+// else. NAME is the account's name under channels:, or its type when only
+// one account has that type.
+func (s *setup) setDisplay() error {
+	cfg, err := config.Load(s.home)
+	if err != nil {
+		return err
+	}
+	account, err := displayAccount(cfg, s.channelArg)
+	if err != nil {
+		return err
+	}
+	before, _ := os.ReadFile(s.cfgPath)
+	ch, err := config.SetChannelDisplay(s.home, account, s.opts.progress, s.opts.approvalsDetail)
+	if err != nil {
+		return err
+	}
+	if after, _ := os.ReadFile(s.cfgPath); string(after) != string(before) {
+		s.say("Updated %s (the previous one is config.yaml.bak).", s.cfgPath)
+	} else {
+		s.say("config.yaml needs no change.")
+	}
+	shows := map[string]string{config.ProgressPlain: "a short status line", config.ProgressDetailed: "every step", config.ProgressOff: "nothing",
+		config.ApprovalsSummary: "a plain summary", config.ApprovalsFull: "the exact command as well"}
+	s.say("%s: while the agent works the chat shows %s; approval requests show %s.", account, shows[ch.ProgressMode()], shows[ch.ApprovalsDetailMode()])
+	s.say("A running habakkuk serve picks this up in a few seconds. No restart is needed.")
+	return nil
+}
+
+// displayAccount resolves the word after "setup channel" to a messaging
+// account in the config.
+func displayAccount(cfg *config.Config, arg string) (string, error) {
+	var names, ofType []string
+	for name, ch := range cfg.Channels {
+		if !ch.MessagingChannel() {
+			continue
+		}
+		names = append(names, name)
+		if ch.Type == arg {
+			ofType = append(ofType, name)
+		}
+	}
+	slices.Sort(names)
+	if slices.Contains(names, arg) {
+		return arg, nil
+	}
+	switch {
+	case len(ofType) == 1:
+		return ofType[0], nil
+	case len(ofType) > 1:
+		slices.Sort(ofType)
+		return "", fmt.Errorf("more than one %s channel is set up (%s); name the one to change", arg, strings.Join(ofType, ", "))
+	case len(names) == 0:
+		return "", errors.New("no chat channel is set up yet; add one with habakkuk setup channel")
+	}
+	return "", fmt.Errorf("no channel %q in config.yaml; the channels are: %s", arg, strings.Join(names, ", "))
 }

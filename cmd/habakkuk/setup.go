@@ -34,9 +34,14 @@ import (
 // step on its own.
 
 const setupUsage = `usage: habakkuk setup [model | channel [TYPE] | name | service] [flags]
+       habakkuk setup channel NAME [-progress plain|detailed|off] [-approvals-detail summary|full]
 
 With no step, runs them all: model, where to talk, names. Re-running edits
 the existing config (config.yaml.bak keeps the previous one).
+
+The second form only changes what an existing channel shows in its chats:
+while the agent works (-progress) and in approval requests
+(-approvals-detail). A running habakkuk serve picks it up without a restart.
 
 Flags (all optional; -y never prompts and uses flags, the environment, then defaults):
 `
@@ -60,6 +65,11 @@ type setupOpts struct {
 	serve      bool
 	service    bool
 	migrate    bool
+	// progress and approvalsDetail change what an existing channel shows
+	// (setup channel NAME -progress ... -approvals-detail ...); with either
+	// set, setup does only that.
+	progress        string
+	approvalsDetail string
 }
 
 // endpoints are the services setup checks against; tests point them at
@@ -154,6 +164,11 @@ type setup struct {
 	runCmd func(name string, args ...string) error
 	// serveWait is how long to wait for a just-installed service to beat.
 	serveWait time.Duration
+	// channelArg is the word after "setup channel"; with displayOnly it
+	// names the account whose display settings change, and nothing else is
+	// done.
+	channelArg  string
+	displayOnly bool
 }
 
 func newSetup(ctx context.Context, home string, args []string, in io.Reader, out io.Writer) (*setup, error) {
@@ -178,6 +193,7 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 				return nil, errors.New("usage: habakkuk setup channel [TYPE]")
 			}
 			if len(steps) == 2 {
+				s.channelArg = steps[1]
 				args = append([]string{"-channel", steps[1]}, args...)
 				steps = steps[:1]
 			}
@@ -210,6 +226,8 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 	fs.BoolVar(&o.serve, "serve", false, "start habakkuk serve when done")
 	fs.BoolVar(&o.service, "service", false, "write a background service file (systemd or launchd) and print how to enable it")
 	fs.BoolVar(&o.migrate, "migrate", false, "with -y on a new home: first import another agent's setup found on this computer (see habakkuk migrate)")
+	fs.StringVar(&o.progress, "progress", "", "setup channel NAME: what the chat shows while the agent works: plain (a short status line), detailed (every step) or off")
+	fs.StringVar(&o.approvalsDetail, "approvals-detail", "", "setup channel NAME: what approval requests show: summary (plain words) or full (also the exact command)")
 	fs.Usage = func() {
 		fmt.Fprint(out, setupUsage)
 		fs.PrintDefaults()
@@ -219,6 +237,19 @@ func newSetup(ctx context.Context, home string, args []string, in io.Reader, out
 	}
 	if fs.NArg() > 0 {
 		return nil, fmt.Errorf("unexpected argument %q; see habakkuk setup -h", fs.Arg(0))
+	}
+	if o.progress != "" || o.approvalsDetail != "" {
+		if len(s.steps) != 1 || s.steps[0] != "channel" || s.channelArg == "" {
+			return nil, errors.New("-progress and -approvals-detail change one channel: habakkuk setup channel NAME -progress plain -approvals-detail summary")
+		}
+		if _, ok := config.NormalizeProgress(o.progress); !ok {
+			return nil, fmt.Errorf("-progress %q must be plain, detailed or off", o.progress)
+		}
+		if _, ok := config.NormalizeApprovalsDetail(o.approvalsDetail); !ok {
+			return nil, fmt.Errorf("-approvals-detail %q must be summary or full", o.approvalsDetail)
+		}
+		s.displayOnly = true
+		o.channel = "" // the argument names an account here, not a type to add
 	}
 	if o.serve && o.service {
 		return nil, errors.New("-serve and -service both start habakkuk; pick one")
@@ -241,6 +272,9 @@ func (s *setup) step(name string) bool {
 }
 
 func (s *setup) run() error {
+	if s.displayOnly {
+		return s.setDisplay()
+	}
 	start := s.now()
 	if s.step("service") && len(s.steps) == 1 {
 		return s.serviceStep(true)
