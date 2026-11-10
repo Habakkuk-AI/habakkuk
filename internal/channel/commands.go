@@ -110,8 +110,10 @@ func (g *Gateway) runCommand(ctx context.Context, ch *config.Channel, to Address
 }
 
 // ownerOnly are the commands guests (senders let in by allow_from "*")
-// may not run: they write trusted memory or move the chat to another agent.
-var ownerOnly = map[string]bool{"/remember": true, "/forget": true, "/agent": true}
+// may not run: they read or change trusted memory, or move the chat to
+// another agent.
+var ownerOnly = map[string]bool{"/remember": true, "/forget": true, "/agent": true,
+	"/memory": true, "/undo-memory": true}
 
 // messageKey carries the inbound message to the command it holds.
 type messageKey struct{}

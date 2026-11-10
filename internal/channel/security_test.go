@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
@@ -85,6 +86,17 @@ func TestGuestCannotWriteMemory(t *testing.T) {
 	m.Sender = "9"
 	r.g.Handle(context.Background(), m)
 	waitFor(t, "refusal", hasText(r.a, "only the owner"))
+}
+
+// A guest can neither list memory changes nor undo one.
+func TestGuestCannotReadOrUndoMemoryHistory(t *testing.T) {
+	for i, cmd := range []string{"/memory", "/undo-memory abc123"} {
+		r := newRig(t, &config.Channel{AllowFrom: []string{"*"}})
+		m := dm(fmt.Sprint("g", i), cmd)
+		m.Sender = "9"
+		r.g.Handle(context.Background(), m)
+		waitFor(t, cmd+" refusal", hasText(r.a, "only the owner"))
+	}
 }
 
 // A WhatsApp agent hears only from its creator, so allow_from "*" there
