@@ -64,8 +64,8 @@ linux)
 	tar -C "$tmp" -czf "$dist/${name}_linux_$arch.tar.gz" "habakkuk-desktop_linux_$arch"
 	;;
 windows)
-	# The habakkuk binary does not build for Windows yet, so the app only
-	# connects to remote Habakkuks there (or a habakkuk.exe you point it at).
+	# The Windows package is the app alone: it does not bundle habakkuk.exe.
+	# It finds one installed by install.ps1, or connects to a remote Habakkuk.
 	# go build links the .syso next to main.go: the icon, the manifest
 	# (packaging/windows) and the version info.
 	syso=rsrc_windows_amd64.syso

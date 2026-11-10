@@ -26,7 +26,7 @@ In scope: the code in this repository.
 
 - The `habakkuk` binary and everything under `cmd/` and `internal/`: the permission modes and approval flow, the approval reviewer, the hardline command blocklist, the SSRF guard on `fetch_url` and the browser's URL guard, sandboxes, the HTTP server and its token checks, webhook and channel signature checks, pairing and allowlists, device node pairing, MCP OAuth, secret redaction in logs, memory and profile provenance (trusted and untrusted content), skill and plugin installation and scanning, backups and restore.
 - The desktop app in `apps/desktop`: its loopback server and proxy, session cookie, and token storage.
-- `scripts/install.sh` and the release workflow (checksums, published artifacts, the container image).
+- The installers (`scripts/install.sh`, `scripts/install.ps1`), `habakkuk update`, and the release workflow (checksums, the `SHA256SUMS` signature, published artifacts, the container image).
 
 Out of scope:
 

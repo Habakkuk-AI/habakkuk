@@ -55,7 +55,7 @@ bin/habakkuk chat
 | `internal/` | Everything else, grouped by area (below) |
 | `apps/desktop/` | Habakkuk Desktop, a separate Go module (Wails v3) |
 | `docs/` | The documentation (Markdown with `title`, `description` and `order` frontmatter), published at habakkuk.ai/docs |
-| `scripts/` | `install.sh`, the release installer |
+| `scripts/` | `install.sh` and `install.ps1`, the release installers |
 | `assets/brand/` | Logo, mark, icons and social card |
 
 The `internal/` groups:
@@ -125,7 +125,18 @@ Before you open it:
 - [ ] Docs under `docs/` describe the change, and only what the code does
 - [ ] No secrets, tokens or personal data in code, tests, fixtures or logs
 
-CI (`.github/workflows/ci.yml`) runs vet, the race tests, shellcheck on `scripts/install.sh`, golangci-lint, and the desktop app's vet and tests.
+CI (`.github/workflows/ci.yml`) runs vet, the race tests, shellcheck on `scripts/install.sh`, golangci-lint, the Windows build and tests, and the desktop app's vet and tests.
+
+## Releases
+
+Maintainers cut a release by pushing a `v*` tag. `.github/workflows/release.yml` then runs the tests, builds the six archives with `SHA256SUMS`, signs it, creates the GitHub release with the tag's section of `CHANGELOG.md` as its notes, attaches the desktop builds, and pushes the container image.
+
+1. Move the `Unreleased` entries in `CHANGELOG.md` under a `## [X.Y.Z] - YYYY-MM-DD` heading, fix the compare links at the bottom, and set `version` in `cmd/habakkuk/main.go` to `X.Y.Z`. Commit that on `main`.
+2. Rehearse: `gh workflow run release.yml --ref main`. A run started by hand builds, signs and packages everything, keeps the files as workflow artifacts, and publishes nothing.
+3. Tag and push: `git tag -a vX.Y.Z -m "Habakkuk vX.Y.Z" && git push origin vX.Y.Z`. A tag with a hyphen (`v1.4.0-beta.1`) becomes a pre-release, which only the `beta` update channel installs.
+4. Set `version` to the next `-dev` version on `main`.
+
+The release is signed with an Ed25519 key. The private key is the `RELEASE_SIGNING_KEY` repository secret (PEM); its public half is the `RELEASE_PUBLIC_KEY` repository variable (the raw 32 bytes, base64), which is built into every release binary so `habakkuk update` refuses anything signed with another key. The workflow stops before publishing if the two are not one pair. Losing the private key means existing installs cannot update on their own, so keep a copy offline.
 
 ## Documentation
 
