@@ -66,13 +66,7 @@ func (e loudEditor) PostLoud(_ context.Context, _ Address, text, replyTo string)
 	return id, nil
 }
 
-func words(s string) []string {
-	var out []string
-	for _, w := range strings.SplitAfter(s, " ") {
-		out = append(out, w)
-	}
-	return out
-}
+func words(s string) []string { return strings.SplitAfter(s, " ") }
 
 const longAnswer = "Here is what I found about the bakery's opening hours this week, and why Thursday is different."
 
