@@ -149,13 +149,16 @@ func (a *App) memoryPool() *jobs.Pool {
 	}
 }
 
-// MemoryLoop runs in `habakkuk serve`: once a minute it records hand edits
-// in the memory history, embeds notes that have no vector yet (new or
-// hand-edited ones) and queues reviews of quiet sessions and the nightly
-// pass.
+// MemoryLoop runs in `habakkuk serve`: once a minute it queues retros that
+// are due, records hand edits in the memory history, embeds notes that have
+// no vector yet (new or hand-edited ones) and queues reviews of quiet
+// sessions and the nightly pass.
 func (a *App) MemoryLoop(ctx context.Context) {
 	agents := a.memoryAgents()
 	tick := func() {
+		if err := a.Retro.Tick(ctx); err != nil && ctx.Err() == nil {
+			a.Log.Warn("retro scheduling failed", "err", err)
+		}
 		a.scanMemoryHistory(ctx)
 		if a.Memory.Embedder() == nil && a.Consolidate == nil {
 			return

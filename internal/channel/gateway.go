@@ -436,6 +436,11 @@ func (g *Gateway) command(ctx context.Context, ch *config.Channel, to Address, p
 			}
 			_, arg, _ := strings.Cut(strings.TrimSpace(text), " ")
 			arg = strings.TrimSpace(arg)
+			m, _ := ctx.Value(messageKey{}).(Message)
+			if cmd.OwnerOnly && m.Account != "" && !g.owner(ctx, ch, m) {
+				g.reply(to, strings.ToLower(name)+": only the owner can do that here.")
+				return true
+			}
 			switch {
 			case cmd.Prompt != nil:
 				// A command that becomes a message: the text it builds runs as
@@ -445,7 +450,6 @@ func (g *Gateway) command(ctx context.Context, ch *config.Channel, to Address, p
 					g.reply(to, err.Error())
 					return true
 				}
-				m, _ := ctx.Value(messageKey{}).(Message)
 				c := &Call{G: g, Channel: ch, To: to, Pick: pick, Args: arg, Msg: m}
 				c.submit(ctx, conv, c.jobID("cmd_"), msg)
 			case cmd.Async:
@@ -469,6 +473,9 @@ type AppCommand struct {
 	Prompt func(ctx context.Context, session, arg string) (string, error)
 	// Async runs Run in the background, for commands that may take a while.
 	Async bool
+	// OwnerOnly refuses the command to guests (senders let in by
+	// allow_from "*"), like /remember.
+	OwnerOnly bool
 }
 
 // Reserved reports whether a slash command name (with the slash) is one of

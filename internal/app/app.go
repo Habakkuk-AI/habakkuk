@@ -34,6 +34,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory/consolidate"
+	"github.com/habakkuk-ai/habakkuk/internal/knowledge/retro"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/skills"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/auth"
@@ -84,12 +85,17 @@ type App struct {
 	Meetings *meeting.Manager
 	// Consolidate reviews idle sessions into memory; nil unless memory.review.
 	Consolidate *consolidate.Consolidator
+	// Retro runs agents' retrospectives (retro.go).
+	Retro *retro.Runner
 
 	secrets map[string]string
 	refs    *secrets.Resolver // secrets.refs: secret managers
 	closers []func()
 	// Judge is the optional decision model (judge.go).
 	Judge *judge.Client
+	// serving is set once Pools runs with serving true: this process runs
+	// the background job kinds (retros among them).
+	serving bool
 }
 
 // Secret reads a credential from the environment, then a secret manager
@@ -247,6 +253,7 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 		a.Close()
 		return nil, err
 	}
+	a.openRetro()
 	if err := a.openExtras(ctx, home); err != nil {
 		a.Close()
 		return nil, err
@@ -391,13 +398,17 @@ func (a *App) Pools(serving bool) []*jobs.Pool {
 	if serving && a.Meetings != nil {
 		pools = append(pools, a.meetingPool())
 	}
+	if serving {
+		a.serving = true
+		pools = append(pools, a.retroPool())
+	}
 	a.observePools(pools)
 	wake := func() {
 		for _, p := range pools {
 			p.Wake()
 		}
 	}
-	a.Runner.Wake, a.Scheduler.Wake = wake, wake
+	a.Runner.Wake, a.Scheduler.Wake, a.Retro.Wake = wake, wake, wake
 	if a.Gateway != nil {
 		a.Gateway.Wake = wake
 	}
