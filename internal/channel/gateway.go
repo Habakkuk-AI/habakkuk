@@ -277,9 +277,18 @@ func (g *Gateway) ingest(ctx context.Context, agentName string, atts []Attachmen
 			}
 		}
 		if inbox != "" {
-			path := filepath.Join(inbox, g.now().UTC().Format("20060102-150405")+"-"+name)
-			if err := os.MkdirAll(inbox, 0o700); err == nil && store.WriteFileAtomic(path, data, 0o600) == nil {
-				got.Path = path
+			// Saved only where the inbox really is inside the workspace: a
+			// link named inbox must not lead an attachment elsewhere.
+			ws := &tools.Env{Workspace: filepath.Dir(inbox)}
+			if err := os.MkdirAll(inbox, 0o700); err == nil {
+				if dir, err := ws.OutputDir(inbox); err == nil {
+					path := filepath.Join(dir, g.now().UTC().Format("20060102-150405")+"-"+name)
+					if store.WriteFileAtomic(path, data, 0o600) == nil {
+						got.Path = path
+					}
+				} else {
+					g.Log.Warn("attachment not saved in the workspace", "err", err)
+				}
 			}
 		}
 		if strings.HasPrefix(got.MediaType, "audio/") {

@@ -76,16 +76,17 @@ func targetPaths(t Tool, call llm.Block) []string {
 // lockedWrite refuses a file tool's write under one of the turn's locked
 // folders (Policy.Locked), in any turn and any mode: the owner's record of
 // trusted project files must only change through hk projects. The path is
-// checked as written and after symlinks.
+// checked as written and after symlinks, and folders are compared with
+// os.SameFile, so another letter case does not get past. (The shell is not
+// a file tool: in a clean turn in full mode it can do anything.)
 func lockedWrite(env *Env, t Tool, call llm.Block) error {
 	if env.Policy == nil || len(env.Policy.Locked) == 0 {
 		return nil
 	}
-	locked := realPaths(env.Policy.Locked)
 	for _, p := range targetPaths(t, call) {
 		abs := env.Resolve(p)
 		real, ok := realPath(abs)
-		if underAny(locked, abs) || (ok && underAny(locked, real)) || underAny(env.Policy.Locked, abs) {
+		if env.locked(abs) || (ok && env.locked(real)) {
 			return fmt.Errorf("%w: %s is kept by Habakkuk itself (the owner's list of trusted project files); only the owner changes it, with hk projects", ErrDenied, p)
 		}
 	}

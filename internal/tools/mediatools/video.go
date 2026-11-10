@@ -483,8 +483,14 @@ func (t videoGenerateTool) Run(ctx context.Context, env *tools.Env, input json.R
 	if ext == "" {
 		return "", fmt.Errorf("the provider returned %s, not a video", clip.MediaType)
 	}
-	dir := filepath.Join(env.Workspace, "videos")
+	dir, err := env.OutputDir("videos")
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	if dir, err = env.OutputDir(dir); err != nil {
 		return "", err
 	}
 	path := filepath.Join(dir, time.Now().UTC().Format("20060102-150405")+"-"+slugify(in.Prompt)+ext)

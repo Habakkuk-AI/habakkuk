@@ -559,13 +559,16 @@ func outPath(env *tools.Env, p, dir, prefix, ext string) (string, error) {
 			abs += ext
 		}
 	}
-	if !env.InWorkspace(abs) {
-		return "", fmt.Errorf("path %s must be inside the workspace %s", abs, env.Workspace)
-	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+	real, err := env.OutputPath(abs)
+	if err != nil {
 		return "", err
 	}
-	return abs, nil
+	if err := os.MkdirAll(filepath.Dir(real), 0o755); err != nil {
+		return "", err
+	}
+	// Check again now the folders exist: a link swapped in meanwhile
+	// would show here.
+	return env.OutputPath(real)
 }
 
 func outDir(env *tools.Env, p, def string) (string, error) {
@@ -575,11 +578,7 @@ func outDir(env *tools.Env, p, def string) (string, error) {
 	if p == "" {
 		p = def
 	}
-	abs := env.Resolve(p)
-	if !env.InWorkspace(abs) {
-		return "", fmt.Errorf("dir %s must be inside the workspace %s", abs, env.Workspace)
-	}
-	return abs, nil
+	return env.OutputDir(p)
 }
 
 func size(n int64) string {

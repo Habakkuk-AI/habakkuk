@@ -68,3 +68,52 @@ func TestLockedFolderIsNeverWritten(t *testing.T) {
 		t.Fatal("the trust record was written by a tool")
 	}
 }
+
+// The locked folder spelled with another letter case is still locked, and
+// a trusted folder covering the home does not unlock it.
+func TestLockedFolderWhateverTheSpelling(t *testing.T) {
+	r := NewRegistry()
+	RegisterBuiltins(r)
+	ws, home := t.TempDir(), t.TempDir()
+	locked := filepath.Join(home, "projects")
+	os.MkdirAll(locked, 0o700)
+	write := func(env *Env, p string) llm.Block {
+		in, _ := json.Marshal(map[string]string{"path": p, "content": "[]"})
+		return r.Execute(context.Background(), env, llm.Block{Type: llm.ToolUse, ToolUseID: "1", ToolName: "write_file", Input: in})
+	}
+	if _, err := os.Stat(filepath.Join(home, "PROJECTS")); err == nil { // a disk that ignores case
+		env := &Env{Agent: "a", Workspace: ws, Mode: ModeFull, Taint: NewTaint(false), Policy: &Policy{Locked: []string{locked}}}
+		if res := write(env, filepath.Join(home, "PROJECTS", "trusted.json")); !res.IsError {
+			t.Fatalf("wrote through a case variant: %+v", res)
+		}
+	}
+	env := &Env{Agent: "a", Workspace: ws, Mode: ModeFull, Taint: NewTaint(true), Policy: &Policy{TrustedWrite: []string{home}, Locked: []string{locked}}}
+	if res := write(env, filepath.Join(locked, "trusted.json")); !res.IsError {
+		t.Fatalf("a trusted folder unlocked the store: %+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(locked, "trusted.json")); !os.IsNotExist(err) {
+		t.Fatal("the trust record was written")
+	}
+}
+
+// Saves through a link in the workspace are refused, and so is the locked
+// folder, wherever OutputDir is used.
+func TestOutputDirFollowsLinks(t *testing.T) {
+	ws, home := t.TempDir(), t.TempDir()
+	locked := filepath.Join(home, "projects")
+	os.MkdirAll(locked, 0o700)
+	os.Symlink(home, filepath.Join(ws, "out"))
+	env := &Env{Workspace: ws, Policy: &Policy{Locked: []string{locked}}}
+	for _, d := range []string{"out", "out/projects", "../" + filepath.Base(home)} {
+		if got, err := env.OutputDir(d); err == nil {
+			t.Errorf("%s: allowed %s", d, got)
+		}
+	}
+	inside := &Env{Workspace: home, Policy: &Policy{Locked: []string{locked}}} // a workspace that holds the home
+	if _, err := inside.OutputDir("projects"); err == nil {
+		t.Error("the locked folder inside the workspace was allowed")
+	}
+	if _, err := env.OutputDir("images"); err != nil {
+		t.Error(err)
+	}
+}
