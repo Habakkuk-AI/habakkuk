@@ -493,6 +493,14 @@ func (f *Found) readMCP(raw string, m map[string]any, env map[string]string, use
 		f.skip("MCP server %s: needs exactly one of command or url", raw)
 		return nil
 	}
+	if why := mcpSecret(s); why != "" {
+		f.skip("MCP server %s: %s; keys never move in a command line or URL, so add it to mcp_servers in config.yaml yourself, with the key in $HABAKKUK_HOME/.env (or with hk mcp add %s if it is in the catalog)", raw, why, name)
+		return nil
+	}
+	if typ, _ := m["type"].(string); strings.EqualFold(typ, "sse") || strings.EqualFold(fmt.Sprint(m["transport"]), "sse") {
+		f.skip("MCP server %s: it uses the older SSE transport, which Habakkuk does not speak; if the server also offers Streamable HTTP (often at /mcp), add that URL to mcp_servers in config.yaml", raw)
+		return nil
+	}
 	if auth, _ := m["auth"].(string); strings.EqualFold(auth, "oauth") && s.URL != "" {
 		s.OAuth = true
 		f.leftover("the sign-in to MCP server "+name, "hk mcp login "+name)
@@ -797,4 +805,92 @@ func hermesLeftovers(f *Found, dir string) {
 			f.leftover(d, "see hk plugins and the hooks section of config.yaml")
 		}
 	}
+}
+
+// secretName reports a flag, query parameter or header name that carries
+// a key: one with token, secret, password, credential, apikey or auth in
+// it, or one that is or ends in key, pass, pwd or sig.
+func secretName(name string) bool {
+	n := strings.ToLower(strings.TrimLeft(name, "-"))
+	for _, w := range []string{"token", "secret", "password", "passwd", "credential", "apikey", "api_key", "api-key", "auth"} {
+		if strings.Contains(n, w) {
+			return true
+		}
+	}
+	for _, w := range []string{"key", "pass", "pwd", "sig", "signature"} {
+		if n == w || strings.HasSuffix(n, "-"+w) || strings.HasSuffix(n, "_"+w) || strings.HasSuffix(n, "."+w) {
+			return true
+		}
+	}
+	return false
+}
+
+// mcpSecret says why a server's command line or URL looks like it holds a
+// key, or "". Config files can only name a key through env or headers, so a
+// server with one anywhere else is not imported.
+func mcpSecret(s *MCPServer) string {
+	for i, a := range s.Args {
+		if memory.CheckSecrets(a) != nil {
+			return fmt.Sprintf("argument %d looks like a key", i+1)
+		}
+		if flag, val, ok := strings.Cut(a, "="); ok && strings.HasPrefix(flag, "-") && secretName(flag) && val != "" {
+			if _, ref := refOnly(val); !ref {
+				return fmt.Sprintf("its %s argument holds a value", flag)
+			}
+		}
+		if strings.HasPrefix(a, "-") && !strings.Contains(a, "=") && secretName(a) && i+1 < len(s.Args) {
+			next := s.Args[i+1]
+			if _, ref := refOnly(next); !ref && !strings.HasPrefix(next, "-") && next != "" {
+				return fmt.Sprintf("its %s argument holds a value", a)
+			}
+		}
+		if strings.Contains(a, "://") {
+			if why := urlSecret(a); why != "" {
+				return "an argument " + why
+			}
+		}
+	}
+	if s.URL != "" {
+		if why := urlSecret(s.URL); why != "" {
+			return "its URL " + why
+		}
+	}
+	return ""
+}
+
+// urlSecret says how a URL carries a key, or "".
+func urlSecret(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		if memory.CheckSecrets(raw) != nil {
+			return "looks like it holds a key"
+		}
+		return ""
+	}
+	if _, ok := u.User.Password(); ok {
+		return "holds a password"
+	}
+	for k, vs := range u.Query() {
+		for _, v := range vs {
+			if v != "" && (secretName(k) || memory.CheckSecrets(v) != nil) {
+				return "holds a key in its " + k + " parameter"
+			}
+		}
+	}
+	for _, part := range append(strings.Split(u.Path, "/"), u.Fragment) {
+		if memory.CheckSecrets(part) != nil {
+			return "looks like it holds a key in its path"
+		}
+	}
+	return ""
+}
+
+// redactURL is a URL as the plan shows it: no user, password or query.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(a URL that does not parse)"
+	}
+	u.User, u.RawQuery, u.Fragment = nil, "", ""
+	return u.String()
 }

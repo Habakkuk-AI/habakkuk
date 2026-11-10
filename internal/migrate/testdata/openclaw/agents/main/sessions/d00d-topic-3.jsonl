@@ -1,0 +1,2 @@
+{"type":"message","timestamp":"2026-10-23T09:00:01.000Z","message":{"role":"user","content":"Which oven is free after nine?"}}
+{"type":"message","timestamp":"2026-10-23T09:00:04.000Z","message":{"role":"assistant","content":"The deck oven is free after nine."}}

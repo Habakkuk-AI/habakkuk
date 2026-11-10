@@ -9,5 +9,11 @@
   "agent:main:telegram:group:-100777": {
     "sessionId": "5e6f7a8b-group",
     "updatedAt": 1793100000000
+  },
+  "agent:main:telegram:group:-100777:topic:3": {
+    "sessionId": "d00d",
+    "sessionFile": "d00d-topic-3.jsonl",
+    "updatedAt": 1793200000000,
+    "chatType": "group"
   }
 }

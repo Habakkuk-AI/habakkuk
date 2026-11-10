@@ -289,7 +289,7 @@ func (p *Plan) copySkill(it *Item) error {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	staged := filepath.Join(tmp, it.skill.Name)
-	if err := copyTree(it.skill.Dir, staged, p.rw); err != nil {
+	if err := skillCopy(it.skill, staged, p.rw); err != nil {
 		return err
 	}
 	if it.Status == Update {

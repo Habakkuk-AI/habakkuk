@@ -43,7 +43,8 @@ hk migrate [-from SOURCE] [-source DIR] [-agent NAME] [-project DIR] [-dry-run]
                                     $HABAKKUK_HOME/files and rewrites the text to name the copies;
                                     -from claude-code or codex brings instructions, MCP servers,
                                     skills, slash commands and memory, never keys, and -project DIR
-                                    adds one project's own (see Move from another agent)
+                                    adds one project's own: its instructions as a note, the MCP
+                                    servers you approved for it, its skills (see Move from another agent)
 hk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped

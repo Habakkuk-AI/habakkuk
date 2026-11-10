@@ -17,8 +17,11 @@ import (
 // importedSchema (transcripts.db version 5) records the sessions that
 // `hk migrate` brought over from another agent: where each came from and,
 // when the other agent recorded it, the channel and chat it belonged to.
-// An imported session is history. It shows in lists and in session_search,
-// but no turn runs in it and retention never prunes it.
+// An imported session is history. It shows in lists and in session_search
+// (labelled as imported), but no message is ever added to it, memory review
+// leaves it alone, and retention never prunes it. untrusted marks one whose
+// text came from people or systems nobody vets (a group chat, an inbox, a
+// webhook).
 const importedSchema = `
 CREATE TABLE imported_sessions (
 	session_id   TEXT PRIMARY KEY REFERENCES sessions (id) ON DELETE CASCADE,
@@ -27,13 +30,15 @@ CREATE TABLE imported_sessions (
 	account      TEXT NOT NULL DEFAULT '',
 	conversation TEXT NOT NULL DEFAULT '',
 	thread       TEXT NOT NULL DEFAULT '',
+	untrusted    INTEGER NOT NULL DEFAULT 0,
 	imported_at  INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX imported_sessions_source ON imported_sessions (source, source_id);
 `
 
 // TitleImported is the title source of a session imported from another
-// agent. Such a session is read-only: see Store.Import.
+// agent, so no automatic title replaces the one it came with. Whether a
+// session is imported is Session.Imported, not this.
 const TitleImported = "import"
 
 // ErrImported is returned for a turn in an imported session.
@@ -56,7 +61,10 @@ type Import struct {
 	// Account, Conversation and Thread are the chat it took place in, in
 	// Habakkuk's terms, when the source recorded one; all "" otherwise.
 	Account, Conversation, Thread string
-	Messages                      []ImportedMessage
+	// Untrusted marks text from senders nobody vets: a group chat, an
+	// inbox, a webhook.
+	Untrusted bool
+	Messages  []ImportedMessage
 }
 
 // ImportID is the session id an import gets: the same for the same
@@ -83,7 +91,17 @@ func (s *Store) Import(ctx context.Context, im Import) (string, bool, error) {
 		return "", false, errors.New("import: source, source id and agent are needed")
 	}
 	id := ImportID(im.Source, im.SourceID)
-	start := im.Started
+	// The conversation starts with its earliest message; the start the
+	// source recorded is the fallback, then the time of the import.
+	var start time.Time
+	for _, m := range im.Messages {
+		if !m.At.IsZero() && (start.IsZero() || m.At.Before(start)) {
+			start = m.At
+		}
+	}
+	if start.IsZero() {
+		start = im.Started
+	}
 	if start.IsZero() {
 		start = s.now()
 	}
@@ -134,8 +152,8 @@ func (s *Store) Import(ctx context.Context, im Import) (string, bool, error) {
 		}
 		seq++
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO imported_sessions (session_id, source, source_id, account, conversation, thread, imported_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, id, im.Source, im.SourceID, im.Account, im.Conversation, im.Thread, s.now().UnixMilli()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO imported_sessions (session_id, source, source_id, account, conversation, thread, untrusted, imported_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, im.Source, im.SourceID, im.Account, im.Conversation, im.Thread, im.Untrusted, s.now().UnixMilli()); err != nil {
 		return "", false, err
 	}
 	return id, true, tx.Commit()
@@ -145,7 +163,15 @@ func (s *Store) Import(ctx context.Context, im Import) (string, bool, error) {
 type Origin struct {
 	Source, SourceID              string
 	Account, Conversation, Thread string
+	Untrusted                     bool
 	ImportedAt                    time.Time
+}
+
+// IsImported reports whether a session was imported from another agent.
+func (s *Store) IsImported(ctx context.Context, id string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM imported_sessions WHERE session_id = ?)`, id).Scan(&n)
+	return n == 1, err
 }
 
 // ImportOrigin returns where an imported session came from, or nil for a
@@ -153,8 +179,8 @@ type Origin struct {
 func (s *Store) ImportOrigin(ctx context.Context, id string) (*Origin, error) {
 	var o Origin
 	var at int64
-	err := s.db.QueryRowContext(ctx, `SELECT source, source_id, account, conversation, thread, imported_at
-		FROM imported_sessions WHERE session_id = ?`, id).Scan(&o.Source, &o.SourceID, &o.Account, &o.Conversation, &o.Thread, &at)
+	err := s.db.QueryRowContext(ctx, `SELECT source, source_id, account, conversation, thread, untrusted, imported_at
+		FROM imported_sessions WHERE session_id = ?`, id).Scan(&o.Source, &o.SourceID, &o.Account, &o.Conversation, &o.Thread, &o.Untrusted, &at)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

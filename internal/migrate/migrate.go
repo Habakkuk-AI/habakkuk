@@ -18,6 +18,7 @@
 package migrate
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -239,20 +240,27 @@ type Found struct {
 	// workspaces are the agents' workspace folders the import leaves where
 	// they are: folder -> agent.
 	workspaces map[string]string
-	// temp are folders the read made (skills written from slash
-	// commands); Close removes them.
-	temp []string
+	// dbs are the read-only connections to source databases (and to the
+	// Habakkuk home's transcripts while planning); Close closes them.
+	dbs map[string]*sql.DB
 }
 
-// Close removes what reading the source left on disk: the skills it wrote
-// from slash commands, in a temporary folder.
+// Close closes the connections reading the source opened.
 func (f *Found) Close() error {
 	var errs []error
-	for _, d := range f.temp {
-		errs = append(errs, os.RemoveAll(d))
+	for path := range f.dbs {
+		errs = append(errs, f.closeDB(path))
 	}
-	f.temp = nil
 	return errors.Join(errs...)
+}
+
+func (f *Found) closeDB(path string) error {
+	db := f.dbs[path]
+	delete(f.dbs, path)
+	if db == nil {
+		return nil
+	}
+	return db.Close()
 }
 
 // otherEnv offers the variables of one source .env that this home's import
@@ -296,11 +304,15 @@ type Note struct {
 	Tags  []string
 }
 
-// Skill is one SKILL.md folder to copy.
+// Skill is one SKILL.md folder to copy, or one SKILL.md made from a slash
+// command (Text), which exists only in memory until the import writes it.
 type Skill struct {
 	Name   string
 	Dir    string
-	Shared bool // into $HABAKKUK_HOME/skills rather than the agent's own folder
+	Text   string // a skill made by the import: its SKILL.md, when Dir is ""
+	Shared bool   // into $HABAKKUK_HOME/skills rather than the agent's own folder
+	// Via is a symlink in the source that led to Dir, when it did.
+	Via string
 }
 
 // Provider is one model provider for config.yaml.
@@ -322,6 +334,11 @@ type MCPServer struct {
 	URL     string
 	Headers map[string]string // header -> variable or "Bearer ${VAR}"
 	OAuth   bool
+	Allow   []string // expose only these tools ("" all)
+	Approve []string // tools that always need approval
+	// Project is the project folder it came from, for servers a project
+	// defines; the plan shows those in full.
+	Project string
 }
 
 // Channel is one channel account for config.yaml.
@@ -531,6 +548,7 @@ func (f *Found) mcp(m *MCPServer, owner string) string {
 
 func sameMCP(a, b *MCPServer) bool {
 	return a.Command == b.Command && slices.Equal(a.Args, b.Args) && a.URL == b.URL && a.OAuth == b.OAuth &&
+		slices.Equal(a.Allow, b.Allow) && slices.Equal(a.Approve, b.Approve) &&
 		fmt.Sprint(a.Env) == fmt.Sprint(b.Env) && fmt.Sprint(a.Headers) == fmt.Sprint(b.Headers)
 }
 

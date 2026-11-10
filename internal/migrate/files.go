@@ -235,7 +235,7 @@ var claudeCodeInternals = []internals{
 	{whyCache, []string{"statsig", "shell-snapshots", "paste-cache", "image-cache", "file-history", "tmp"}},
 	{whyLogs, []string{"logs", "debug", "telemetry"}},
 	{whySessions, []string{"projects", "todos", "history.jsonl", "session-env", "sessions", "plans", "tasks", "teams"}},
-	{whyKeys, []string{".credentials.json", ".claude.json"}},
+	{whyKeys, []string{".credentials.json", ".claude.json", "backups"}}, // backups: copies of .claude.json
 	{whyConfig, []string{"settings.json", "settings.local.json", "keybindings.json", "statusline.sh"}},
 	{whyPlugins, []string{"plugins", "hooks", "agents", "output-styles"}},
 	{"already imported as the agent's AGENTS.md", []string{"CLAUDE.md"}},
@@ -247,8 +247,8 @@ var codexInternals = []internals{
 	{whyProgram, []string{"bin", "node_modules", "vendor_imports"}},
 	{whyCache, []string{"tmp", ".tmp", "shell_snapshots"}},
 	{whyLogs, []string{"log", "logs"}},
-	{whySessions, []string{"sessions", "archived_sessions", "history.jsonl", "state.sqlite", "worktrees"}},
-	{whyKeys, []string{"auth.json", ".credentials.json"}},
+	{whySessions, []string{"sessions", "archived_sessions", "history.jsonl", "session_index.jsonl", "state.sqlite", "worktrees", "sqlite"}},
+	{whyKeys, []string{"auth.json", ".credentials.json", "installation_id", "browser"}},
 	{whyConfig, []string{"config.toml", "version.json", "rules"}},
 	{"already imported as the agent's AGENTS.md", []string{"AGENTS.md", "AGENTS.override.md"}},
 	{"already imported as skills", []string{"skills", "prompts"}},
@@ -289,6 +289,10 @@ func internalWhy(from, name string) string {
 		why = whyRunning
 	case strings.HasSuffix(low, "-wal"), strings.HasSuffix(low, "-shm"), strings.HasSuffix(low, "-journal"):
 		why = whySessions
+	case strings.HasSuffix(low, ".sqlite"), strings.HasSuffix(low, ".sqlite3"), strings.Contains(low, "browser"):
+		// A database or a browser profile the import does not know may
+		// hold sign-ins and cookies.
+		why = whyKeys
 	}
 	if strings.Contains(why, "%s") {
 		why = fmt.Sprintf(why, Label(from))
@@ -594,7 +598,7 @@ func textHits(f *Found, h *homeRefs) ([]hit, error) {
 		}
 		for _, s := range a.Skills {
 			keys := map[string]int{}
-			err := skillFiles(s.Dir, func(_ string, data []byte) {
+			err := skillTexts(&s, func(_ string, data []byte) {
 				for k, n := range h.count(string(data)) {
 					keys[k] += n
 				}

@@ -1,18 +1,56 @@
 {
   "numStartups": 42,
-  "oauthAccount": { "emailAddress": "sam@example.com", "accountUuid": "fixture-account-Ab3dE5fG7h" },
+  "oauthAccount": {
+    "emailAddress": "sam@example.com",
+    "accountUuid": "fixture-account-Ab3dE5fG7h"
+  },
   "mcpServers": {
     "github": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_fixtureAb3dE5fG7h" }
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_fixtureAb3dE5fG7h"
+      }
     },
     "tracker": {
       "type": "http",
       "url": "https://mcp.tracker.example/mcp",
-      "headers": { "Authorization": "Bearer ${TRACKER_TOKEN}" }
+      "headers": {
+        "Authorization": "Bearer ${TRACKER_TOKEN}"
+      }
     },
-    "parked": { "command": "parked-server", "disabled": true }
+    "parked": {
+      "command": "parked-server",
+      "disabled": true
+    },
+    "db-cli": {
+      "command": "db-mcp",
+      "args": [
+        "--access-token",
+        "fixture-db-Ab3dE5fG7h"
+      ]
+    },
+    "warehouse": {
+      "command": "pg-mcp",
+      "args": [
+        "postgresql://sam:fixturePw-Ab3dE5fG7h@db.example/orders"
+      ]
+    },
+    "search": {
+      "type": "http",
+      "url": "https://search.example/mcp?api_key=fixture-search-Ab3dE5fG7h"
+    },
+    "legacy": {
+      "type": "sse",
+      "url": "https://legacy.example/sse"
+    },
+    "calendar": {
+      "type": "http",
+      "url": "https://calendar.example/mcp"
+    }
   }
 }

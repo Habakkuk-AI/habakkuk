@@ -120,6 +120,12 @@ func setMCP(root *yaml.Node, m *MCPServer) {
 			yamledit.Set(n, "auth", yamledit.Str("oauth"), "sign in with hk mcp login "+m.Name)
 		}
 	}
+	if len(m.Allow) > 0 {
+		yamledit.Set(n, "allow", yamledit.FlowList(m.Allow...), "only these tools")
+	}
+	if len(m.Approve) > 0 {
+		yamledit.Set(n, "approve", yamledit.FlowList(m.Approve...), "turned off in the old tool: always ask first")
+	}
 	yamledit.Set(servers, m.Name, n, "")
 }
 
@@ -181,7 +187,7 @@ func sameServer(m *MCPServer, have *config.MCPServer) bool {
 func sameServerAs(m *MCPServer, have *config.MCPServer, command string, args []string) bool {
 	return command == m.Command && slices.Equal(args, m.Args) && have.URL == m.URL &&
 		fmt.Sprint(have.Env) == fmt.Sprint(m.Env) && fmt.Sprint(have.Headers) == fmt.Sprint(m.Headers) &&
-		(have.Auth == "oauth") == m.OAuth
+		(have.Auth == "oauth") == m.OAuth && slices.Equal(have.Allow, m.Allow) && slices.Equal(have.Approve, m.Approve)
 }
 
 // moveMCP changes only the command and arguments of a configured server,

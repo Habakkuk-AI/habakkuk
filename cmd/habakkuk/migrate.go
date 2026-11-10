@@ -71,7 +71,7 @@ func runMigrate(ctx context.Context, home string, args []string, in io.Reader, o
 	fs.SetOutput(out)
 	fs.StringVar(&fl.from, "from", "", "the agent to import from: "+strings.Join(migrate.Sources, " or ")+" (default: the one found on this computer)")
 	fs.StringVar(&fl.source, "source", "", "its home folder (default ~/.hermes or $HERMES_HOME; ~/.openclaw or $OPENCLAW_STATE_DIR; ~/.claude or $CLAUDE_CONFIG_DIR; ~/.codex or $CODEX_HOME)")
-	fs.StringVar(&fl.project, "project", "", "claude-code and codex: also bring this project folder's own instructions, MCP servers and skills (default: the current folder, when it has them)")
+	fs.StringVar(&fl.project, "project", "", "claude-code and codex: also bring this project folder's instructions (as a memory note), approved MCP servers and skills")
 	fs.StringVar(&fl.agent, "agent", "", `the Habakkuk agent the main agent becomes (default "habakkuk"); other agents keep their names`)
 	fs.BoolVar(&fl.dryRun, "dry-run", false, "print the plan and stop; nothing is written")
 	fs.StringVar(&fl.secrets, "secrets", "", "copy: put API keys and tokens in $HABAKKUK_HOME/.env; skip: only list their names (default: ask)")
@@ -159,15 +159,15 @@ func (m *migration) run(ctx context.Context) error {
 		}
 		o.From = from
 	}
-	if o.Project == "" && migrate.IsCodingTool(o.From) && !m.inSetup {
-		o.Project = projectHere(o.From, o.UserHome)
-	}
 	found, err := migrate.Read(o)
 	if err != nil {
 		return err
 	}
 	defer found.Close()
 	if o.Project != "" {
+		if !migrate.IsCodingTool(o.From) {
+			return errors.New("--project is for --from claude-code and --from codex")
+		}
 		m.say("Adding the project in %s.", o.Project)
 	}
 	plan, err := migrate.NewPlan(found, m.home, o)
@@ -352,31 +352,6 @@ func joinList(s []string, word string) string {
 		return s[0]
 	}
 	return strings.Join(s[:len(s)-1], ", ") + " " + word + " " + s[len(s)-1]
-}
-
-// projectHere is the current folder when it holds a project's own files
-// for the coding tool, and is not the user's home folder; "" otherwise.
-func projectHere(from, userHome string) string {
-	dir, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	if userHome == "" {
-		userHome, _ = os.UserHomeDir()
-	}
-	if same, _ := filepath.Rel(userHome, dir); same == "." {
-		return ""
-	}
-	marks := []string{"CLAUDE.md", "CLAUDE.local.md", ".mcp.json", filepath.Join(".claude", "skills"), filepath.Join(".claude", "commands")}
-	if from == migrate.Codex {
-		marks = []string{"AGENTS.md", "AGENTS.override.md", filepath.Join(".codex", "skills"), filepath.Join(".agents", "skills")}
-	}
-	for _, mk := range marks {
-		if _, err := os.Stat(filepath.Join(dir, mk)); err == nil {
-			return dir
-		}
-	}
-	return ""
 }
 
 // ask is a yes/no question; end of input is no.

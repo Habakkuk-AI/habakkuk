@@ -80,13 +80,20 @@ func assertNoSecrets(t *testing.T, out string) {
 }
 
 func TestMigrateDryRunWritesNothing(t *testing.T) {
-	for _, from := range []string{"hermes", "openclaw"} {
+	for _, from := range migrate.Sources {
 		t.Run(from, func(t *testing.T) {
 			user, _ := sourceHome(t, from)
 			home := filepath.Join(t.TempDir(), "habakkuk")
+			// Nothing in the temporary folder either (skills made from slash
+			// commands stay in memory).
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
 			var out bytes.Buffer
-			if err := runMigrate(context.Background(), home, []string{"--dry-run"}, strings.NewReader(""), &out, noEnv, user); err != nil {
+			if err := runMigrate(context.Background(), home, []string{"--dry-run", "--from", from}, strings.NewReader(""), &out, noEnv, user); err != nil {
 				t.Fatal(err)
+			}
+			if left, _ := os.ReadDir(tmp); len(left) > 0 {
+				t.Errorf("a dry run wrote %v into the temporary folder", left)
 			}
 			if !strings.Contains(out.String(), "Dry run: nothing was written.") {
 				t.Errorf("output:\n%s", out.String())
@@ -198,6 +205,7 @@ func TestMigratePicksSource(t *testing.T) {
 		t.Errorf("none present: %v", err)
 	}
 	for _, args := range [][]string{{"--from", "other"}, {"--secrets", "maybe"}, {"--history", "some"}, {"--project", "/no/such/folder"},
+		{"--from", migrate.Sources[1], "--project", t.TempDir()},
 		{"--agent", "a/b"}, {"extra"}} {
 		if err := runMigrate(context.Background(), t.TempDir(), args, nil, &out, noEnv, user); err == nil {
 			t.Errorf("%v: no error", args)
@@ -297,7 +305,8 @@ func TestMigrateClaudeCode(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 	text := out.String()
-	for _, want := range []string{"Found Claude Code at", "Adding the project in " + project, "+ review: shared", "+ orders-db: orders-mcp",
+	for _, want := range []string{"Found Claude Code at", "Adding the project in " + project, "+ review: shared",
+		"+ orders-db: orders-mcp --read-only (from the project " + project + ")",
 		"Set these in", "ANTHROPIC_API_KEY", "Imported 1 agent"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("output lacks %q:\n%s", want, text)
@@ -309,8 +318,15 @@ func TestMigrateClaudeCode(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".env")); !os.IsNotExist(err) {
 		t.Errorf("--secrets copy wrote a .env for a coding tool (%v)", err)
 	}
-	if data, err := os.ReadFile(filepath.Join(home, "agents", "habakkuk", "AGENTS.md")); err != nil || !strings.Contains(string(data), "Use pnpm, never npm.") {
-		t.Errorf("AGENTS.md = %q, %v", data, err)
+	if data, err := os.ReadFile(filepath.Join(home, "agents", "habakkuk", "AGENTS.md")); err != nil || strings.Contains(string(data), "pnpm") {
+		t.Errorf("AGENTS.md = %q, %v; a project's instructions stay out of it", data, err)
+	}
+	notes, _ := filepath.Glob(filepath.Join(home, "agents", "habakkuk", "memory", "instructions-for-*.md"))
+	if len(notes) != 1 {
+		t.Errorf("project notes = %v; want the project's CLAUDE.md as one note", notes)
+	}
+	if !strings.Contains(text, "MCP server rogue in") {
+		t.Errorf("the unapproved project server is not named:\n%s", text)
 	}
 }
 
@@ -320,7 +336,7 @@ func TestMigrateHistoryFlag(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"--dry-run"}, "Conversation history (imported read-only)\n  + habakkuk: 3 conversations (6 messages) to import"},
+		{[]string{"--dry-run"}, "Conversation history (imported read-only)\n  + habakkuk: 4 conversations (8 messages) to import"},
 		{[]string{"--dry-run", "--history", "skip"}, "conversation history: left in"},
 	} {
 		var out bytes.Buffer
@@ -336,7 +352,7 @@ func TestMigrateHistoryFlag(t *testing.T) {
 	if err := runMigrate(context.Background(), home, []string{"-y"}, nil, &out, noEnv, user); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "4 past conversations (8 messages) as read-only sessions") {
+	if !strings.Contains(out.String(), "5 past conversations (10 messages) as read-only sessions") {
 		t.Errorf("report:\n%s", out.String())
 	}
 }

@@ -26,3 +26,18 @@ name = "Studio"
 base_url = "https://studio.example.net/v1"
 env_key = "STUDIO_KEY"
 wire_api = "chat"
+
+[mcp_servers.files]
+command = "files-mcp"
+enabled_tools = ["search", "read"]
+disabled_tools = ["delete"]
+
+[mcp_servers.node_repl]
+command = "/Applications/ChatGPT.app/Contents/Resources/node_repl"
+
+[mcp_servers.shop]
+url = "https://shop.example/mcp?token=fixture-shop-Ab3dE5fG7h"
+
+[mcp_servers.git]
+command = "git-mcp"
+args = ["--token=fixture-git-Ab3dE5fG7h"]

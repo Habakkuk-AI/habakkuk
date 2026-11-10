@@ -304,7 +304,16 @@ func (p *Plan) planConfig(cfg *config.Config, root *yaml.Node) bool {
 		edited = true
 	}
 	for _, m := range f.MCP {
-		it := p.add(&Item{Kind: "mcp", Name: m.Name, Status: New, Detail: firstOf(m.Command, m.URL)})
+		detail := m.Command
+		switch {
+		case m.URL != "":
+			detail = redactURL(m.URL)
+		case m.Project != "":
+			// A project's own server runs a command the project chose: show
+			// all of it.
+			detail = strings.Join(append([]string{shellQuote(m.Command)}, quoteAll(m.Args)...), " ") + " (from the project " + m.Project + ")"
+		}
+		it := p.add(&Item{Kind: "mcp", Name: m.Name, Status: New, Detail: detail})
 		if have := cfg.MCP[m.Name]; have != nil {
 			if sameServer(m, have) {
 				it.Status = Same
@@ -461,7 +470,7 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 			where = "shared"
 		}
 		it := p.add(&Item{Kind: "skill", Agent: a.Name, Name: s.Name, Status: New, Detail: where, skill: s})
-		findings, err := hub.Scan(s.Dir)
+		findings, err := skillScan(s)
 		if err != nil {
 			return err
 		}
@@ -471,9 +480,12 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 		if len(findings) > 0 {
 			it.Status = Rejected
 			it.Detail = fmt.Sprintf("the security scan flagged %s; read it, then hk skills install %s", strings.Join(hub.Summaries(findings[:min(len(findings), 3)]), "; "), shellQuote(s.Dir))
+			if s.Dir == "" {
+				it.Detail = fmt.Sprintf("the security scan flagged %s; read the command it was made from, and add it as a skill yourself if you trust it", strings.Join(hub.Summaries(findings[:min(len(findings), 3)]), "; "))
+			}
 			continue
 		}
-		want, err := treeHash(s.Dir, p.rw)
+		want, err := skillHash(s, p.rw)
 		if err != nil {
 			return err
 		}
@@ -772,4 +784,12 @@ func (p *Plan) writeNotes(w io.Writer, mark map[string]string) {
 	for _, it := range odd {
 		fmt.Fprintf(w, "  %s %s: %q: %s\n", mark[it.Status], it.Agent, it.Name, it.Detail)
 	}
+}
+
+func quoteAll(list []string) []string {
+	out := make([]string, len(list))
+	for i, s := range list {
+		out[i] = shellQuote(s)
+	}
+	return out
 }

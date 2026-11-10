@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -25,19 +27,28 @@ import (
 //
 //   - Hermes Agent: the sessions and messages tables of state.db, in the
 //     main home and in each profile. A session records the platform it ran
-//     on (source) and, for a chat, its chat_id and thread_id. Structured
-//     message content is stored as "\x00json:" followed by JSON.
+//     on (source), its chat_type and, for a chat, its chat_id and
+//     thread_id. Structured message content is stored as "\x00json:"
+//     followed by JSON. Rows the agent itself never showed as part of the
+//     conversation are marked: observed group chatter (observed = 1),
+//     rewound or undelivered turns (active = 0 and compacted = 0), summaries
+//     (_compressed_summary = 1) and rows meant for the model only
+//     ("model_only" in display_metadata).
 //   - OpenClaw: per agent, agents/<id>/sessions/<session>.jsonl (one JSON
 //     event per line, messages as {"type":"message","message":{...}}) with
 //     sessions.json mapping session keys such as
 //     "agent:<id>:telegram:direct:<peer>" to them; newer homes keep the same
 //     events in the transcript_events table of
 //     agents/<id>/agent/openclaw-agent.sqlite, keyed through session_windows.
+//     A user message there can carry context blocks the gateway added
+//     (sender metadata, forwarded and replied-to messages, the chat history
+//     since the last reply); they are not the user's words.
 //
 // Only the text of user and assistant messages comes over: tool calls,
 // tool results, reasoning and summaries stay behind. Each conversation
 // becomes a read-only session of the agent it belonged to, searchable with
-// session_search.
+// session_search. The plan only counts messages; they are read once, when
+// the import writes them.
 
 // History options.
 const (
@@ -50,21 +61,30 @@ type Conversation struct {
 	Agent   string // the Habakkuk agent
 	ID      string // its key in the source, unique within the source home
 	Title   string
-	Started time.Time
+	Started time.Time // when the source says it started; zero when unknown
 	// Platform is where it took place in the source (telegram, cli, ...).
 	Platform string
 	// Account is the Habakkuk channel it maps to, with the chat and thread
 	// in that channel; all "" when the source recorded none or the channel
 	// is not imported.
 	Account, Chat, Thread string
+	// Untrusted marks a conversation whose text came from senders nobody
+	// vets: a group chat, an inbox, a webhook.
+	Untrusted bool
+	// Count is how many user and assistant messages with text it holds, as
+	// counted for the plan without reading them.
+	Count int
 
-	load func() ([]session.ImportedMessage, error)
+	// load reads the messages; untrusted is set when they carried context
+	// from other senders that was taken out.
+	load func() (msgs []session.ImportedMessage, untrusted bool, err error)
 }
 
-// Load reads the conversation's messages.
-func (c *Conversation) Load() ([]session.ImportedMessage, error) {
+// Load reads the conversation's messages. untrusted reports text from
+// other senders found (and taken out) on the way.
+func (c *Conversation) Load() ([]session.ImportedMessage, bool, error) {
 	if c.load == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 	return c.load()
 }
@@ -117,12 +137,25 @@ func (f *Found) conversation(a *Agent, c *Conversation) {
 	f.History = append(f.History, c)
 }
 
-// openRO opens a SQLite file read-only.
-func openRO(path string) (*sql.DB, error) {
+// roDB is one read-only connection to a source database for the whole
+// import; Found.Close closes it.
+func (f *Found) roDB(path string) (*sql.DB, error) {
+	if db := f.dbs[path]; db != nil {
+		return db, nil
+	}
 	q := url.Values{}
 	q.Add("mode", "ro")
 	q.Add("_pragma", "busy_timeout(5000)")
-	return sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	if f.dbs == nil {
+		f.dbs = map[string]*sql.DB{}
+	}
+	f.dbs[path] = db
+	return db, nil
 }
 
 // columns lists a table's columns; nil when the table is missing.
@@ -165,66 +198,100 @@ func unixTime(v float64) time.Time {
 	return time.UnixMilli(int64(v * 1000))
 }
 
-// hermesHistory lists the sessions in one home's state.db.
+// Platforms whose senders nobody vets, and chat types with more than one
+// person in them.
+var (
+	unvettedSources = []string{"email", "gmail", "webhook", "msgraph_webhook", "api_server", "hook"}
+	directChats     = []string{"", "dm", "direct", "private"}
+)
+
+// hermesHistory lists the sessions in one home's state.db, with how many
+// messages each holds.
 func (f *Found) hermesHistory(a *Agent, path string) {
 	if !exists(path) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	db, err := openRO(path)
+	db, err := f.roDB(path)
 	if err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 		return
 	}
-	defer db.Close()
 	sc, err := columns(ctx, db, "sessions")
 	if err == nil && (sc == nil || !sc["id"]) {
 		return
 	}
 	mc, err2 := columns(ctx, db, "messages")
-	if err = errors.Join(err, err2); err != nil || mc == nil || !mc["role"] || !mc["content"] {
+	if err = errors.Join(err, err2); err != nil || mc == nil || !mc["role"] || !mc["content"] || !mc["session_id"] {
 		if err != nil {
 			f.skip("the conversations in %s: %v", path, err)
 		}
 		return
 	}
+	// The rows that were part of the conversation as its people saw it.
+	shown := `role IN ('user', 'assistant') AND content IS NOT NULL AND trim(content) != ''`
+	if mc["_compressed_summary"] {
+		shown += ` AND COALESCE(_compressed_summary, 0) = 0`
+	}
+	if mc["observed"] {
+		shown += ` AND COALESCE(observed, 0) = 0`
+	}
+	if mc["active"] && mc["compacted"] {
+		shown += ` AND NOT (COALESCE(active, 1) = 0 AND COALESCE(compacted, 0) = 0)`
+	} else if mc["active"] {
+		shown += ` AND COALESCE(active, 1) != 0`
+	}
+	if mc["display_metadata"] {
+		shown += ` AND COALESCE(CASE WHEN json_valid(display_metadata) THEN json_extract(display_metadata, '$.model_only') END, 0) NOT IN (1, 'true')`
+	}
+	counts := map[string]int{}
+	rows, err := db.QueryContext(ctx, `SELECT session_id, count(*) FROM messages WHERE `+shown+` GROUP BY session_id`)
+	if err != nil {
+		f.skip("the conversations in %s: %v", path, err)
+		return
+	}
+	for rows.Next() {
+		var id string
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			rows.Close()
+			f.skip("the conversations in %s: %v", path, err)
+			return
+		}
+		counts[id] = n
+	}
+	rows.Close()
 	q := `SELECT id, ` + col(sc, "source", "''") + `, ` + col(sc, "chat_id", "''") + `, ` + col(sc, "thread_id", "''") + `, ` +
-		col(sc, "title", "''") + `, ` + col(sc, "started_at", "0") + ` FROM sessions ORDER BY ` + col(sc, "started_at", "0") + `, id`
-	rows, err := db.QueryContext(ctx, q)
+		col(sc, "chat_type", "''") + `, ` + col(sc, "title", "''") + `, ` + col(sc, "started_at", "0") +
+		` FROM sessions ORDER BY ` + col(sc, "started_at", "0") + `, id`
+	rows, err = db.QueryContext(ctx, q)
 	if err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 		return
 	}
 	defer rows.Close()
-	where := `session_id = ? AND role IN ('user', 'assistant')`
-	if mc["_compressed_summary"] {
-		where += ` AND COALESCE(_compressed_summary, 0) = 0`
-	}
 	order := "rowid"
 	if mc["id"] {
 		order = "id"
 	}
 	ts := col(mc, "timestamp", "0")
 	for rows.Next() {
-		var id, src, chat, thread, title string
+		var id, src, chat, thread, chatType, title string
 		var started float64
-		if err := rows.Scan(&id, &src, &chat, &thread, &title, &started); err != nil {
+		if err := rows.Scan(&id, &src, &chat, &thread, &chatType, &title, &started); err != nil {
 			f.skip("the conversations in %s: %v", path, err)
 			return
 		}
 		sid := id
 		f.conversation(a, &Conversation{
 			ID: a.From + "/" + id, Title: title, Started: unixTime(started), Platform: src, Chat: chat, Thread: thread,
-			load: func() ([]session.ImportedMessage, error) {
-				db, err := openRO(path)
+			Untrusted: slices.Contains(unvettedSources, strings.ToLower(src)) || !slices.Contains(directChats, strings.ToLower(chatType)),
+			Count:     counts[id],
+			load: func() ([]session.ImportedMessage, bool, error) {
+				rows, err := db.Query(`SELECT role, content, `+ts+` FROM messages WHERE session_id = ? AND `+shown+` ORDER BY `+order, sid)
 				if err != nil {
-					return nil, err
-				}
-				defer db.Close()
-				rows, err := db.Query(`SELECT role, COALESCE(content, ''), `+ts+` FROM messages WHERE `+where+` ORDER BY `+order, sid)
-				if err != nil {
-					return nil, err
+					return nil, false, err
 				}
 				defer rows.Close()
 				var out []session.ImportedMessage
@@ -232,13 +299,13 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 					var role, content string
 					var at float64
 					if err := rows.Scan(&role, &content, &at); err != nil {
-						return nil, err
+						return nil, false, err
 					}
 					if text := hermesText(content); text != "" {
 						out = append(out, session.ImportedMessage{Role: llm.Role(role), Text: text, At: unixTime(at)})
 					}
 				}
-				return out, rows.Err()
+				return out, false, rows.Err()
 			},
 		})
 	}
@@ -297,6 +364,7 @@ type ocEntry struct {
 	channel  string
 	to       string
 	thread   string
+	chatType string
 	updated  float64
 	created  float64
 	fromFile string // the transcript file, when there is one
@@ -306,32 +374,45 @@ type ocEntry struct {
 // sessions/, and the transcripts in the agent's database.
 func (f *Found) openClawHistory(a *Agent, dir string) {
 	entries := map[string]*ocEntry{} // session id -> entry
+	claimed := map[string]bool{}     // transcript files an entry already has
 	var order []string
 	add := func(id string, e *ocEntry) {
 		if old, ok := entries[id]; ok {
-			if old.fromFile == "" {
+			if old.fromFile == "" && e.fromFile != "" {
 				old.fromFile = e.fromFile
+				claimed[e.fromFile] = true
 			}
 			return
 		}
 		entries[id] = e
 		order = append(order, id)
+		if e.fromFile != "" {
+			claimed[e.fromFile] = true
+		}
 	}
 	sdir := filepath.Join(dir, "sessions")
 	if data, err := os.ReadFile(filepath.Join(sdir, "sessions.json")); err == nil {
-		var store map[string]map[string]any
-		if err := json.Unmarshal(data, &store); err != nil {
+		var index map[string]map[string]any
+		if err := json.Unmarshal(data, &index); err != nil {
 			f.skip("%s: %v", filepath.Join(sdir, "sessions.json"), err)
 		}
-		for _, key := range sortedKeys(store) {
-			m := store[key]
+		for _, key := range sortedKeys(index) {
+			m := index[key]
 			id, _ := m["sessionId"].(string)
 			if id == "" {
 				continue
 			}
 			e := ocEntryFrom(key, m)
-			if file, _ := m["sessionFile"].(string); file != "" && filepath.IsAbs(file) && under(dir, file) {
-				e.fromFile = file
+			if file, _ := m["sessionFile"].(string); file != "" {
+				if !filepath.IsAbs(file) {
+					file = filepath.Join(sdir, file)
+				}
+				if under(dir, file) && exists(file) {
+					e.fromFile = filepath.Clean(file)
+				}
+			}
+			if e.fromFile == "" && exists(filepath.Join(sdir, id+".jsonl")) {
+				e.fromFile = filepath.Join(sdir, id+".jsonl")
 			}
 			add(id, e)
 		}
@@ -347,59 +428,69 @@ func (f *Found) openClawHistory(a *Agent, dir string) {
 			continue
 		}
 		path := filepath.Join(sdir, name)
-		if rest != "" {
-			id += rest // a transcript set aside by a reset is a conversation of its own
-		}
-		if e, ok := entries[id]; ok && e.fromFile == "" {
-			e.fromFile = path
+		if claimed[path] {
 			continue
 		}
-		add(id, &ocEntry{fromFile: path})
+		e := &ocEntry{fromFile: path}
+		if rest != "" {
+			id += rest // a transcript set aside by a reset is a conversation of its own
+			if t, ok := resetTime(rest); ok {
+				e.created = float64(t.UnixMilli())
+			}
+		}
+		add(id, e)
 	}
 	dbPath := filepath.Join(dir, "agent", "openclaw-agent.sqlite")
-	dbIDs := map[string]bool{}
+	dbIDs := map[string]int{} // session id -> messages counted in the database
+	var db *sql.DB
 	if exists(dbPath) {
-		if err := ocDBSessions(dbPath, func(id string, e *ocEntry) {
-			dbIDs[id] = true
-			if old, ok := entries[id]; ok {
-				if old.title == "" {
-					old.title = e.title
+		var err error
+		if db, err = f.roDB(dbPath); err == nil {
+			err = ocDBSessions(db, func(id string, n int, e *ocEntry) {
+				dbIDs[id] = n
+				if old, ok := entries[id]; ok {
+					if old.title == "" {
+						old.title = e.title
+					}
+					if old.key == "" {
+						old.key, old.channel = e.key, e.channel
+					}
+					if old.created == 0 {
+						old.created = e.created
+					}
+					return
 				}
-				if old.key == "" {
-					old.key, old.channel, old.to, old.thread = e.key, e.channel, e.to, e.thread
-				}
-				if old.created == 0 {
-					old.created = e.created
-				}
-				return
-			}
-			add(id, e)
-		}); err != nil {
+				add(id, e)
+			})
+		}
+		if err != nil {
 			f.skip("the conversations in %s: %v", dbPath, err)
 		}
 	}
 	for _, id := range order {
 		e := entries[id]
 		sid := id
-		inDB := dbIDs[id]
+		n, inDB := dbIDs[id]
 		if e.fromFile == "" && !inDB {
 			continue
 		}
-		platform, chat, thread := e.channel, e.to, e.thread
-		if p, c, t := parseSessionKey(e.key); platform == "" || chat == "" {
-			if platform == "" {
-				platform = p
-			}
-			if chat == "" && (platform == p || p == "") {
-				chat = c
-			}
-			if thread == "" {
-				thread = t
-			}
+		platform, chat, thread, kind := e.channel, e.to, e.thread, e.chatType
+		p, c, t, k := parseSessionKey(e.key)
+		if platform == "" {
+			platform = p
 		}
-		if p, rest, ok := strings.Cut(chat, ":"); ok && slices.Contains(chatTypes, p) {
+		if chat == "" && (platform == p || p == "") {
+			chat = c
+		}
+		if thread == "" {
+			thread = t
+		}
+		if kind == "" {
+			kind = k
+		}
+		if pfx, rest, ok := strings.Cut(chat, ":"); ok && slices.Contains(chatTypes, pfx) {
 			if platform == "" {
-				platform = p
+				platform = pfx
 			}
 			chat = rest
 		}
@@ -408,19 +499,41 @@ func (f *Found) openClawHistory(a *Agent, dir string) {
 			start = e.updated
 		}
 		file := e.fromFile
+		if file != "" {
+			n = countJSONLMessages(file)
+		}
 		f.conversation(a, &Conversation{
 			ID: a.From + "/" + sid, Title: e.title, Started: unixTime(start), Platform: platform, Chat: chat, Thread: thread,
-			load: func() ([]session.ImportedMessage, error) {
+			Untrusted: unvettedKey(e.key) || !slices.Contains(directChats, strings.ToLower(kind)), Count: n,
+			load: func() ([]session.ImportedMessage, bool, error) {
 				if file != "" {
 					return readJSONLTranscript(file)
 				}
-				return ocDBTranscript(dbPath, sid)
+				return ocDBTranscript(db, sid)
 			},
 		})
 	}
 }
 
-// ocEntryFrom reads a sessions.json entry.
+// resetTime reads the time in a ".reset.<iso>" suffix, where the time's
+// colons are written as dashes: ".reset.2026-10-19T07-00-00.000Z".
+func resetTime(suffix string) (time.Time, bool) {
+	s, ok := strings.CutPrefix(suffix, ".reset.")
+	if !ok {
+		return time.Time{}, false
+	}
+	date, clock, ok := strings.Cut(s, "T")
+	if !ok {
+		return time.Time{}, false
+	}
+	clock = strings.Replace(strings.Replace(clock, "-", ":", 1), "-", ":", 1)
+	t, err := time.Parse(time.RFC3339Nano, date+"T"+clock)
+	return t, err == nil
+}
+
+// ocEntryFrom reads a sessions.json entry. The agent's shared main session
+// ("agent:<id>:main") takes messages from every direct chat, so its last
+// channel and recipient say nothing about where it took place.
 func ocEntryFrom(key string, m map[string]any) *ocEntry {
 	e := &ocEntry{key: key}
 	for _, k := range []string{"displayName", "label", "subject", "title"} {
@@ -429,13 +542,16 @@ func ocEntryFrom(key string, m map[string]any) *ocEntry {
 			break
 		}
 	}
-	e.channel, _ = m["lastChannel"].(string)
-	if e.channel == "" {
-		e.channel, _ = m["channel"].(string)
-	}
-	e.to, _ = m["lastTo"].(string)
-	if t, ok := m["lastThreadId"]; ok && t != nil {
-		e.thread = fmt.Sprint(t)
+	e.chatType, _ = m["chatType"].(string)
+	if !mainSessionKey(key) {
+		e.channel, _ = m["lastChannel"].(string)
+		if e.channel == "" {
+			e.channel, _ = m["channel"].(string)
+		}
+		e.to, _ = m["lastTo"].(string)
+		if t, ok := m["lastThreadId"]; ok && t != nil {
+			e.thread = fmt.Sprint(t)
+		}
 	}
 	if v, ok := toFloat(m["updatedAt"]); ok {
 		e.updated = v
@@ -444,6 +560,26 @@ func ocEntryFrom(key string, m map[string]any) *ocEntry {
 		e.created = v
 	}
 	return e
+}
+
+// mainSessionKey reports an agent's shared main session: "agent:<id>:main"
+// or "main".
+func mainSessionKey(key string) bool {
+	parts := strings.Split(key, ":")
+	if len(parts) >= 2 && parts[0] == "agent" {
+		parts = parts[2:]
+	}
+	return len(parts) == 1 && parts[0] == "main"
+}
+
+// unvettedKey reports a session key for mail or webhook input.
+func unvettedKey(key string) bool {
+	for _, p := range strings.Split(strings.ToLower(key), ":") {
+		if slices.Contains(unvettedSources, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func toFloat(v any) (float64, bool) {
@@ -460,23 +596,23 @@ func toFloat(v any) (float64, bool) {
 	return 0, false
 }
 
-// parseSessionKey reads the platform, chat and thread out of a session key
-// such as "agent:main:telegram:direct:12025550142" or
+// parseSessionKey reads the platform, chat, thread and kind of chat out of
+// a session key such as "agent:main:telegram:direct:12025550142" or
 // "agent:main:discord:channel:123:thread:456". The agent's own main
 // session ("agent:main:main") names none.
-func parseSessionKey(key string) (platform, chat, thread string) {
+func parseSessionKey(key string) (platform, chat, thread, kind string) {
 	parts := strings.Split(key, ":")
 	if len(parts) >= 2 && parts[0] == "agent" {
 		parts = parts[2:]
 	}
 	if len(parts) < 2 || !slices.Contains(chatTypes, strings.ToLower(parts[0])) {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	platform = strings.ToLower(parts[0])
 	rest := parts[1:]
-	switch strings.ToLower(rest[0]) {
+	switch k := strings.ToLower(rest[0]); k {
 	case "direct", "dm", "group", "channel", "room":
-		rest = rest[1:]
+		kind, rest = k, rest[1:]
 	}
 	for i := 0; i < len(rest); i++ {
 		switch strings.ToLower(rest[i]) {
@@ -484,7 +620,7 @@ func parseSessionKey(key string) (platform, chat, thread string) {
 			if i+1 < len(rest) {
 				thread = rest[i+1]
 			}
-			return platform, chat, thread
+			return platform, chat, thread, kind
 		}
 		if chat == "" {
 			chat = rest[i]
@@ -492,19 +628,14 @@ func parseSessionKey(key string) (platform, chat, thread string) {
 			chat += ":" + rest[i]
 		}
 	}
-	return platform, chat, thread
+	return platform, chat, thread, kind
 }
 
 // ocDBSessions lists the sessions in an agent database that hold
-// transcript events.
-func ocDBSessions(path string, fn func(id string, e *ocEntry)) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+// transcript events, with a count of their user and assistant messages.
+func ocDBSessions(db *sql.DB, fn func(id string, n int, e *ocEntry)) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	db, err := openRO(path)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
 	wc, err := columns(ctx, db, "session_windows")
 	if err != nil {
 		return err
@@ -517,7 +648,9 @@ func ocDBSessions(path string, fn func(id string, e *ocEntry)) error {
 		return nil
 	}
 	q := `SELECT session_id, ` + col(wc, "session_key", "''") + `, ` + col(wc, "created_at", "0") + `, ` +
-		col(wc, "channel", "''") + ` FROM session_windows WHERE session_id IN (SELECT DISTINCT session_id FROM transcript_events)
+		col(wc, "channel", "''") + `, (SELECT count(*) FROM transcript_events t WHERE t.session_id = session_windows.session_id
+			AND typeof(t.event_json) = 'text' AND (t.event_json LIKE '%"role":"user"%' OR t.event_json LIKE '%"role":"assistant"%'))
+		FROM session_windows WHERE session_id IN (SELECT DISTINCT session_id FROM transcript_events)
 		ORDER BY ` + col(wc, "created_at", "0") + `, session_id`
 	rows, err := db.QueryContext(ctx, q)
 	if err != nil {
@@ -527,65 +660,95 @@ func ocDBSessions(path string, fn func(id string, e *ocEntry)) error {
 	for rows.Next() {
 		var id, key, channel string
 		var created float64
-		if err := rows.Scan(&id, &key, &created, &channel); err != nil {
+		var n int
+		if err := rows.Scan(&id, &key, &created, &channel, &n); err != nil {
 			return err
 		}
-		fn(id, &ocEntry{key: key, created: created, channel: channel})
+		fn(id, n, &ocEntry{key: key, created: created, channel: channel})
 	}
 	return rows.Err()
 }
 
 // ocDBTranscript reads one session's events from an agent database.
-func ocDBTranscript(path, id string) ([]session.ImportedMessage, error) {
-	db, err := openRO(path)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
+func ocDBTranscript(db *sql.DB, id string) ([]session.ImportedMessage, bool, error) {
 	rows, err := db.Query(`SELECT event_json FROM transcript_events WHERE session_id = ? AND typeof(event_json) = 'text' ORDER BY seq`, id)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 	var out []session.ImportedMessage
+	untrusted := false
 	for rows.Next() {
 		var line string
 		if err := rows.Scan(&line); err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		if m, ok := transcriptLine([]byte(line)); ok {
+		if m, other, ok := transcriptLine([]byte(line)); ok {
 			out = append(out, m)
+			untrusted = untrusted || other
+		} else if other {
+			untrusted = true
 		}
 	}
-	return out, rows.Err()
+	return out, untrusted, rows.Err()
+}
+
+// countJSONLMessages counts the lines of a transcript file that hold a user
+// or assistant message with text, without decoding them: a count for the
+// plan.
+func countJSONLMessages(path string) int {
+	fh, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer fh.Close()
+	n := 0
+	sc := bufio.NewScanner(fh)
+	sc.Buffer(make([]byte, 64<<10), 64<<20)
+	for sc.Scan() {
+		l := sc.Bytes()
+		role := bytes.Contains(l, []byte(`"role":"user"`)) || bytes.Contains(l, []byte(`"role":"assistant"`)) ||
+			bytes.Contains(l, []byte(`"role": "user"`)) || bytes.Contains(l, []byte(`"role": "assistant"`))
+		text := bytes.Contains(l, []byte(`"type":"text"`)) || bytes.Contains(l, []byte(`"type": "text"`)) ||
+			bytes.Contains(l, []byte(`"content":"`)) || bytes.Contains(l, []byte(`"content": "`))
+		if role && text {
+			n++
+		}
+	}
+	return n
 }
 
 // readJSONLTranscript reads a transcript file of JSON events.
-func readJSONLTranscript(path string) ([]session.ImportedMessage, error) {
+func readJSONLTranscript(path string) ([]session.ImportedMessage, bool, error) {
 	fh, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer fh.Close()
 	var out []session.ImportedMessage
+	untrusted := false
 	r := bufio.NewReaderSize(fh, 64<<10)
 	for {
 		line, err := r.ReadBytes('\n')
-		if m, ok := transcriptLine(line); ok {
+		if m, other, ok := transcriptLine(line); ok {
 			out = append(out, m)
+			untrusted = untrusted || other
+		} else if other {
+			untrusted = true
 		}
 		if errors.Is(err, io.EOF) {
-			return out, nil
+			return out, untrusted, nil
 		}
 		if err != nil {
-			return out, err
+			return out, untrusted, err
 		}
 	}
 }
 
 // transcriptLine reads one event: a message wrapped as {"type":"message",
-// "message":{...}} or, in older files, the message itself.
-func transcriptLine(line []byte) (session.ImportedMessage, bool) {
+// "message":{...}} or, in older files, the message itself. other reports
+// context from other senders that was taken out of a user message.
+func transcriptLine(line []byte) (msg session.ImportedMessage, other, ok bool) {
 	var ev struct {
 		Type      string          `json:"type"`
 		Timestamp any             `json:"timestamp"`
@@ -594,12 +757,12 @@ func transcriptLine(line []byte) (session.ImportedMessage, bool) {
 		Content   any             `json:"content"`
 	}
 	if json.Unmarshal(line, &ev) != nil {
-		return session.ImportedMessage{}, false
+		return msg, false, false
 	}
 	role, content, ts := ev.Role, ev.Content, ev.Timestamp
 	if len(ev.Message) > 0 {
 		if ev.Type != "" && ev.Type != "message" {
-			return session.ImportedMessage{}, false
+			return msg, false, false
 		}
 		var m struct {
 			Role      string `json:"role"`
@@ -607,7 +770,7 @@ func transcriptLine(line []byte) (session.ImportedMessage, bool) {
 			Timestamp any    `json:"timestamp"`
 		}
 		if json.Unmarshal(ev.Message, &m) != nil {
-			return session.ImportedMessage{}, false
+			return msg, false, false
 		}
 		role, content = m.Role, m.Content
 		if m.Timestamp != nil {
@@ -615,21 +778,65 @@ func transcriptLine(line []byte) (session.ImportedMessage, bool) {
 		}
 	}
 	if role != "user" && role != "assistant" {
-		return session.ImportedMessage{}, false
+		return msg, false, false
 	}
 	text := partsText(content)
+	if role == "user" {
+		text, other = stripInbound(text)
+	}
 	if text == "" {
-		return session.ImportedMessage{}, false
+		return msg, other, false
 	}
 	var at time.Time
 	if v, ok := toFloat(ts); ok {
 		at = unixTime(v)
 	}
-	return session.ImportedMessage{Role: llm.Role(role), Text: text, At: at}, true
+	return session.ImportedMessage{Role: llm.Role(role), Text: text, At: at}, other, true
+}
+
+// The context blocks the source's gateway puts in front of a user's message:
+// a label line, then a fenced JSON block (sender, forwarded and replied-to
+// messages and the like) or a paragraph (untrusted context, the chat history
+// since the last reply). They are other people's words or metadata, so
+// they are taken out.
+var (
+	reFencedLabel = regexp.MustCompile(`^(Conversation info|Sender|Thread starter|Reply chain of current user message|Reply target of current user message|Replied message|Forwarded message context|Forwarded message|Location|Structured object)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$`)
+	reBlockLabel  = regexp.MustCompile(`^(Untrusted context|Chat history since last reply)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$|\(untrusted[^)]*\):\s*$|⟦[^⟧]*ctx⟧`)
+)
+
+// stripInbound takes those context blocks out of a user's message and
+// reports whether it found any.
+func stripInbound(text string) (string, bool) {
+	if !strings.Contains(text, "ntrusted") && !strings.Contains(text, "⟦") && !strings.Contains(text, "```") {
+		return text, false
+	}
+	lines := strings.Split(text, "\n")
+	var keep []string
+	found := false
+	for i := 0; i < len(lines); i++ {
+		l := strings.TrimSpace(lines[i])
+		switch {
+		case reFencedLabel.MatchString(l) && i+1 < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[i+1]), "```"):
+			found = true
+			i += 2
+			for i < len(lines) && !strings.HasPrefix(strings.TrimSpace(lines[i]), "```") {
+				i++
+			}
+		case reBlockLabel.MatchString(l):
+			found = true
+			for i+1 < len(lines) && strings.TrimSpace(lines[i+1]) != "" {
+				i++
+			}
+		default:
+			keep = append(keep, lines[i])
+		}
+	}
+	return strings.TrimSpace(strings.Join(keep, "\n")), found
 }
 
 // planHistory decides which conversations are new: the ones the Habakkuk
-// home does not hold yet. It reads transcripts.db without changing it.
+// home does not hold yet. It reads transcripts.db without changing it,
+// and counts messages without reading them.
 func (p *Plan) planHistory() error {
 	f := p.Found
 	if p.opts.History == HistorySkip || len(f.History) == 0 {
@@ -638,29 +845,31 @@ func (p *Plan) planHistory() error {
 	have := map[string]bool{}
 	path := filepath.Join(p.Home, "transcripts.db")
 	if exists(path) {
-		db, err := openRO(path)
+		db, err := f.roDB(path)
 		if err != nil {
 			return err
 		}
-		defer db.Close()
 		rows, err := db.Query(`SELECT source_id FROM imported_sessions WHERE source = ?`, f.From)
 		switch {
 		case err != nil && strings.Contains(err.Error(), "no such table"):
 		case err != nil:
 			return fmt.Errorf("read %s: %w", path, err)
 		default:
-			defer rows.Close()
 			for rows.Next() {
 				var id string
 				if err := rows.Scan(&id); err != nil {
+					rows.Close()
 					return err
 				}
 				have[id] = true
 			}
+			rows.Close()
 			if err := rows.Err(); err != nil {
 				return err
 			}
 		}
+		// The import writes here next: no connection of its own stays open.
+		f.closeDB(path)
 	}
 	items := map[string]*Item{}
 	for _, c := range f.History {
@@ -673,16 +882,11 @@ func (p *Plan) planHistory() error {
 			it.histSame++
 			continue
 		}
-		msgs, err := c.Load()
-		if err != nil {
-			f.skip("conversation %s: %v", c.ID, err)
-			continue
-		}
-		if len(msgs) == 0 {
+		if c.Count == 0 {
 			continue // nothing said in it but tool calls, or nothing at all
 		}
 		it.hist = append(it.hist, c)
-		it.histMsgs += len(msgs)
+		it.histMsgs += c.Count
 		it.Status = New
 	}
 	for _, it := range p.Items {
@@ -718,9 +922,12 @@ func (p *Plan) applyHistory(ctx context.Context, res *Result) error {
 		n := 0
 		var errs []error
 		for _, c := range it.hist {
-			msgs, err := c.Load()
+			msgs, other, err := c.Load()
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", c.ID, err))
+				continue
+			}
+			if len(msgs) == 0 {
 				continue
 			}
 			title := c.Title
@@ -733,7 +940,8 @@ func (p *Plan) applyHistory(ctx context.Context, res *Result) error {
 				}
 			}
 			_, added, err := st.Import(ctx, session.Import{Source: p.Found.From, SourceID: c.ID, Agent: c.Agent, Title: title,
-				Started: c.Started, Account: c.Account, Conversation: c.Chat, Thread: c.Thread, Messages: msgs})
+				Started: c.Started, Account: c.Account, Conversation: c.Chat, Thread: c.Thread, Untrusted: c.Untrusted || other,
+				Messages: msgs})
 			if err != nil {
 				errs = append(errs, err)
 				continue

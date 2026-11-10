@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/frontmatter"
-	"github.com/habakkuk-ai/habakkuk/internal/knowledge/skills"
 )
 
 // Two coding tools can be imported as well as the agents. Each becomes the
@@ -44,24 +43,20 @@ type codingReader struct {
 	agent *Agent
 	// instructions are the sections of AGENTS.md, in order.
 	instructions []string
+	// oauth are the servers the tool holds a sign-in for (names only).
+	oauth map[string]bool
 }
 
 func newCodingReader(dir, from string, o Options) *codingReader {
 	a := &Agent{From: from, Name: o.mainAgent(), Main: true, Files: map[string]string{}, Workspace: "~/habakkuk-workspace"}
-	if o.Project != "" {
-		a.Workspace = tilde(o.Project, o.userHome())
-	}
 	return &codingReader{f: &Found{Agents: []*Agent{a}}, o: o, dir: dir, from: from, agent: a}
 }
 
 // instruction adds an instruction file's text as a section of AGENTS.md.
-func (r *codingReader) instruction(path, heading string) error {
+func (r *codingReader) instruction(path string) error {
 	text, err := readText(path)
 	if err != nil || text == "" {
 		return err
-	}
-	if heading != "" {
-		text = "## " + heading + "\n\n" + text
 	}
 	r.instructions = append(r.instructions, text)
 	return nil
@@ -73,16 +68,31 @@ func (r *codingReader) finishInstructions() {
 	}
 }
 
-// projectHeading names a project folder in AGENTS.md.
-func (r *codingReader) projectHeading() string {
-	return "Instructions for " + tilde(r.o.Project, r.o.userHome())
+// projectInstructions keeps a project's own instruction file as a memory
+// note: it is about that project, so it stays out of the agent's standing
+// instructions, and the agent finds it when the project comes up.
+func (r *codingReader) projectInstructions(path string) error {
+	text, err := readText(path)
+	if err != nil || text == "" {
+		return err
+	}
+	title := "Instructions for " + filepath.Base(r.o.Project) + " (" + filepath.Base(path) + ")"
+	body := "The instructions in " + tilde(path, r.o.userHome()) + ", for work in the project " +
+		tilde(r.o.Project, r.o.userHome()) + ":\n\n" + text
+	r.agent.Notes = append(r.agent.Notes, chunkNote(title, body, []string{"imported", "project", r.from})...)
+	return nil
 }
 
-// mcpServers adds the servers of one "mcpServers" object.
-func (r *codingReader) mcpServers(servers map[string]any, where string) {
+// mcpServers adds the servers of one "mcpServers" object. project is the
+// project folder that defines them, or "".
+func (r *codingReader) mcpServers(servers map[string]any, where, project string) {
 	for _, raw := range sortedKeys(servers) {
 		m, _ := servers[raw].(map[string]any)
 		if m == nil {
+			continue
+		}
+		if cmd, _ := m["command"].(string); strings.Contains(cmd, ".app/Contents/") {
+			r.f.skip("MCP server %s (%s): it runs a program inside a desktop app (%s), which only that app can use", raw, where, cmd)
 			continue
 		}
 		if on, ok := m["enabled"].(bool); ok && !on {
@@ -96,6 +106,21 @@ func (r *codingReader) mcpServers(servers map[string]any, where string) {
 		s := r.f.readMCP(raw, m, map[string]string{}, map[string]bool{})
 		if s == nil {
 			continue
+		}
+		s.Project = project
+		s.Allow = asList(m["enabled_tools"])
+		if off := asList(m["disabled_tools"]); len(off) > 0 {
+			s.Approve = off
+			r.f.leftover(fmt.Sprintf("the tools turned off for MCP server %s (%s)", s.Name, strings.Join(off, ", ")),
+				"Habakkuk has no list of tools to hide, so they always ask for approval instead")
+		}
+		if s.URL != "" && !s.OAuth && len(s.Headers) == 0 {
+			if r.oauth[raw] {
+				s.OAuth = true
+				r.f.leftover("the sign-in to MCP server "+s.Name, "hk mcp login "+s.Name)
+			} else {
+				r.f.leftover("MCP server "+s.Name+" sends no key", "if it needs a sign-in, set auth: oauth for it in config.yaml and run hk mcp login "+s.Name)
+			}
 		}
 		name := r.f.mcp(s, r.agent.Name)
 		if !slices.Contains(r.agent.MCP, name) {
@@ -196,30 +221,9 @@ func (r *codingReader) commandsIn(root, label string) error {
 		if err != nil {
 			return err
 		}
-		dir, err := r.tempSkill(name, out)
-		if err != nil {
-			return err
-		}
-		r.agent.Skills = append(r.agent.Skills, Skill{Name: name, Dir: dir, Shared: true})
+		r.agent.Skills = append(r.agent.Skills, Skill{Name: name, Text: string(out), Shared: true})
 	}
 	return nil
-}
-
-// tempSkill writes a skill made from a slash command into a temporary
-// folder, which Found.Close removes.
-func (r *codingReader) tempSkill(name string, data []byte) (string, error) {
-	if len(r.f.temp) == 0 {
-		d, err := os.MkdirTemp("", "hk-migrate-")
-		if err != nil {
-			return "", err
-		}
-		r.f.temp = append(r.f.temp, d)
-	}
-	dir := filepath.Join(r.f.temp[0], name)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
-	return dir, os.WriteFile(filepath.Join(dir, skills.FileName), data, 0o600)
 }
 
 // noteMeta is the frontmatter of a memory file.
@@ -326,14 +330,9 @@ func readJSONFile(path string) (map[string]any, error) {
 // one is given.
 func readClaudeCode(dir string, o Options) (*Found, error) {
 	r := newCodingReader(dir, ClaudeCode, o)
-	ok := false
-	defer func() {
-		if !ok {
-			r.f.Close()
-		}
-	}()
+	r.oauth = claudeOAuthServers(dir)
 	a := r.agent
-	if err := r.instruction(filepath.Join(dir, "CLAUDE.md"), ""); err != nil {
+	if err := r.instruction(filepath.Join(dir, "CLAUDE.md")); err != nil {
 		return nil, err
 	}
 	settings, err := readJSONFile(filepath.Join(dir, "settings.json"))
@@ -353,14 +352,14 @@ func readClaudeCode(dir string, o Options) (*Found, error) {
 		}
 	}
 	servers, _ := state["mcpServers"].(map[string]any)
-	r.mcpServers(servers, "Claude Code")
+	r.mcpServers(servers, "Claude Code", "")
 	if desktop := claudeDesktopConfig(o); desktop != "" {
 		cfg, err := readJSONFile(desktop)
 		if err != nil {
 			r.f.skip("Claude Desktop's MCP servers: %v", err)
 		} else {
 			servers, _ := cfg["mcpServers"].(map[string]any)
-			r.mcpServers(servers, "Claude Desktop")
+			r.mcpServers(servers, "Claude Desktop", "")
 		}
 	}
 	if err := r.skillsIn(filepath.Join(dir, "skills")); err != nil {
@@ -379,22 +378,32 @@ func readClaudeCode(dir string, o Options) (*Found, error) {
 	}
 	if p := o.Project; p != "" {
 		for _, name := range []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md"), "CLAUDE.local.md"} {
-			if err := r.instruction(filepath.Join(p, name), r.projectHeading()+" ("+filepath.ToSlash(name)+")"); err != nil {
+			if err := r.projectInstructions(filepath.Join(p, name)); err != nil {
 				return nil, err
 			}
 		}
+		pm, _ := dig(state, "projects", p).(map[string]any)
+		// The project's .mcp.json: only the servers Claude Code was told to
+		// trust for this folder.
 		mcp, err := readJSONFile(filepath.Join(p, ".mcp.json"))
 		if err != nil {
 			return nil, err
 		}
 		servers, _ := mcp["mcpServers"].(map[string]any)
-		r.mcpServers(servers, p)
-		if projects, _ := state["projects"].(map[string]any); projects != nil {
-			if pm, _ := projects[p].(map[string]any); pm != nil {
-				servers, _ := pm["mcpServers"].(map[string]any)
-				r.mcpServers(servers, p)
+		approved, err := claudeApprovedServers(p, settings, pm)
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range sortedKeys(servers) {
+			if !approved(name) {
+				r.f.skip("MCP server %s in %s: Claude Code was never told to trust it for this project", name, filepath.Join(p, ".mcp.json"))
+				delete(servers, name)
 			}
 		}
+		r.mcpServers(servers, p, tilde(p, o.userHome()))
+		// Servers added for this folder in Claude Code itself (local scope).
+		local, _ := pm["mcpServers"].(map[string]any)
+		r.mcpServers(local, p, tilde(p, o.userHome()))
 		if err := r.skillsIn(filepath.Join(p, ".claude", "skills")); err != nil {
 			return nil, err
 		}
@@ -413,8 +422,59 @@ func readClaudeCode(dir string, o Options) (*Found, error) {
 		r.f.leftover("the hooks in Claude Code's settings.json", "see the hooks section of config.yaml")
 	}
 	r.f.leftover("the Claude Code sign-in", "Habakkuk needs an API key: hk setup model")
-	ok = true
 	return r.f, nil
+}
+
+// claudeApprovedServers reads which of a project's .mcp.json servers
+// Claude Code was told to trust: enableAllProjectMcpServers, or a name in
+// enabledMcpjsonServers, and not in disabledMcpjsonServers. The choices
+// live in the project's entry in .claude.json and in the settings files.
+func claudeApprovedServers(project string, user, state map[string]any) (func(string) bool, error) {
+	all := false
+	on, off := map[string]bool{}, map[string]bool{}
+	read := func(m map[string]any) {
+		if v, _ := m["enableAllProjectMcpServers"].(bool); v {
+			all = true
+		}
+		for _, n := range asList(m["enabledMcpjsonServers"]) {
+			on[n] = true
+		}
+		for _, n := range asList(m["disabledMcpjsonServers"]) {
+			off[n] = true
+		}
+	}
+	read(user)
+	read(state)
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		m, err := readJSONFile(filepath.Join(project, ".claude", name))
+		if err != nil {
+			return nil, err
+		}
+		read(m)
+	}
+	return func(name string) bool { return !off[name] && (all || on[name]) }, nil
+}
+
+// claudeOAuthServers lists the MCP servers Claude Code holds a sign-in
+// for. Only the names under "mcpOAuth" in .credentials.json are read
+// ("<server>|<id>"), never a token.
+func claudeOAuthServers(dir string) map[string]bool {
+	data, err := os.ReadFile(filepath.Join(dir, ".credentials.json"))
+	if err != nil {
+		return nil
+	}
+	var creds struct {
+		MCP map[string]json.RawMessage `json:"mcpOAuth"`
+	}
+	if json.Unmarshal(data, &creds) != nil {
+		return nil
+	}
+	out := map[string]bool{}
+	for k := range creds.MCP {
+		name, _, _ := strings.Cut(k, "|")
+		out[name] = true
+	}
+	return out
 }
 
 // claudeModel sets the model settings.json names, when it is a full model
@@ -468,18 +528,12 @@ func claudeDesktopConfig(o Options) string {
 // given.
 func readCodex(dir string, o Options) (*Found, error) {
 	r := newCodingReader(dir, Codex, o)
-	ok := false
-	defer func() {
-		if !ok {
-			r.f.Close()
-		}
-	}()
 	a := r.agent
 	inst := filepath.Join(dir, "AGENTS.override.md")
 	if !exists(inst) {
 		inst = filepath.Join(dir, "AGENTS.md")
 	}
-	if err := r.instruction(inst, ""); err != nil {
+	if err := r.instruction(inst); err != nil {
 		return nil, err
 	}
 	cfg := map[string]any{}
@@ -493,7 +547,7 @@ func readCodex(dir string, o Options) (*Found, error) {
 	}
 	r.codexModel(cfg)
 	servers, _ := cfg["mcp_servers"].(map[string]any)
-	r.mcpServers(codexServers(servers), "Codex")
+	r.mcpServers(codexServers(servers), "Codex", "")
 	if err := r.skillsIn(filepath.Join(dir, "skills")); err != nil {
 		return nil, err
 	}
@@ -511,7 +565,7 @@ func readCodex(dir string, o Options) (*Found, error) {
 		if !exists(filepath.Join(p, name)) {
 			name = "AGENTS.md"
 		}
-		if err := r.instruction(filepath.Join(p, name), r.projectHeading()+" ("+name+")"); err != nil {
+		if err := r.projectInstructions(filepath.Join(p, name)); err != nil {
 			return nil, err
 		}
 		for _, d := range []string{filepath.Join(p, ".codex", "skills"), filepath.Join(p, ".agents", "skills")} {
@@ -528,7 +582,6 @@ func readCodex(dir string, o Options) (*Found, error) {
 	if exists(filepath.Join(dir, "rules")) {
 		r.f.leftover("Codex's command rules", "set approvals in config.yaml (see the approvals guide)")
 	}
-	ok = true
 	return r.f, nil
 }
 
