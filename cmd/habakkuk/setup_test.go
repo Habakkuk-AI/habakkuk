@@ -172,6 +172,9 @@ type setupRun struct {
 	stdin    string
 	goos     string
 	served   bool
+	chatted  bool
+	cmds     [][]string // service commands setup ran
+	onCmd    func()
 }
 
 func (r *setupRun) run(t *testing.T, home string, args ...string) (string, error) {
@@ -192,7 +195,15 @@ func (r *setupRun) run(t *testing.T, home string, args ...string) (string, error
 	}
 	s.goos = r.goos
 	s.runServe = func(context.Context, string) error { r.served = true; return nil }
-	s.runChat = func(context.Context, string) error { return nil }
+	s.runChat = func(context.Context, string) error { r.chatted = true; return nil }
+	s.runCmd = func(name string, args ...string) error {
+		r.cmds = append(r.cmds, append([]string{name}, args...))
+		if r.onCmd != nil {
+			r.onCmd()
+		}
+		return nil
+	}
+	s.serveWait = 2 * time.Second
 	err = s.run()
 	return out.String(), err
 }

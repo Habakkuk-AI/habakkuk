@@ -262,6 +262,24 @@ function table(head, rows) {
 }
 function loading(view) { view.textContent = ""; view.append(h("div", { class: "empty" }, "Loading…")); }
 
+// First-run guidance. Every empty page says what belongs there and offers
+// the one step that fills it; most steps are a message to the agent, so
+// they open Chat with that message ready to send.
+const STARTERS = [
+  { label: "Get a morning brief", text: "Every weekday at 8, send me a short brief of my day." },
+  { label: "Teach it about you", text: "Remember that I like short, direct answers." },
+  { label: "See what it can do", text: "What can you do for me? Give me three ideas I can try right now." },
+];
+let draft = ""; // a message Chat puts in its box when it opens
+function ask(text) { draft = text; go("#/chat"); }
+function emptyState(text, ...actions) {
+  return h("div", { class: "empty" }, h("div", {}, text),
+    actions.length ? h("div", { class: "row starters" }, actions) : null);
+}
+function askBtn(label, text) {
+  return h("button", { type: "button", class: "btn small", title: text, onclick: () => ask(text) }, label);
+}
+
 // Overview
 
 pages.overview = view => {
@@ -270,6 +288,19 @@ pages.overview = view => {
     try { o = await api("overview"); } catch (err) { view.textContent = ""; view.append(h("div", { class: "empty err" }, err.message)); return; }
     const stat = (n, l, href) => h(href ? "a" : "div", { class: "panel stat", href }, h("div", { class: "n" }, n), h("div", { class: "l" }, l));
     view.textContent = "";
+    if (!store.get("startedHidden", false)) {
+      view.append(h("div", { class: "panel start" },
+        h("div", { class: "row" }, h("h2", { class: "grow" }, "Get started"),
+          h("button", { type: "button", class: "link small", onclick: () => { store.set("startedHidden", true); view.querySelector(".start")?.remove(); } }, "Hide")),
+        h("p", { class: "muted small" }, "Your agent is ready. Each of these takes one message:"),
+        h("ol", { class: "steps" },
+          h("li", {}, h("a", { href: "#/chat" }, "Say hi in Chat"), ". The first chat is a short welcome where you name your agent and say how you like to work."),
+          h("li", {}, h("button", { type: "button", class: "link", onclick: () => ask(STARTERS[0].text) }, STARTERS[0].label),
+            ". It runs every weekday at 8 and shows up under Schedules."),
+          h("li", {}, h("button", { type: "button", class: "link", onclick: () => ask(STARTERS[1].text) }, STARTERS[1].label),
+            ". It keeps that in Memory and uses it from then on.")),
+        h("p", { class: "muted small" }, "To talk from your phone, run ", h("code", {}, "hk setup channel"), " in a terminal: WhatsApp, Telegram, Slack and more.")));
+    }
     view.append(h("div", { class: "grid" },
       stat(o.queue.pending, "jobs waiting"),
       stat(o.queue.running, "jobs running"),
@@ -283,7 +314,7 @@ pages.overview = view => {
           h("td", {}, c.account), h("td", {}, c.type), h("td", {}, badge(c.state, stateKind(c.state))),
           h("td", { class: "hide-sm", title: when(c.since) }, ago(c.since)),
           h("td", { class: "num" }, c.restarts), h("td", { class: "small err" }, c.last_error || ""))))
-        : h("div", { class: "empty" }, "No channels.")));
+        : emptyState("No channels yet. Run hk setup channel in a terminal to talk from WhatsApp, Telegram, Slack and more.")));
     view.append(h("div", { class: "panel" }, h("h2", {}, "Running now"),
       o.running.length ? table(["Kind", "Agent", "Job", "Started"],
         o.running.map(j => h("tr", j.session ? { class: "click", onclick: () => go("#/sessions/" + j.session) } : {},
@@ -489,7 +520,8 @@ pages.chat = (view, [want]) => {
     title.textContent = c ? c.title : "Chat";
     $("title").textContent = "Chat";
     log.textContent = "";
-    log.append(h("div", { class: "empty" }, "Say hello."));
+    log.append(emptyState("Say hello, or try one of these:", STARTERS.map(st =>
+      h("button", { type: "button", class: "btn small", title: st.text, onclick: () => { box.value = st.text; form.requestSubmit(); } }, st.label))));
     typing.textContent = "";
     lastSeq = 0; act = null; openedAt = Date.now();
     stopSpeaking();
@@ -875,10 +907,12 @@ pages.chat = (view, [want]) => {
   });
 
   renderList();
-  if (conv()) open(current);
+  if (draft) newConv(); // a suggestion from another page starts a fresh chat
+  else if (conv()) open(current);
   else if (convs.length) open(convs[0].id);
   else newConv();
   merge();
+  if (draft) { box.value = draft; draft = ""; grow(); box.focus(); }
 };
 
 // Sessions
@@ -907,7 +941,7 @@ pages.sessions = (view, [id, seq]) => {
           h("tr", { class: "click", onclick: () => go("#/sessions/" + x.id) },
             h("td", {}, x.title || h("span", { class: "muted mono small" }, x.id)), h("td", {}, x.agent),
             h("td", { title: when(x.updated_at) }, ago(x.updated_at)))))
-          : h("div", { class: "empty" }, "No sessions yet."));
+          : emptyState("No sessions yet. Every conversation, from any channel, shows up here.", h("a", { class: "btn small", href: "#/chat" }, "Start a chat")));
       }
     } catch (err) { out.textContent = ""; out.append(h("div", { class: "empty err" }, err.message)); }
   };
@@ -985,10 +1019,16 @@ pages.board = view => {
   const filter = h("select", { "aria-label": "Show" }, h("option", { value: "open" }, "Open cards"), h("option", { value: "all" }, "All cards"));
   filter.value = store.get("boardFilter", "open");
   const cols = h("div", { class: "kanban" });
+  const hint = h("div");
   const load = async () => {
     try {
       const j = await api("board?status=" + filter.value);
       cols.textContent = "";
+      hint.textContent = "";
+      if (!j.cards.length) {
+        hint.append(h("div", { class: "panel" }, emptyState("The board holds tasks your agents work through on their own, in order, and report back. Add a card, or ask in Chat.",
+          askBtn("Add a task by chat", "Put \"compare three phone plans for me\" on the board and work on it."))));
+      }
       const shown = filter.value === "all" ? STATUSES : STATUSES.slice(0, 3);
       for (const st of shown) {
         const cards = j.cards.filter(c => c.status === st);
@@ -1002,7 +1042,7 @@ pages.board = view => {
   };
   filter.addEventListener("change", () => { store.set("boardFilter", filter.value); load(); });
   view.append(h("div", { class: "toolbar" }, filter, h("span", { class: "grow" }),
-    h("button", { type: "button", class: "primary", onclick: () => newCard(load) }, "New card")), cols);
+    h("button", { type: "button", class: "primary", onclick: () => newCard(load) }, "New card")), hint, cols);
   every(10000, load);
 };
 
@@ -1082,7 +1122,8 @@ pages.schedules = view => {
             h("button", { type: "button", class: "btn small", onclick: () => act(sc.enabled ? "pause" : "resume") }, sc.enabled ? "Pause" : "Resume"),
             h("button", { type: "button", class: "btn small", onclick: () => act("run") }, "Run now"))),
           h("td", {}, h("button", { type: "button", class: "danger small", onclick: () => confirm(`Delete "${sc.name}"?`) && act("delete", "DELETE") }, "Delete")));
-      })) : h("div", { class: "empty" }, "No schedules."));
+      })) : emptyState("No schedules yet. Ask your agent in plain words and it sets one up, or use Add a prompt schedule above.",
+        askBtn(STARTERS[0].label, STARTERS[0].text), askBtn("Weekly review", "Every Sunday at 6pm, ask me what went well this week and save my answer.")));
     } catch (err) { out.textContent = ""; out.append(h("div", { class: "empty err" }, err.message)); }
   };
   const agent = agentSelect(app?.default || "");
@@ -1128,7 +1169,8 @@ pages.memory = (view, [agentName]) => {
         h("div", { class: "row" }, h("strong", { class: "grow" }, m.title), h("span", { class: "muted small" }, ago(m.updated_at))),
         m.tags.length ? h("div", { class: "row" }, m.tags.map(t => badge(t, "info"))) : null,
         m.snippet ? h("div", { class: "snippet" }, m.snippet) : null)))
-        : h("div", { class: "empty" }, "No notes."));
+        : qs ? emptyState("No notes match.") : emptyState("No notes yet. Tell your agent something worth keeping and it saves a note here; memory review adds more when a chat goes quiet.",
+          askBtn(STARTERS[1].label, STARTERS[1].text)));
     } catch (err) { out.textContent = ""; out.append(h("div", { class: "empty err" }, err.message)); }
   };
   agent.addEventListener("change", load);
@@ -1186,7 +1228,8 @@ pages.skills = (view, [agentName]) => {
       out.append(j.skills.length ? h("ul", { class: "list" }, j.skills.map(sk => h("li", { class: "click", onclick: () => viewSkill(agent.value, sk.name) },
         h("div", { class: "row" }, h("strong", { class: "grow mono" }, sk.name), badge(sk.shared ? "shared" : "own", sk.shared ? "" : "info")),
         h("div", { class: "snippet" }, sk.description))))
-        : h("div", { class: "empty" }, "No skills. Add folders with a SKILL.md under skills/ or agents/<name>/skills/."));
+        : emptyState("No skills yet. A skill is a routine your agent follows the same way every time. Ask it to write one, install one with hk skills install, or add a folder with a SKILL.md under skills/.",
+          askBtn("Write a skill", "Write a skill for how you should summarise long articles for me: three bullets, then one line on why it matters.")));
     } catch (err) { out.textContent = ""; out.append(h("div", { class: "empty err" }, err.message)); }
   };
   agent.addEventListener("change", load);
@@ -1232,7 +1275,7 @@ pages.usage = view => {
         stat(tokens(t.output_tokens), "output tokens"), stat(tokens(t.cache_read_tokens), "cache reads")));
       out.append(h("div", { class: "panel" }, h("h2", {}, metric.value === "cost" ? "Cost by day" : "Tokens by day"), chart(j.days, metric.value),
         h("div", { class: "muted small" }, `Days in ${j.timezone}.`)));
-      out.append(h("div", { class: "panel" }, h("h2", {}, "By model"), j.by_model.length ? rows(j.by_model) : h("div", { class: "empty" }, "No calls.")));
+      out.append(h("div", { class: "panel" }, h("h2", {}, "By model"), j.by_model.length ? rows(j.by_model) : h("div", { class: "empty" }, "No model calls yet. Tokens and cost show up here after your first chat.")));
       out.append(h("div", { class: "panel" }, h("h2", {}, "By agent"), j.by_agent.length ? rows(j.by_agent) : h("div", { class: "empty" }, "No calls.")));
       if (t.unpriced) out.append(h("div", { class: "muted small" }, "* some calls used a model with no known price; set pricing in config.yaml."));
     } catch (err) { out.textContent = ""; out.append(h("div", { class: "empty err" }, err.message)); }

@@ -12,7 +12,7 @@ Each channel page also has a troubleshooting table: [WhatsApp](../channels/whats
 
 | You see | Cause and fix |
 |---|---|
-| ``no config at ~/.habakkuk/config.yaml: run `habakkuk init` `` | No config yet. Run `habakkuk setup` (or `habakkuk init`). If you have one elsewhere, set `HABAKKUK_HOME`. |
+| ``no config at ~/.habakkuk/config.yaml yet: run `habakkuk setup` `` | No config yet. Run `habakkuk setup` (or `habakkuk init` to write a starter file by hand). If you have one elsewhere, set `HABAKKUK_HOME`. |
 | `config: UNKNOWN KEY "modle" in Agent (line 12) (ignored; ...)` | A typo, or a setting from a newer release. Fix the spelling; the key is ignored until then. |
 | `agent habakkuk: unknown provider "x" in "x/model"` | The part before `/` in `model` must be a name under `providers:`. |
 | `model "x": want <provider>/<model>` | Write models as `provider/model-id`. |

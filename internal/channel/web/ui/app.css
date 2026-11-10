@@ -91,6 +91,9 @@ label.field > input, label.field > select, label.field > textarea { color: var(-
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 .empty { color: var(--muted); padding: 24px; text-align: center; }
+.empty .starters { justify-content: center; margin-top: 12px; }
+.start ol.steps { margin: 8px 0; padding-left: 20px; line-height: 1.7; }
+.start p { margin: 6px 0; }
 
 /* Cards and tables */
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); margin-bottom: 16px; }

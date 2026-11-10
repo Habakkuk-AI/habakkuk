@@ -91,7 +91,13 @@ func doctorCmd(ctx context.Context, home string, args []string) error {
 	if *upgrade {
 		return upgradeCheck(ctx, home, os.Stdout)
 	}
-	return doctor(ctx, home)
+	if err := doctor(ctx, home); err != nil {
+		return err
+	}
+	if cfg, err := config.Load(home); err == nil {
+		doctorAllGood(os.Stdout, home, cfg)
+	}
+	return nil
 }
 
 // errUpgradeCheck is returned when upgradeCheck finds a blocker.

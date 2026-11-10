@@ -277,7 +277,7 @@ func Load(home string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("no config at %s: run `habakkuk init`", path)
+			return nil, fmt.Errorf("no config at %s yet: run `habakkuk setup` to make one (about a minute)", path)
 		}
 		return nil, err
 	}

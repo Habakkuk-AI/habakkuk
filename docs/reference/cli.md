@@ -4,7 +4,7 @@ description: "Every habakkuk command and its flags, and every slash command avai
 order: 1
 ---
 
-`habakkuk` with no arguments prints this list. `hk` is the short name: the installers put it beside `habakkuk`, and every command below works with either (`hk chat`, `hk doctor`). `HABAKKUK_HOME` (default `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows) selects the home every command works on.
+`habakkuk help` prints this list. `habakkuk` with no arguments prints a short screen instead: on a new computer, what Habakkuk is and the one command to run next (`habakkuk setup`); once set up, whether `serve` is running and the everyday commands. `hk` is the short name: the installers put it beside `habakkuk`, and every command below works with either (`hk chat`, `hk doctor`). `HABAKKUK_HOME` (default `~/.habakkuk`, or `%APPDATA%\Habakkuk` on Windows) selects the home every command works on.
 
 Any command can run on another machine: `hk -r NAME COMMAND` runs it on a saved remote, over ssh (every command) or HTTPS (`status` and `chat`). See [Remote CLI](../interfaces/remote-cli.md).
 
@@ -98,7 +98,7 @@ habakkuk rollback [-agent A] [-y] ID [PATH]
 habakkuk models                     list providers and the models each one serves
 habakkuk auth [login|list|logout]   subscription logins (login chatgpt|copilot)
 habakkuk usage [-days N] [-agent A] tokens and cost by model and agent, and spend against the limits
-habakkuk doctor                     check config, credentials and storage
+habakkuk doctor                     check config, credentials and storage; each problem line ends with its fix
 habakkuk status                     version, serve uptime, channels, queue, recent errors, today's cost
 habakkuk computer view              how to watch the agents' virtual desktops (computer backend xvfb)
 habakkuk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]

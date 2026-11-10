@@ -16,6 +16,7 @@ import (
 	plat "github.com/habakkuk-ai/habakkuk/internal/core/platform"
 	usagepkg "github.com/habakkuk-ai/habakkuk/internal/llm/usage"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/logs"
+	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
 )
 
 // heartbeatFile is where `habakkuk serve` says it is alive.
@@ -88,7 +89,12 @@ func roundDur(d time.Duration) string {
 func statusCmd(ctx context.Context, home string, w io.Writer) error {
 	now := time.Now()
 	fmt.Fprintf(w, "habakkuk %s (home %s)\n", version, home)
-	fmt.Fprintf(w, "serve:    %s\n", serveState(home, now))
+	state := serveState(home, now)
+	fmt.Fprintf(w, "serve:    %s\n", state)
+	if !hasConfig(home) {
+		fmt.Fprintln(w, "config:   none yet; run habakkuk setup to make one (about a minute)")
+		return nil
+	}
 	a, closeApp, err := open(ctx, home)
 	if err != nil {
 		return err
@@ -135,6 +141,10 @@ func statusCmd(ctx context.Context, home string, w io.Writer) error {
 		fmt.Fprintf(w, "queue:    %s\n", strings.Join(parts, "; "))
 	}
 
+	if scs, err := a.Schedules.List(ctx, ""); err == nil && len(scs) > 0 {
+		fmt.Fprintf(w, "schedules: %s\n", scheduleLine(scs, strings.HasPrefix(state, "running")))
+	}
+
 	fmt.Fprintln(w, "policy (habakkuk security for the audit):")
 	printPolicies(w, a.Cfg)
 
@@ -159,6 +169,30 @@ func statusCmd(ctx context.Context, home string, w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// scheduleLine sums up the schedules: how many are on and which runs
+// next, and says so when nothing will run them.
+func scheduleLine(scs []schedule.Schedule, serving bool) string {
+	on := 0
+	var next *schedule.Schedule
+	for i, sc := range scs {
+		if !sc.Enabled {
+			continue
+		}
+		on++
+		if next == nil || sc.NextRun.Before(next.NextRun) {
+			next = &scs[i]
+		}
+	}
+	line := fmt.Sprintf("%d of %d on", on, len(scs))
+	if next != nil {
+		line += fmt.Sprintf("; next %q %s", next.Name, next.NextRun.Local().Format("Mon 15:04"))
+		if !serving {
+			line += " (runs only while habakkuk serve does)"
+		}
+	}
+	return line
 }
 
 // recentErrors merges failed jobs and ERROR log records since a time,

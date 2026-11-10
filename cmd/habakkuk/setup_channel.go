@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
@@ -461,11 +463,37 @@ func fatalHint(err error, hint string) error {
 	return err
 }
 
+// webListen is the HTTP address: the configured one, else the default
+// port, or the next free one when something else already has it.
 func (s *setup) webListen() string {
 	if s.cfg != nil && s.cfg.HTTP != nil && s.cfg.HTTP.Listen != "" {
 		return s.cfg.HTTP.Listen
 	}
-	return config.DefaultListen
+	if s.listen == "" {
+		s.listen = freeListen(config.DefaultListen, 16)
+	}
+	return s.listen
+}
+
+// freeListen returns addr, or the first of the next tries ports after it
+// that nothing listens on; addr when none is free.
+func freeListen(addr string, tries int) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	first, err := strconv.Atoi(port)
+	if err != nil {
+		return addr
+	}
+	for p := first; p < first+tries; p++ {
+		a := net.JoinHostPort(host, strconv.Itoa(p))
+		if ln, err := net.Listen("tcp", a); err == nil {
+			_ = ln.Close()
+			return a
+		}
+	}
+	return addr
 }
 
 func splitList(v string) []string {

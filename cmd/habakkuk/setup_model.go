@@ -163,7 +163,10 @@ func (s *setup) modelStep() error {
 			return s.settle(c)
 		}
 		if len(found) == 0 {
-			return errors.New("no model provider found: put an API key in the environment (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, ...), start Ollama, or pass -provider")
+			return errors.New("no model provider found on this computer. Any one of these fixes it:\n" +
+				"  export ANTHROPIC_API_KEY=... (or OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, ...), then run setup -y again\n" +
+				"  start Ollama or LM Studio with a model, then run setup -y again\n" +
+				"  run habakkuk setup without -y to paste a key or sign in with a ChatGPT plan")
 		}
 		c := found[0]
 		if s.opts.model != "" {
@@ -196,7 +199,11 @@ func (s *setup) modelStep() error {
 		labels = append(labels, label)
 		picks = append(picks, func() (*modelChoice, error) { return c, nil })
 	}
-	labels = append(labels, "Another provider: paste an API key", "Sign in with a ChatGPT or GitHub Copilot plan")
+	paste := "Another provider: paste an API key"
+	if len(found) == 0 {
+		paste = "Paste an API key (Anthropic, OpenAI, Gemini, OpenRouter, ...)"
+	}
+	labels = append(labels, paste, "Sign in with a ChatGPT or GitHub Copilot plan")
 	picks = append(picks, s.askProvider, s.askLogin)
 	i, err := s.menu("Choose", labels, 0)
 	if err != nil {
@@ -430,8 +437,23 @@ func (s *setup) askProvider() (*modelChoice, error) {
 	}
 }
 
+// keyPages are where each provider hands out API keys.
+var keyPages = map[string]string{
+	"anthropic":  "https://console.anthropic.com/settings/keys",
+	"openai":     "https://platform.openai.com/api-keys",
+	"gemini":     "https://aistudio.google.com/apikey",
+	"openrouter": "https://openrouter.ai/settings/keys",
+	"deepseek":   "https://platform.deepseek.com/api_keys",
+	"xai":        "https://console.x.ai",
+	"mistral":    "https://console.mistral.ai/api-keys",
+	"groq":       "https://console.groq.com/keys",
+}
+
 // askKey asks for the provider's key, hidden.
 func (s *setup) askKey(c *modelChoice) error {
+	if page := keyPages[c.provider]; page != "" && c.key == "" {
+		s.say("  No key yet? Make one at %s", page)
+	}
 	prompt := "  Paste your " + providerLabel(c.provider) + " API key (hidden)"
 	if c.provider == "custom" {
 		s.say("  (A local server that takes no key? Use its preset instead: ollama, lmstudio, vllm, llamacpp or litellm.)")

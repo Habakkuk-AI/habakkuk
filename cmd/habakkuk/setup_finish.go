@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"html"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
+	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 )
 
@@ -235,8 +238,9 @@ func (s *setup) nextStep(c *channelChoice) string {
 	return next
 }
 
-// finish links WhatsApp if needed, then says what to do next and offers
-// to start serving (or chatting, for the terminal).
+// finish links WhatsApp if needed, sums up what is now set up with the
+// first things to try, then offers to keep the agent running (or to chat,
+// for the terminal).
 func (s *setup) finish() error {
 	c := s.talk()
 	if c.link {
@@ -250,13 +254,16 @@ func (s *setup) finish() error {
 		}
 	}
 	name := s.agentName()
+	s.summary(c)
 	if c.typ == "terminal" {
 		if s.opts.serve {
-			s.say("Starting habakkuk serve (Ctrl-C stops it); talk to %s with habakkuk chat in another terminal.", name)
+			s.say("\nStarting habakkuk serve (Ctrl-C stops it); talk to %s with habakkuk chat in another terminal.", name)
 			return s.runServe(s.ctx, s.home)
 		}
-		s.say("Next: run `habakkuk chat` to talk to %s.", name)
-		if ok, err := s.yes("Start a chat now?", true); err != nil || !ok {
+		if !s.interactive { // a script: never open a chat it cannot type in
+			return nil
+		}
+		if ok, err := s.yes("\nStart a chat now?", true); err != nil || !ok {
 			return err
 		}
 		return s.runChat(s.ctx, s.home)
@@ -266,13 +273,17 @@ func (s *setup) finish() error {
 		want := s.opts.service
 		if !want {
 			var err error
-			if want, err = s.yes("Keep "+name+" running in the background, also after a restart? (writes a service file and shows the command)", false); err != nil {
+			if want, err = s.yes("\nKeep "+name+" running in the background, now and after a restart?", true); err != nil {
 				return err
 			}
 		}
 		if want {
 			if err := s.serviceStep(false); err != nil {
 				return err
+			}
+			if s.interactive && s.installService() {
+				s.say("\n%s is running in the background. Now %s.", name, next)
+				return nil
 			}
 			s.say("Once it runs, %s.", next)
 			return nil
@@ -281,7 +292,7 @@ func (s *setup) finish() error {
 	start := s.opts.serve
 	if !start && s.interactive {
 		var err error
-		if start, err = s.yes("Start habakkuk serve now?", true); err != nil {
+		if start, err = s.yes("Start habakkuk serve in this terminal now?", true); err != nil {
 			return err
 		}
 	}
@@ -290,6 +301,157 @@ func (s *setup) finish() error {
 		return s.runServe(s.ctx, s.home)
 	}
 	s.say("\nNext: run `habakkuk serve`, then %s.", next)
+	return nil
+}
+
+// channelLabels name where the user talks, for the summary.
+var channelLabels = map[string]string{
+	"whatsappagent": "your WhatsApp agent",
+	"telegram":      "Telegram",
+	"whatsapp":      "WhatsApp (linked device)",
+	"web":           "the web chat in your browser",
+	"slack":         "Slack",
+	"discord":       "Discord",
+	"terminal":      "this terminal, with habakkuk chat",
+}
+
+// starterPrompts are things a fresh agent does well with no extra setup:
+// a recurring brief (a schedule) and a memory. The dashboard's Chat page
+// suggests the same ones.
+var starterPrompts = []string{
+	"Every weekday at 8, send me a short brief of my day.",
+	"Remember that I like short, direct answers.",
+}
+
+// summary is the closing screen: what is set up, where things live, and
+// the first things to try.
+func (s *setup) summary(c *channelChoice) {
+	name := s.agentName()
+	cfg, err := config.Load(s.home)
+	if err != nil {
+		return // doctor has passed, so this does not happen; say nothing rather than guess
+	}
+	s.say("\n%s is ready. Setup took %s.\n", name, short(s.took))
+	row := func(k, v string) { s.say("  %-10s %s", k, v) }
+	if a := cfg.Agents[s.agent]; a != nil {
+		m := a.Model
+		if a.FastModel != "" {
+			m += ", and " + a.FastModel + " for quick messages (cheaper)"
+		}
+		row("Model", m)
+	}
+	talk := channelLabels[c.typ]
+	switch {
+	case c.typ == "terminal" || c.typ == "web":
+	case len(c.allow) == 1:
+		talk += "; only you can message it"
+	case len(c.allow) > 1:
+		talk += fmt.Sprintf("; %d people can message it", len(c.allow))
+	default:
+		talk += "; you approve each new person with habakkuk pair"
+	}
+	if c.typ == "terminal" && cfg.HTTP != nil {
+		talk += ", or Chat in the dashboard"
+	}
+	row("Talk", talk)
+	if cfg.Memory != nil && cfg.Memory.Review {
+		row("Memory", "on: "+name+" keeps what matters from each chat")
+	} else {
+		row("Memory", "notes only (turn on review: memory.review in config.yaml)")
+	}
+	if cfg.HTTP != nil {
+		row("Dashboard", "http://"+cfg.HTTP.Listen+"/app/ while habakkuk serve runs")
+	}
+	row("Settings", s.cfgPath+" (keys in .env beside it)")
+
+	s.say("\nTry these first:")
+	first := capitalize(s.nextStep(c)) + "."
+	if c.typ == "terminal" {
+		first = "Run habakkuk chat and say hi."
+	}
+	s.say("  1. %s", first)
+	s.say("  2. Get a morning brief: %q", starterPrompts[0])
+	s.say("  3. Teach it about you: %q", starterPrompts[1])
+	s.say("\nSchedules, channels and memory reviews run while habakkuk serve does.")
+}
+
+// installService copies the service file where the system looks for it
+// and starts it, then waits for its first heartbeat. It reports whether
+// the agent is now running; on false the commands to do it by hand have
+// already been printed.
+func (s *setup) installService() bool {
+	home, err := filepath.Abs(s.home)
+	if err != nil {
+		return false
+	}
+	var src, dest string
+	var cmds [][]string
+	switch s.goos {
+	case "darwin":
+		src = filepath.Join(home, launchdLabel+".plist")
+		dest = filepath.Join(s.userHome, "Library", "LaunchAgents", launchdLabel+".plist")
+		domain := fmt.Sprintf("gui/%d", os.Getuid())
+		cmds = [][]string{
+			{"launchctl", "bootout", domain + "/" + launchdLabel}, // an older copy; fails harmlessly when none
+			{"launchctl", "bootstrap", domain, dest},
+		}
+	case "linux":
+		src = filepath.Join(home, "habakkuk.service")
+		dest = filepath.Join(s.userHome, ".config", "systemd", "user", "habakkuk.service")
+		cmds = [][]string{
+			{"systemctl", "--user", "daemon-reload"},
+			{"systemctl", "--user", "enable", "habakkuk"},
+			{"systemctl", "--user", "restart", "habakkuk"},
+		}
+	default:
+		return false
+	}
+	data, err := os.ReadFile(src)
+	if err == nil {
+		err = os.MkdirAll(filepath.Dir(dest), 0o700)
+	}
+	if err == nil {
+		err = store.WriteFileAtomic(dest, data, 0o600)
+	}
+	for i, c := range cmds {
+		if err != nil {
+			break
+		}
+		if e := s.runCmd(c[0], c[1:]...); e != nil && (s.goos != "darwin" || i > 0) { // launchctl bootout fails when nothing is loaded
+			err = e
+		}
+	}
+	if err != nil {
+		s.say("  Could not start it for you: %v\n  Run the commands above instead.", err)
+		return false
+	}
+	deadline := time.Now().Add(s.serveWait)
+	for {
+		if strings.HasPrefix(serveState(s.home, time.Now()), "running") {
+			return true
+		}
+		if time.Now().After(deadline) {
+			s.say("  The service is installed but has not started yet; habakkuk logs -f shows why.")
+			return false
+		}
+		select {
+		case <-s.ctx.Done():
+			return false
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+
+// runQuiet runs a command and returns its output as the error when it
+// fails.
+func runQuiet(name string, args ...string) error {
+	out, err := exec.Command(name, args...).CombinedOutput()
+	if err != nil {
+		if msg := strings.TrimSpace(string(out)); msg != "" {
+			return fmt.Errorf("%s %s: %s", name, strings.Join(args, " "), msg)
+		}
+		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
+	}
 	return nil
 }
 
