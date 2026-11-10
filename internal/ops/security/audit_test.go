@@ -154,6 +154,29 @@ tools: {allow_private_urls: true}
 	}
 }
 
+// A WhatsApp agent only hears from its creator, so allow_from "*" there
+// lets no outsider in.
+func TestWhatsAppAgentIsOwnerOnly(t *testing.T) {
+	cfg := parse(t, `agents:
+  habakkuk: {model: anthropic/claude-opus-5-5, permission: full}
+channels:
+  wagent: {type: whatsappagent, token_env: WA, allow_from: ["*"], agent: habakkuk}
+`)
+	fs := Audit(Options{Home: t.TempDir(), Config: cfg, Secret: func(string) string { return "" }, Disk: plenty})
+	if f := find(fs, "channels", "channel wagent"); f != nil {
+		t.Errorf("flagged: %+v", f)
+	}
+	if f := find(fs, "agents", "outsiders reach it"); f != nil {
+		t.Errorf("flagged: %+v", f)
+	}
+	if f := find(fs, "agents", "agent habakkuk runs in full mode"); f == nil || f.Severity != Medium {
+		t.Errorf("full mode alone should stay a medium finding: %+v", f)
+	}
+	if p := Policies(cfg); len(p) != 1 || len(p[0].Open) != 0 {
+		t.Errorf("policy lists wagent as open to all: %+v", p)
+	}
+}
+
 func TestQuietConfigHasNoExposureFindings(t *testing.T) {
 	home := t.TempDir()
 	os.Chmod(home, 0o700)

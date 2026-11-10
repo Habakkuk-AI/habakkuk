@@ -68,9 +68,17 @@ func (a *Agent) ChannelAllowed() map[string]bool {
 // every type but the token-gated web chat, which is the owner's own.
 func (ch *Channel) MessagingChannel() bool { return ch != nil && ch.Type != "web" }
 
+// OwnerOnly reports whether only the owner can ever write on the account,
+// whatever allow_from says: a WhatsApp agent hears only from the person
+// who created it, because the platform refuses everyone else.
+func (ch *Channel) OwnerOnly() bool { return ch != nil && ch.Type == "whatsappagent" }
+
 // OpenToAll reports whether anyone may talk on the account (allow_from
-// "*"). Such senders are guests unless their id is listed or paired.
-func (ch *Channel) OpenToAll() bool { return ch != nil && slices.Contains(ch.AllowFrom, "*") }
+// "*"). Such senders are guests unless their id is listed or paired. An
+// owner-only account is never open, even with "*".
+func (ch *Channel) OpenToAll() bool {
+	return ch != nil && !ch.OwnerOnly() && slices.Contains(ch.AllowFrom, "*")
+}
 
 // ChannelsOf lists the messaging channels whose conversations can reach an
 // agent: as the account's default agent, through a route, or (on accounts

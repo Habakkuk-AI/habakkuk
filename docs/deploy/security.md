@@ -38,7 +38,7 @@ agents:
 
 A sender let in by `allow_from: ["*"]` (rather than by id or `habakkuk pair`) is a **guest**. Guests' turns are refused every risky capability, with or without approval. Guests cannot answer your pending approvals, and cannot use `/remember`, `/forget` or `/agent`. A turn with no sender behind it (a schedule) on an account open to everyone counts as a guest's.
 
-One exception: a `whatsappagent` channel only ever hears from the person who created the agent (WhatsApp refuses everyone else), so its sender is always treated as the owner, even with `allow_from: "*"`.
+One exception: a `whatsappagent` channel only ever hears from the person who created the agent (WhatsApp refuses everyone else), so its sender is always treated as the owner, even with `allow_from: "*"`. Its schedules run as the owner's too, and the audit never counts it as an open channel.
 
 ## Outside content taints a turn
 

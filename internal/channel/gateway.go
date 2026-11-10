@@ -302,7 +302,7 @@ func (g *Gateway) owner(ctx context.Context, ch *config.Channel, m Message) bool
 	}
 	// A WhatsApp agent only ever hears from the person who created it: the
 	// platform refuses everyone else, so whoever writes is the owner.
-	if ch.Type == "whatsappagent" {
+	if ch.OwnerOnly() {
 		return true
 	}
 	for _, id := range ch.AllowFrom {
