@@ -173,7 +173,34 @@ func sameChannel(c *Channel, have *config.Channel) bool {
 
 // sameServer compares an imported MCP server with a configured one.
 func sameServer(m *MCPServer, have *config.MCPServer) bool {
-	return have.Command == m.Command && slices.Equal(have.Args, m.Args) && have.URL == m.URL &&
+	return sameServerAs(m, have, have.Command, have.Args)
+}
+
+// sameServerAs is sameServer with the configured command and arguments
+// given, for comparing them after their references are rewritten.
+func sameServerAs(m *MCPServer, have *config.MCPServer, command string, args []string) bool {
+	return command == m.Command && slices.Equal(args, m.Args) && have.URL == m.URL &&
 		fmt.Sprint(have.Env) == fmt.Sprint(m.Env) && fmt.Sprint(have.Headers) == fmt.Sprint(m.Headers) &&
 		(have.Auth == "oauth") == m.OAuth
+}
+
+// moveMCP changes only the command and arguments of a configured server,
+// keeping everything else written for it.
+func moveMCP(root *yaml.Node, m *MCPServer) {
+	n := yamledit.Get(yamledit.Get(root, "mcp_servers"), m.Name)
+	if n == nil || n.Kind != yaml.MappingNode {
+		setMCP(root, m)
+		return
+	}
+	yamledit.Set(n, "command", yamledit.Str(m.Command), "")
+	if len(m.Args) > 0 {
+		yamledit.Set(n, "args", yamledit.FlowList(m.Args...), "")
+	}
+}
+
+// setWorkspace changes a configured agent's workspace.
+func setWorkspace(root *yaml.Node, name, ws string) {
+	if n := yamledit.Get(yamledit.Get(root, "agents"), name); n != nil && n.Kind == yaml.MappingNode {
+		yamledit.Set(n, "workspace", yamledit.Str(ws), "")
+	}
 }

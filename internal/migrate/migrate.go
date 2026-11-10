@@ -10,6 +10,11 @@
 // carries the plan out. Nothing is written before Apply, existing agents,
 // skills and notes are never replaced without Force, and running it twice
 // changes nothing the second time.
+//
+// The imported text may name files in the source home (a script a schedule
+// runs, a folder of reports). The plan lists them, and with Options.Files
+// "copy" the import copies the user's own ones into the Habakkuk home and
+// rewrites the text to name the copies (files.go, files_copy.go, refs.go).
 package migrate
 
 import (
@@ -62,6 +67,23 @@ type Options struct {
 	// UserHome is the user's home directory; "" asks the OS.
 	UserHome string
 	Now      func() time.Time
+
+	// Files says what happens to the user's own files in the source home
+	// that the imported text names: FilesCopy copies them into the Habakkuk
+	// home and rewrites the text to name the copies; FilesSkip, or "",
+	// leaves them and the text as they are.
+	Files string
+	// FilesAsk plans a copy for a user who has not been asked yet; the
+	// caller asks, and plans again with Files set when the answer is no.
+	FilesAsk bool
+	// FilesDir is where the copies go; "" is the "files" folder of the
+	// Habakkuk home.
+	FilesDir string
+	// FilesMax is the largest file a copy takes: 0 is DefaultFilesMax,
+	// below 0 is no limit.
+	FilesMax int64
+	// FreeSpace reports the room at a folder; nil asks the file system.
+	FreeSpace func(dir string) (uint64, error)
 }
 
 func (o *Options) getenv(k string) string {
@@ -168,6 +190,12 @@ type Found struct {
 	// all the homes read (one per profile), so a key the main home copied
 	// is not listed as left behind because a profile's .env also has it.
 	usedEnv map[string]bool
+	// nested are homes kept inside Dir (a profile's home), as slash paths
+	// relative to it; a file reference into one names its own entries.
+	nested []string
+	// workspaces are the agents' workspace folders the import leaves where
+	// they are: folder -> agent.
+	workspaces map[string]string
 }
 
 // otherEnv offers the variables of one source .env that this home's import

@@ -27,14 +27,23 @@ type Result struct {
 	Copied   []string          // .env variables written
 	ToSet    []string          // variables the user still has to set
 	WroteCfg bool
+	// Files is what the copy of the files the imported text names did; nil
+	// when nothing was to be copied.
+	Files *FilesResult
 }
 
 // Apply carries out the plan. copySecrets writes the keys and tokens into
 // $HABAKKUK_HOME/.env; otherwise their names are returned in ToSet. It
 // goes on past an item that fails and reports it in Failed.
+//
+// When the plan copies files, they are copied first: the imported text
+// names the copies, so nothing else is written if the copy cannot finish.
 func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 	if p.ConfigErr != nil {
 		return nil, p.ConfigErr
+	}
+	if p.Files.Copies() && p.Files.Err != nil {
+		return nil, p.Files.Err
 	}
 	res := &Result{Failed: map[*Item]error{}, Paused: map[string]string{}}
 	if err := os.MkdirAll(p.Home, 0o700); err != nil {
@@ -42,6 +51,12 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 	}
 	if err := os.Chmod(p.Home, 0o700); err != nil { // it holds chats, memory and keys
 		return nil, err
+	}
+	if p.Files != nil {
+		var err error
+		if res.Files, err = p.applyFiles(ctx); err != nil {
+			return nil, fmt.Errorf("%w; nothing else was written, and running the import again goes on from there", err)
+		}
 	}
 	if p.Config != nil {
 		path := filepath.Join(p.Home, "config.yaml")
@@ -159,6 +174,21 @@ func (p *Plan) writeProfile(ctx context.Context, m *memory.Store, it *Item) erro
 	if err := memory.CheckSecrets(a.Profile); err != nil {
 		return errors.New("the profile looks like it holds a key or password; not imported")
 	}
+	if it.inPlace {
+		// Sections imported before their files were copied: rewrite their
+		// references where they are.
+		old, err := m.Profile(it.Agent)
+		if err != nil {
+			return err
+		}
+		for _, s := range splitSections(old) {
+			if body := p.rw.str(s.body); body != s.body && s.name != "" {
+				if _, err := m.UpdateProfile(ctx, it.Agent, s.name, body, memory.ProfileReplace); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	if len(strings.TrimSpace(a.Profile)) > memory.MaxProfile || strings.Contains(it.Detail, "memory note") {
 		_, _, err := m.Put(ctx, it.Agent, memory.Note{Title: "Imported user profile", Content: a.Profile, Tags: []string{"imported", "profile"}, Source: memory.SourceUser})
 		return err
@@ -191,8 +221,14 @@ func (p *Plan) copySkill(it *Item) error {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	staged := filepath.Join(tmp, it.skill.Name)
-	if err := copyTree(it.skill.Dir, staged); err != nil {
+	if err := copyTree(it.skill.Dir, staged, p.rw); err != nil {
 		return err
+	}
+	if it.Status == Update {
+		// The same skill with its references rewritten: no copy is kept.
+		if err := os.Rename(dest, filepath.Join(tmp, "old")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	if it.Status == Replace {
 		bak := dest + ".bak"
@@ -235,6 +271,13 @@ func (p *Plan) applySchedules(ctx context.Context, res *Result) error {
 
 func (p *Plan) createSchedule(ctx context.Context, st *schedule.Store, db *sql.DB, it *Item, res *Result) error {
 	sc := it.schedule
+	if it.inPlace {
+		// Only its references change: it keeps its ID, its runs so far and
+		// whether it is on.
+		_, err := db.ExecContext(ctx, `UPDATE schedules SET prompt = ?, command = ?, workdir = ? WHERE id = ?`,
+			sc.Prompt, sc.Command, sc.Workdir, it.oldID)
+		return err
+	}
 	s := schedule.Schedule{Agent: sc.Agent, Name: sc.Name, Spec: sc.Spec, Prompt: sc.Prompt,
 		Command: sc.Command, OnOutput: sc.OnOutput, Workdir: sc.Workdir}
 	if sc.Command != "" {

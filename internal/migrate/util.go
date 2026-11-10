@@ -249,8 +249,9 @@ func skillName(base string) string {
 }
 
 // treeHash hashes a folder's files (paths and contents), leaving out what
-// a copy leaves out; a missing folder hashes to "".
-func treeHash(dir string) (string, error) {
+// a copy leaves out; a missing folder hashes to "". With rw, text files are
+// hashed as copyTree would write them: with their references rewritten.
+func treeHash(dir string, rw *rewriter) (string, error) {
 	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	}
@@ -269,12 +270,19 @@ func treeHash(dir string) (string, error) {
 			return nil
 		}
 		rel, _ := filepath.Rel(dir, p)
+		fmt.Fprintf(h, "%s\x00", filepath.ToSlash(rel))
+		if data, ok, err := rewrittenFile(p, d, rw); err != nil {
+			return err
+		} else if ok {
+			h.Write(data)
+			h.Write([]byte{0})
+			return nil
+		}
 		f, err := os.Open(p)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		fmt.Fprintf(h, "%s\x00", filepath.ToSlash(rel))
 		if _, err := io.Copy(h, f); err != nil {
 			return err
 		}
@@ -284,10 +292,28 @@ func treeHash(dir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), err
 }
 
+// rewrittenFile reads a file small enough to have its references
+// rewritten and returns it rewritten; ok is false when rw is nil or the
+// file is too large, and the caller reads it as it is.
+func rewrittenFile(path string, d fs.DirEntry, rw *rewriter) (data []byte, ok bool, err error) {
+	if rw == nil {
+		return nil, false, nil
+	}
+	if info, err := d.Info(); err != nil || info.Size() > rewriteCap {
+		return nil, false, err
+	}
+	if data, err = os.ReadFile(path); err != nil {
+		return nil, false, err
+	}
+	data, _ = rw.bytes(data)
+	return data, true, nil
+}
+
 // copyTree copies a skill folder's regular files, leaving out symlinks and
 // what skipCopy names. Files keep their executable bit; everything is
-// readable only by its owner.
-func copyTree(src, dst string) error {
+// readable only by its owner. With rw, the references in its text files
+// are rewritten on the way.
+func copyTree(src, dst string, rw *rewriter) error {
 	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -313,6 +339,11 @@ func copyTree(src, dst string) error {
 		mode := os.FileMode(0o600)
 		if info.Mode().Perm()&0o100 != 0 {
 			mode = 0o700
+		}
+		if data, ok, err := rewrittenFile(p, d, rw); err != nil {
+			return err
+		} else if ok {
+			return os.WriteFile(target, data, mode)
 		}
 		in, err := os.Open(p)
 		if err != nil {
