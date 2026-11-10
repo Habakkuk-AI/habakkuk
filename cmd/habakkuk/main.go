@@ -727,7 +727,7 @@ func doctor(ctx context.Context, home string) error {
 		case have == 0 && p.KeyOptional():
 			status = "no key needed"
 		case have == 0:
-			status = "NO KEYS SET (" + strings.Join(p.KeysEnv, ", ") + ")"
+			status = "NO KEY SET; fix: " + keyFix(home, p.KeysEnv)
 			problems++
 		}
 		fmt.Printf("provider %s: %d/%d keys present, %s\n", name, have, len(p.KeysEnv), status)
@@ -762,7 +762,8 @@ func doctor(ctx context.Context, home string) error {
 			}
 		}
 		if len(missing) > 0 {
-			fmt.Printf("channel %s (%s): MISSING %s\n", name, ch.Type, strings.Join(missing, ", "))
+			fmt.Printf("channel %s (%s): MISSING %s; fix: add it to %s, or run habakkuk setup channel %s\n", name, ch.Type,
+				strings.Join(missing, ", "), filepath.Join(home, ".env"), ch.Type)
 			problems++
 		} else {
 			fmt.Printf("channel %s (%s): credentials present, agent %s\n", name, ch.Type, ch.Agent)
@@ -782,7 +783,7 @@ func doctor(ctx context.Context, home string) error {
 			}
 		}
 		if len(missing) > 0 {
-			fmt.Printf("http %s: MISSING %s\n", h.Listen, strings.Join(missing, ", "))
+			fmt.Printf("http %s: MISSING %s; fix: add it to %s\n", h.Listen, strings.Join(missing, ", "), filepath.Join(home, ".env"))
 			problems++
 		} else {
 			fmt.Printf("http %s: ok, %d webhook(s)\n", h.Listen, len(h.Webhooks))
@@ -805,7 +806,7 @@ func doctor(ctx context.Context, home string) error {
 		}
 		switch {
 		case len(missing) > 0:
-			fmt.Printf("mcp %s: MISSING %s\n", name, strings.Join(missing, ", "))
+			fmt.Printf("mcp %s: MISSING %s; fix: add it to %s\n", name, strings.Join(missing, ", "), filepath.Join(home, ".env"))
 			problems++
 		case m.Auth == "oauth" && !hasMCPLogin(a, name):
 			fmt.Printf("mcp %s: not signed in; run habakkuk mcp login %s\n", name, name)
@@ -819,7 +820,7 @@ func doctor(ctx context.Context, home string) error {
 	problems += computerDoctor(cfg, os.Stdout)
 	problems += permissionsDoctor(home, cfg, os.Stdout)
 	if problems > 0 {
-		return fmt.Errorf("%d problem(s) found", problems)
+		return fmt.Errorf("%d problem(s) found; each one above says how to fix it", problems)
 	}
 	return nil
 }
