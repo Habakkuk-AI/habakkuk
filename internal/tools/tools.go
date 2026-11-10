@@ -379,7 +379,22 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 		confirm = ct.Confirm(ctx, env, call.Input)
 	}
 	if cp := r.capability(ctx, env, t, call); cp != "" {
-		if note, handled, err := gate(ctx, env, cp, risk, call, confirm); handled {
+		// A note written to one of the agent's trusted folders is not held
+		// for approval because the turn came from a chat or read outside
+		// content (trusted.go); the mode still decides.
+		trusted := false
+		if cp == CapWrite {
+			var err error
+			if trusted, err = trustedWrite(env, t, call); err != nil {
+				return "", err
+			}
+		}
+		if trusted {
+			switch env.Mode {
+			case ModeWorkspace, ModeFull:
+				return "", nil
+			}
+		} else if note, handled, err := gate(ctx, env, cp, risk, call, confirm); handled {
 			return note, err
 		}
 	}

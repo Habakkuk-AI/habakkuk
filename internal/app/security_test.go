@@ -1,12 +1,16 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
+	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
 )
 
 func TestTurnPolicy(t *testing.T) {
@@ -65,5 +69,52 @@ func TestTurnPolicy(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// An agent's trusted folders reach its turns, with Habakkuk's own folders
+// protected; an agent without the setting gets neither.
+func TestTurnPolicyCarriesTrustedFolders(t *testing.T) {
+	home := t.TempDir()
+	notes := filepath.Join(t.TempDir(), "notes")
+	cfg := &config.Config{
+		Home: home,
+		Agents: map[string]*config.Agent{
+			"main":  {AgentSecurity: config.AgentSecurity{TrustedWritePaths: []string{notes, filepath.Join(home, "agents", "main")}}},
+			"other": {},
+		},
+		Hooks: []*config.Hook{{Event: "tool_before", Command: filepath.Join(home, "my-hooks", "check.sh")}},
+	}
+	p, _ := TurnPolicy(cfg, "main", nil)
+	if len(p.TrustedWrite) != 1 || p.TrustedWrite[0] != notes {
+		t.Fatalf("trusted folders: %q", p.TrustedWrite)
+	}
+	for _, want := range []string{filepath.Join(home, "agents"), filepath.Join(home, "skills"), filepath.Join(home, "hooks"),
+		filepath.Join(home, "my-hooks"), filepath.Join(home, "agents", "other")} {
+		if !slices.Contains(p.Protected, want) {
+			t.Errorf("%s is not protected: %q", want, p.Protected)
+		}
+	}
+	if p, _ := TurnPolicy(cfg, "other", nil); len(p.TrustedWrite) != 0 || len(p.Protected) != 0 {
+		t.Fatalf("an agent without the setting: %+v", p)
+	}
+}
+
+// The folders scheduled scripts run from are protected too, so a trusted
+// folder never covers a script the scheduler will run.
+func TestScheduledScriptFoldersAreProtected(t *testing.T) {
+	notes := filepath.Join(t.TempDir(), "notes")
+	jobs := filepath.Join(notes, "jobs")
+	a, _, _ := openTestApp(t, "")
+	a.Cfg.Agents["habakkuk"].TrustedWritePaths = []string{notes}
+	ctx := context.Background()
+	if _, err := a.Schedules.Create(ctx, schedule.Schedule{Agent: "habakkuk", Name: "sync", Spec: "@every 1h",
+		Command: "./sync.sh", Workdir: jobs}); err != nil {
+		t.Fatal(err)
+	}
+	env := &tools.Env{Taint: tools.NewTaint(false)}
+	a.applyPolicy(ctx, a.Runner.Agents["habakkuk"], nil, env)
+	if len(env.Policy.TrustedWrite) != 1 || !slices.Contains(env.Policy.Protected, jobs) {
+		t.Fatalf("policy: trusted %q, protected %q; want %s protected", env.Policy.TrustedWrite, env.Policy.Protected, jobs)
 	}
 }

@@ -65,6 +65,14 @@ type Policy struct {
 	// AllowTaintedExec lets a tainted turn use the shell and write outside
 	// the workspace as the mode says (agents.<name>.allow_tainted_exec).
 	AllowTaintedExec bool
+	// TrustedWrite are folders (absolute) outside the workspace where the
+	// file tools may write notes without approval, in a channel turn and in
+	// a tainted one (agents.<name>.trusted_write_paths; trusted.go).
+	// Protected are folders that are never trusted, whatever TrustedWrite
+	// says: the agent homes, config, hooks, skills and the folders
+	// scheduled scripts run from.
+	TrustedWrite []string
+	Protected    []string
 }
 
 // capability is the Capability a call uses, or "".

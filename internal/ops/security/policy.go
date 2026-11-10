@@ -23,6 +23,11 @@ type AgentPolicy struct {
 	// approval; Gated those that need it.
 	Allowed, Gated   []string
 	AllowTaintedExec bool
+	// TrustedWrite are the folders outside the workspace where the file
+	// tools may write notes without approval (trusted_write_paths);
+	// TrustedIgnored the entries that are not honoured because they reach
+	// into Habakkuk's own folders.
+	TrustedWrite, TrustedIgnored []string
 }
 
 // Policies lists every agent's effective policy, sorted by agent.
@@ -31,6 +36,7 @@ func Policies(c *config.Config) []AgentPolicy {
 	for _, name := range c.AgentNames() {
 		a := c.Agents[name]
 		p := AgentPolicy{Agent: name, Permission: a.Permission, Approvals: a.Approvals, AllowTaintedExec: a.AllowTaintedExec}
+		p.TrustedWrite, p.TrustedIgnored = c.TrustedWriteDirs(name)
 		for _, ch := range c.ChannelsOf(name) {
 			p.Channels = append(p.Channels, ch)
 			if c.Channels[ch].OpenToAll() {
@@ -87,6 +93,14 @@ func (p AgentPolicy) Lines() []string {
 	if len(p.Webhooks) > 0 {
 		out = append(out, "  webhooks "+strings.Join(p.Webhooks, ", ")+": payloads are outside content (tainted turn)")
 	}
+	if len(p.TrustedWrite) > 0 {
+		out = append(out, "  trusted_write_paths: "+strings.Join(p.TrustedWrite, ", ")+
+			": file tools write notes there without approval, from a chat and after reading outside content (never commands, scripts, programs or hidden files)")
+	}
+	if len(p.TrustedIgnored) > 0 {
+		out = append(out, "  trusted_write_paths ignored: "+strings.Join(p.TrustedIgnored, ", ")+
+			" (inside Habakkuk's own folders, or a folder that contains them)")
+	}
 	return out
 }
 
@@ -104,6 +118,16 @@ func checkPolicies(c *config.Config) []Finding {
 			out = append(out, Finding{Severity: sev, Check: "agents",
 				Message: fmt.Sprintf("agent %s sets allow_tainted_exec: a web page, email or webhook payload it reads can steer its commands without a human", p.Agent),
 				Fix:     fmt.Sprintf("remove agents.%s.allow_tainted_exec unless the agent runs in a sandbox", p.Agent)})
+		}
+		if len(p.TrustedWrite) > 0 && reached {
+			out = append(out, Finding{Severity: Low, Check: "agents",
+				Message: fmt.Sprintf("agent %s may write notes to %s without approval after reading outside content (trusted_write_paths): a page or email it reads can put text there, though not scripts", p.Agent, strings.Join(p.TrustedWrite, ", ")),
+				Fix:     fmt.Sprintf("keep agents.%s.trusted_write_paths to folders that hold only notes, and nothing another program runs or loads", p.Agent)})
+		}
+		if len(p.TrustedIgnored) > 0 {
+			out = append(out, Finding{Severity: Low, Check: "agents",
+				Message: fmt.Sprintf("agent %s lists trusted_write_paths that are ignored (%s): they are inside Habakkuk's own folders, or contain them", p.Agent, strings.Join(p.TrustedIgnored, ", ")),
+				Fix:     fmt.Sprintf("remove them from agents.%s.trusted_write_paths, or name a folder for notes elsewhere", p.Agent)})
 		}
 		if len(p.Channels) > 0 && slices.Contains(p.Allowed, "exec") {
 			out = append(out, Finding{Severity: Medium, Check: "agents",

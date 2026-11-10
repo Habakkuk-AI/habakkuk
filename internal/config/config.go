@@ -747,6 +747,10 @@ agents:
     # trust: channel            # channel | full (your own chat messages act like the CLI)
     # channel_allow: [write]    # or lift only some: exec, process, write, computer, browser
     # allow_tainted_exec: false
+    # Folders outside the workspace where it may save notes without asking,
+    # even after reading outside content. File tools only, never commands,
+    # scripts or hidden files (README: Approvals).
+    # trusted_write_paths: [~/notes]
 
 # Messaging channels. Uncomment one, put its tokens in .env, then run
 # ` + "`habakkuk serve`" + `. Unknown senders get a pairing code for ` + "`habakkuk pair`" + `.
