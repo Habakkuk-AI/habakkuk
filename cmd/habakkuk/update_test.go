@@ -418,6 +418,56 @@ func TestUpdateChannels(t *testing.T) {
 	}
 }
 
+// Before the first release GitHub answers 404 for /releases/latest (and for
+// a repository with pre-releases only): -check says so and succeeds, a real
+// update fails in plain words, and neither touches the binary.
+func TestUpdateWithNoRelease(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("HABAKKUK_UPDATE_CHANNEL", "")
+	for _, tc := range []struct {
+		name    string
+		f       *fakeReleases
+		channel string
+	}{
+		{"nothing published", newFakeReleases(t), ""},
+		{"pre-releases only", newFakeReleases(t, fakeRel{tag: "v0.4.0-rc.1", prerelease: true}), ""},
+		{"empty beta channel", newFakeReleases(t), "beta"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exe := writeExe(t, "binary v0.3.0")
+			var out bytes.Buffer
+			u, calls := newTestUpdater(tc.f, upgradeHome(t), exe, "v0.3.0", &out)
+			if err := u.update(ctx, updateOptions{checkOnly: true, channel: tc.channel}); err != nil {
+				t.Fatalf("-check: %v", err)
+			}
+			if got := out.String(); !strings.Contains(got, "no release on the") || strings.Contains(got, "404") {
+				t.Fatalf("-check printed %q", got)
+			}
+			err := u.update(ctx, updateOptions{channel: tc.channel})
+			if !errors.Is(err, errNoRelease) || strings.Contains(err.Error(), "404") {
+				t.Fatalf("update: %v", err)
+			}
+			if mustRead(t, exe) != "binary v0.3.0" || len(*calls) != 0 {
+				t.Fatal("an update with no release touched the binary")
+			}
+		})
+	}
+}
+
+// Other failures to reach the API still name the status and the address.
+func TestUpdateReportsOtherHTTPErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "rate limited", http.StatusForbidden)
+	}))
+	defer srv.Close()
+	var out bytes.Buffer
+	u := &updater{API: srv.URL, HTTP: srv.Client(), OS: "linux", Arch: "amd64", Current: "v0.3.0", Out: &out, Home: t.TempDir()}
+	err := u.update(context.Background(), updateOptions{checkOnly: true})
+	if err == nil || errors.Is(err, errNoRelease) || !strings.Contains(err.Error(), "HTTP 403 from "+srv.URL) {
+		t.Fatalf("got %v", err)
+	}
+}
+
 // The Windows build ships a .zip holding habakkuk.exe.
 func TestUpdateWindowsZip(t *testing.T) {
 	f := newFakeReleases(t, fakeRel{tag: "v0.4.0"})

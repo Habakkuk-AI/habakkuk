@@ -209,6 +209,14 @@ func (u *updater) update(ctx context.Context, o updateOptions) error {
 		}
 	}
 	rel, err := u.latest(ctx, ch)
+	if errors.Is(err, errNoRelease) {
+		// Not a failure when only asked to look: there is nothing newer.
+		if o.checkOnly {
+			fmt.Fprintf(u.Out, "habakkuk %s: no release on the %s channel yet, so there is nothing to update to\n", u.Current, ch)
+			return nil
+		}
+		return fmt.Errorf("%w on the %s channel, so there is nothing to update to", err, ch)
+	}
 	if err != nil {
 		return err
 	}

@@ -55,12 +55,28 @@ const (
 	maxSums    = 64 << 10
 )
 
+// errNoRelease means the channel has nothing published. GitHub answers 404
+// for /releases/latest until a repository has its first stable release.
+var errNoRelease = errors.New("no release has been published yet")
+
+// statusError is a response other than 200.
+type statusError struct {
+	Code int
+	URL  string
+}
+
+func (e *statusError) Error() string { return fmt.Sprintf("HTTP %d from %s", e.Code, e.URL) }
+
 // latest finds the release the channel points at.
 func (u *updater) latest(ctx context.Context, channel string) (*release, error) {
 	switch channel {
 	case channelStable, "":
 		var rel release
 		if err := u.getJSON(ctx, u.API+"/releases/latest", &rel); err != nil {
+			var se *statusError
+			if errors.As(err, &se) && se.Code == http.StatusNotFound {
+				return nil, errNoRelease
+			}
 			return nil, fmt.Errorf("find the latest release: %w", err)
 		}
 		if rel.Tag == "" {
@@ -83,7 +99,7 @@ func (u *updater) latest(ctx context.Context, channel string) (*release, error) 
 			}
 		}
 		if best == nil {
-			return nil, errors.New("no releases found")
+			return nil, errNoRelease
 		}
 		return best, nil
 	}
@@ -184,7 +200,7 @@ func (u *updater) get(ctx context.Context, url string, limit int64) ([]byte, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+		return nil, &statusError{Code: resp.StatusCode, URL: url}
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
