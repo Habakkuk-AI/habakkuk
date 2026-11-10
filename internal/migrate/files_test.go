@@ -836,6 +836,89 @@ func TestFilesCopyRefusedWithoutRoom(t *testing.T) {
 	}
 }
 
+// Folder names with spaces move like any other. A reference that hides
+// part of such a name (an escaped space) is left for the user: moving the
+// half that can be read would break it.
+func TestFilesNamesWithSpaces(t *testing.T) {
+	w := newWorld(t, Hermes)
+	w.write("my notes/todo.md", "Todo.\n", 0o644)
+	w.write("old reports/q1.md", "Q1.\n", 0o644)
+	w.add("SOUL.md", "\nYour notes are in \"~/.hermes/my notes/todo.md\". Old ones: ~/.hermes/old\\ reports/q1.md\n")
+	p, _ := w.run(FilesCopy)
+	if got := entryNames(p.Files.Moves); !slices.Equal(got, []string{"my notes", "scripts"}) {
+		t.Errorf("moves %v", got)
+	}
+	if e := entry(p, "old"); e == nil || !strings.Contains(e.Why, `did the text mean "old reports"?`) {
+		t.Errorf("old: %+v", e)
+	}
+	if got := readFile(t, filepath.Join(w.home, "files", "my notes", "todo.md")); got != "Todo.\n" {
+		t.Errorf("the copy holds %q", got)
+	}
+	soul := readFile(t, filepath.Join(w.home, "agents", "habakkuk", "SOUL.md"))
+	if !strings.Contains(soul, `"~/.habakkuk/files/my notes/todo.md"`) || !strings.Contains(soul, `~/.hermes/old\ reports/q1.md`) {
+		t.Errorf("SOUL.md:\n%s", soul)
+	}
+}
+
+// On Windows a reference may spell a folder in any letter case; the entry
+// and its copy are named the way the folder is.
+func TestRealName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "Profiles", "Coder", "Scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{
+		"profiles/coder/scripts": "Profiles/Coder/Scripts",
+		"profiles/coder/state":   "Profiles/Coder/state", // not there: kept as written
+		"workspaces":             "workspaces",
+	} {
+		if got := realName(dir, key); got != want {
+			t.Errorf("realName(%q) = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// A copy made before another entry moved is brought up to date: a script
+// that was copied as it was is rewritten once the file it names moves.
+func TestFilesCopyCatchesUpWhenMoreMoves(t *testing.T) {
+	w := newWorld(t, Hermes)
+	w.write("scripts/push.sh", "#!/bin/sh\ncat ~/.hermes/all.csv\n", 0o755)
+	w.write("all.csv", strings.Repeat("1,2,3\n", 200), 0o644)
+	w.add("SOUL.md", "\nRun ~/.hermes/scripts/push.sh when asked.\n")
+	o := w.options(FilesCopy)
+	o.FilesMax = 512 // all.csv is over the limit, so it stays
+	p := w.plan(o)
+	if e := entry(p, "all.csv"); e == nil || !strings.Contains(e.Why, "--files-max") {
+		t.Fatalf("all.csv: %+v", e)
+	}
+	if _, err := p.Apply(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	copied := filepath.Join(w.home, "files", "scripts", "push.sh")
+	if got := readFile(t, copied); !strings.Contains(got, "cat ~/.hermes/all.csv") {
+		t.Fatalf("push.sh was rewritten to name a file that did not move:\n%s", got)
+	}
+	// With the limit raised the file moves, and the script that names it
+	// is copied again although its size and time did not change.
+	o.FilesMax = -1
+	p2 := w.plan(o)
+	if e := entry(p2, "scripts"); e.Stats.Copy != 1 || e.InsideRefs != 1 {
+		t.Errorf("scripts: %d files to copy and %d references inside, want 1 and 1", e.Stats.Copy, e.InsideRefs)
+	}
+	if _, err := p2.Apply(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, copied); !strings.Contains(got, "cat ~/.habakkuk/files/all.csv") {
+		t.Errorf("push.sh:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(w.home, "files", "all.csv")); err != nil {
+		t.Error(err)
+	}
+	if p3 := w.plan(o); p3.Files.Pending() {
+		t.Error("a third run has files to copy")
+	}
+}
+
 func TestFilesMaxAndFilesDir(t *testing.T) {
 	w := hermesWorld(t)
 	w.write("workspaces/reports/video.bin", strings.Repeat("v", 5000), 0o644)

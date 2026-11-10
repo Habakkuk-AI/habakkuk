@@ -262,6 +262,10 @@ func internalWhy(from, name string) string {
 func (p *Plan) planFiles() error {
 	f, o := p.Found, p.opts
 	h := newHomeRefs(f.Dir, o.userHome(), f.nested, runtime.GOOS == "windows")
+	h.know("", dirNames(f.Dir))
+	for _, n := range f.nested {
+		h.know(n, dirNames(filepath.Join(f.Dir, filepath.FromSlash(n))))
+	}
 	hits, err := textHits(f, h)
 	if err != nil {
 		return err
@@ -411,15 +415,28 @@ func (p *Plan) classify(key string, adopted map[string]string) *FileEntry {
 		e.Name, e.Source, e.Why = "(the folder itself)", f.Dir, "the text names the old folder as a whole"
 		return e
 	}
-	e.Source = filepath.Join(f.Dir, filepath.FromSlash(key))
-	e.Dest = filepath.Join(fp.Dir, filepath.FromSlash(key))
+	if runtime.GOOS == "windows" {
+		// A reference may spell the entry in any letter case there; name
+		// it, and its copy, the way the folder does.
+		e.Name = realName(f.Dir, key)
+	}
+	e.Source = filepath.Join(f.Dir, filepath.FromSlash(e.Name))
+	e.Dest = filepath.Join(fp.Dir, filepath.FromSlash(e.Name))
 	if dest, ok := adopted[key]; ok {
 		e.Dest, e.Adopted = dest, true
 	}
+	base := key[strings.LastIndex(key, "/")+1:]
 	info, err := os.Lstat(e.Source)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		e.Kind = "missing"
+		// The text may name a longer entry in a way that hides part of the
+		// name ("My\ Notes"). Moving such a reference would break it.
+		for _, n := range dirNames(filepath.Dir(e.Source)) {
+			if len(n) > len(base) && strings.EqualFold(n[:len(base)], base) && !nameByte(n[len(base)]) {
+				e.Why = fmt.Sprintf("not in the old folder (did the text mean %q?); edit that text by hand", n)
+			}
+		}
 	case err != nil:
 		e.Why = "it cannot be read: " + err.Error()
 	case info.Mode()&fs.ModeSymlink != 0:
@@ -439,7 +456,6 @@ func (p *Plan) classify(key string, adopted map[string]string) *FileEntry {
 		e.Why = ""
 		return e
 	}
-	base := key[strings.LastIndex(key, "/")+1:]
 	if why := internalWhy(f.From, base); why != "" {
 		e.Why = why
 	}
@@ -452,6 +468,33 @@ func (p *Plan) classify(key string, adopted map[string]string) *FileEntry {
 		e.Dest = ""
 	}
 	return e
+}
+
+// dirNames lists a folder's entries; none when it cannot be read.
+func dirNames(dir string) []string {
+	entries, _ := os.ReadDir(dir)
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+// realName spells a slash path under dir the way the folders on disk do,
+// matching each element without regard to letter case; an element that
+// is not there is kept as written.
+func realName(dir, key string) string {
+	parts := strings.Split(key, "/")
+	for i, p := range parts {
+		for _, n := range dirNames(dir) {
+			if strings.EqualFold(n, p) {
+				parts[i] = n
+				break
+			}
+		}
+		dir = filepath.Join(dir, parts[i])
+	}
+	return strings.Join(parts, "/")
 }
 
 // under reports whether p is dir or inside it.

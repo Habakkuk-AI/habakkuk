@@ -110,7 +110,7 @@ func (p *Plan) syncEntry(ctx context.Context, e *FileEntry, write bool) (SyncSta
 			}
 			st.Files++
 			st.Bytes += info.Size()
-			switch p.compare(path, dest, info) {
+			switch p.compare(path, dest, info, p.rw.movesAny(e.inside[rel])) {
 			case destNewer:
 				st.Newer++
 			case destBlocked:
@@ -187,7 +187,9 @@ const (
 )
 
 // compare decides what a source file needs by size and modification time.
-func (p *Plan) compare(src, dest string, si fs.FileInfo) int {
+// rewritten says the file names entries that move, so its copy differs
+// from it and only the contents can tell whether the copy is current.
+func (p *Plan) compare(src, dest string, si fs.FileInfo, rewritten bool) int {
 	di, err := os.Lstat(dest)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -201,7 +203,7 @@ func (p *Plan) compare(src, dest string, si fs.FileInfo) int {
 		return destNewer
 	case d < -mtimeWindow:
 		return destStale
-	case di.Size() == si.Size():
+	case di.Size() == si.Size() && !rewritten:
 		return destSame
 	}
 	// About the same time, another size. It may be the copy with its

@@ -42,6 +42,34 @@ func TestHomeRefsFindsEveryForm(t *testing.T) {
 	}
 }
 
+// A name with a space or a bracket is read whole when the home really
+// holds an entry by that name, and only then.
+func TestHomeRefsKnownNamesWithSpaces(t *testing.T) {
+	h := newHomeRefs("/home/ada/.hermes", "/home/ada", []string{"profiles/coder"}, false)
+	h.know("", []string{"My Notes", "My Notes (old)", "scripts", "data.v2"})
+	h.know("profiles/coder", []string{"Lint Rules"})
+	for text, want := range map[string]string{
+		`cat "~/.hermes/My Notes/todo.md"`:               "My Notes",
+		`cat "~/.hermes/My Notes (old)/todo.md"`:         "My Notes (old)",
+		`open '/home/ada/.hermes/My Notes'`:              "My Notes",
+		`Read ~/.hermes/My Notes.`:                       "My Notes",
+		`cat ~/.hermes/My Notebook/x`:                    "My", // not a known entry: the name ends at the space
+		`cat ~/.hermes/My stuff`:                         "My",
+		`ls ~/.hermes/scripts/My Notes`:                  "scripts", // only the entry itself, never a path inside one
+		`ls ~/.hermes/profiles/coder/Lint Rules/go.yaml`: "profiles/coder/Lint Rules",
+		`ls ~/.hermes/profiles/coder/Lint`:               "profiles/coder/Lint",
+	} {
+		refs := h.scan(text)
+		if len(refs) != 1 || refs[0].key != want {
+			t.Errorf("%q: %+v, want the entry %q", text, refs, want)
+		}
+	}
+	rw := &rewriter{h: h, to: map[string]string{"My Notes": "/home/ada/.habakkuk/files/My Notes"}}
+	if got := rw.str(`cat "~/.hermes/My Notes/todo.md" "$HOME/.hermes/My Notes (old)/x"`); got != `cat "~/.habakkuk/files/My Notes/todo.md" "$HOME/.hermes/My Notes (old)/x"` {
+		t.Errorf("became %q", got)
+	}
+}
+
 func TestRewriterKeepsTheFormTheTextUsed(t *testing.T) {
 	h := newHomeRefs("/home/ada/.hermes", "/home/ada", nil, false)
 	rw := &rewriter{h: h, to: map[string]string{

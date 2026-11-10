@@ -238,7 +238,7 @@ When the Files section lists nothing under "Not moved" and every folder shows `=
 
 **A file was left out as too large**: raise the limit, for example `--files-max 8G`, or `--files-max 0` for no limit, and run `habakkuk migrate --files copy` again. Only the missing files are copied.
 
-**A reference was not rewritten**: only paths that start with the old folder are found. A script that builds the path from pieces, or reads it from a variable of the old agent, is not changed. Search your copied scripts for the old folder's name and fix those by hand.
+**A reference was not rewritten**: only paths that start with the old folder are found. A script that builds the path from pieces, or reads it from a variable of the old agent, is not changed. A folder name with a space is followed when the text writes it plainly or in quotes (`"~/.hermes/My Notes/todo.md"`), not when the space is escaped (`My\ Notes`); the plan lists that one under "Not moved" and asks you to edit the text. Search your copied scripts for the old folder's name and fix what is left by hand.
 
 **"found both Hermes Agent and OpenClaw"**: pass `--from hermes` or `--from openclaw`, and run it again for the other one if you want both.
 

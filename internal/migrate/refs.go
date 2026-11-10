@@ -3,6 +3,7 @@ package migrate
 import (
 	"bytes"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -35,9 +36,13 @@ type homeRefs struct {
 	home     string          // the source home, absolute
 	userHome string          // the user's home directory, absolute; "" when unknown
 	nested   map[string]bool // homes inside the home, as "profiles/coder"
-	re       *regexp.Regexp
-	groups   []int  // the form of each capture group of re
-	base     string // the home's last path element, for a quick first check
+	// odd are the entries whose names hold characters people usually quote
+	// (a space, a bracket), by the home they are in ("" or a nested one),
+	// longest first. Such a name is only recognised when it is known.
+	odd    map[string][]string
+	re     *regexp.Regexp
+	groups []int  // the form of each capture group of re
+	base   string // the home's last path element, for a quick first check
 }
 
 // ref is one reference: text[start:end] spells the home and the entry.
@@ -101,6 +106,37 @@ func newHomeRefs(home, userHome string, nested []string, windows bool) *homeRefs
 		h.re = regexp.MustCompile(`[^\s\S]`) // the home is a file system root: nothing is a reference
 	}
 	return h
+}
+
+// know tells h the entries a home really holds (parent is "" or a nested
+// home), so that a name with a space in it is read whole.
+func (h *homeRefs) know(parent string, names []string) {
+	var odd []string
+	for _, n := range names {
+		if strings.IndexFunc(n, func(r rune) bool { return r < 0x80 && !nameByte(byte(r)) }) >= 0 {
+			odd = append(odd, n)
+		}
+	}
+	slices.SortFunc(odd, func(a, b string) int { return len(b) - len(a) })
+	if h.odd == nil {
+		h.odd = map[string][]string{}
+	}
+	h.odd[h.fold(parent)] = odd
+}
+
+// oddName returns the known entry of parent that text[k:] starts with, if
+// its name is one nameByte would cut short.
+func (h *homeRefs) oddName(parent, text string, k int) (string, bool) {
+	for _, n := range h.odd[h.fold(parent)] {
+		end := k + len(n)
+		if end > len(text) || h.fold(text[k:end]) != h.fold(n) {
+			continue
+		}
+		if end == len(text) || h.isSep(text[end]) || !nameByte(text[end]) || h.fullStop(text, end) {
+			return n, true
+		}
+	}
+	return "", false
 }
 
 func (h *homeRefs) fold(s string) string {
@@ -174,6 +210,16 @@ func (h *homeRefs) scan(text string) []ref {
 				n--
 			}
 			name := text[k:n]
+			// An entry (never a path inside one) may have a name that
+			// stops early here: "My Notes".
+			if parent := ""; len(els) == 0 || len(els) == 2 && h.nested[h.fold(els[0].name+"/"+els[1].name)] {
+				if len(els) == 2 {
+					parent = els[0].name + "/" + els[1].name
+				}
+				if odd, ok := h.oddName(parent, text, k); ok {
+					name, n = odd, k+len(odd)
+				}
+			}
 			if name == "" || name == "." || name == ".." {
 				break
 			}
@@ -256,6 +302,16 @@ func (r *rewriter) moves(key string) bool {
 	}
 	_, ok := r.to[key]
 	return ok
+}
+
+// movesAny reports whether any of the entries named in counts moves.
+func (r *rewriter) movesAny(counts map[string]int) bool {
+	for key := range counts {
+		if r.moves(key) {
+			return true
+		}
+	}
+	return false
 }
 
 // apply rewrites the references in text and reports how many it changed.
