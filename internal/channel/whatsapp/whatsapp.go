@@ -1,7 +1,9 @@
 // Package whatsapp is the WhatsApp adapter, a linked device on the user's
 // number. Its credentials live in a SQLite database: every change is a
 // transaction, so a full disk or a crash leaves the previous state intact
-// instead of a truncated credentials file. Backups rotate daily.
+// instead of a truncated credentials file. Owner-only backups are taken on
+// connect (at most hourly) and daily, keeping five recent copies and one a
+// day for a week.
 package whatsapp
 
 import (
@@ -147,7 +149,7 @@ func (a *Adapter) Run(ctx context.Context, in channel.Inbox) error {
 		cli.Disconnect()
 	}()
 
-	a.backup(ctx)
+	a.backup(ctx, reconnectBackupGap)
 	beat := time.NewTicker(15 * time.Second)
 	defer beat.Stop()
 	daily := time.NewTicker(24 * time.Hour)
@@ -165,19 +167,29 @@ func (a *Adapter) Run(ctx context.Context, in channel.Inbox) error {
 				in.Beat()
 			}
 		case <-daily.C:
-			a.backup(ctx)
+			a.backup(ctx, 0)
 		}
 	}
 }
 
-func (a *Adapter) backup(ctx context.Context) {
+// reconnectBackupGap is the least time between two backups taken on
+// (re)connect, so a flapping connection does not write a copy each time.
+const reconnectBackupGap = time.Hour
+
+// backup copies the credentials database, unless a copy is younger than
+// minAge.
+func (a *Adapter) backup(ctx context.Context, minAge time.Duration) {
 	a.mu.Lock()
 	db := a.db
 	a.mu.Unlock()
 	if a.BackupDir == "" || db == nil {
 		return
 	}
-	path, err := store.Backup(ctx, db, a.BackupDir, "whatsapp-"+a.Account, 7)
+	prefix := "whatsapp-" + a.Account
+	if last := store.LatestBackupTime(a.BackupDir, prefix); minAge > 0 && !last.IsZero() && time.Since(last) < minAge {
+		return
+	}
+	path, err := store.Backup(ctx, db, a.BackupDir, prefix, store.DefaultRetention)
 	if err != nil {
 		a.Log.Warn("whatsapp backup failed", "account", a.Account, "err", err)
 		return

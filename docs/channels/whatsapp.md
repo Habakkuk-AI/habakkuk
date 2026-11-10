@@ -118,7 +118,9 @@ A bare number becomes `<digits>@s.whatsapp.net`. A full id (`<digits>@lid`, a gr
 
 ### Credentials
 
-The device credentials live in `channels/whatsapp-<account>.db`. Every change to them is a SQLite transaction, so a crash or a full disk never leaves a half-written credentials file, and `backups/` keeps seven rotating copies. `habakkuk backup -env` includes them.
+The device credentials live in `channels/whatsapp-<account>.db`. Every change to them is a SQLite transaction, so a crash or a full disk never leaves a half-written credentials file.
+
+Habakkuk copies them to `backups/whatsapp-<account>-<time>.db` when it connects (at most once an hour, however often the connection drops) and once a day. It keeps the five newest copies plus the newest copy of each of the last seven days, and never deletes the only good copy. The copies are readable by you alone (mode 0600, in a 0700 folder), even when the process runs with a loose umask, for example under systemd without `UMask=`. `habakkuk backup -env` includes the credentials too.
 
 > [!WARNING]
 > Anyone with that database can act as the linked device. Keep backups made with `-env` private.

@@ -180,15 +180,14 @@ func writeBackupOpts(ctx context.Context, home, path string, o backupOptions) (i
 	return n, os.Rename(path+".tmp", path)
 }
 
-// snapshotDB writes a consistent copy of a live database to dst.
+// snapshotDB writes a consistent, owner-only copy of a live database to dst.
 func snapshotDB(ctx context.Context, src, dst string) error {
 	db, err := store.Open(ctx, src, nil)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	_, err = db.ExecContext(ctx, "VACUUM INTO ?", dst)
-	return err
+	return store.VacuumInto(ctx, db, dst)
 }
 
 func addFile(tw *tar.Writer, name, src string) error {
