@@ -27,10 +27,19 @@ agents:
 
 ## Answering approvals
 
-- **In a chat**, Habakkuk posts the request and waits for **yes** or **no** from an allowed sender. Platforms with buttons show Approve and Deny. After 15 minutes without an answer it skips the step.
+- **In a chat**, Habakkuk says what it wants to do in everyday words, why it is asking, and waits for **yes** or **no** from the owner. Platforms with buttons show Approve and Deny. Reply **details** to see the exact command; the request keeps waiting. After 15 minutes without an answer it skips the step. See [what the request looks like](../channels/settings.md#approval-requests-in-plain-words).
 - **In the terminal UI**, a prompt offers allow once, allow for the session, or deny.
 - **In the dashboard and desktop app**, approvals waiting in any chat can be answered from the Approvals page.
 - **Unattended runs** (schedules, sub-agents, webhooks, the OpenAI-compatible API) have nobody to ask, so calls that need approval are denied, unless a reviewer decides.
+
+### Approvals and restarts
+
+A request that is waiting when `habakkuk serve` stops (an update, a deploy, a reboot) is not lost and not answered by accident:
+
+- The turn resumes when `serve` starts. When it reaches the same call again it asks again, with a new request.
+- A button on the old request answers the new one only when it is for the same call: the same agent, conversation, tool and input. A press on any other old button gets "That request has expired", and points at the one waiting now.
+- A typed **yes** or **no** that arrives before the turn has asked again gets the same notice. It is not passed to the agent as a new message.
+- A planned stop does not count against the turn. `serve` hands the job back when it is told to stop, so it resumes at once and keeps all its attempts. A crash still counts as an attempt.
 
 ## Approvals
 
@@ -56,6 +65,30 @@ Every decision is logged, and its reason goes back to the agent so it can adapt.
 
 > [!IMPORTANT]
 > The reviewer is never asked about a turn that read outside content: a model could be steered by the same text. Those calls go to a human. See [Security](../deploy/security.md#outside-content-taints-a-turn).
+
+## Trusted folders for notes
+
+A turn from a chat, or one that read outside content, needs your approval for every file it writes outside the workspace. For a folder where the agent keeps notes for you, that is a lot of asking. `trusted_write_paths` names such folders:
+
+```yaml
+agents:
+  habakkuk:
+    trusted_write_paths: [~/notes, ~/Documents/meeting-notes]
+```
+
+In those folders `write_file`, `edit_file` and `apply_patch` write without asking, from a chat and after reading outside content. The permission mode still applies: `read-only` writes nothing and `ask` asks about every write.
+
+It is kept narrow on purpose:
+
+- **Commands are not covered.** `exec` in or into a trusted folder needs approval as before, so nothing written there can be run without you.
+- **No scripts or programs.** A file with an executable bit, a script extension (`.sh`, `.py`, `.js` and so on), a `#!` first line or a program binary is refused in a turn that read outside content. In a clean turn it goes through the usual approval. This is the same test skills use for "ships scripts".
+- **No hidden files.** `.git`, `.envrc` and anything else whose name starts with a dot, or that sits under such a folder, is not covered.
+- **Symlinks are followed first.** A path is judged by where it really lands, so a link inside the folder cannot send a write somewhere else.
+- **Habakkuk's own folders are never trusted**: agent homes, skills, plugins, hooks, personas, channel credentials, backups, and the folders your hooks and scheduled scripts run from. An entry that reaches them is ignored and `habakkuk security` says so.
+- **Your home folder, or anything above it, is refused** when the config loads.
+- **Guests get nothing.** A sender let in by `allow_from: ["*"]` cannot write outside the workspace at all.
+
+`habakkuk security` lists the folders for each agent. The trade-off is described in [Security](../deploy/security.md#trusted-folders-for-notes).
 
 ## Hooks
 

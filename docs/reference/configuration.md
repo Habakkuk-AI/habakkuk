@@ -87,6 +87,7 @@ Enabled plugins add MCP servers, skills, hooks and commands to the loaded config
 | `home`, `report_home` | | The agent's home chat (`CHANNEL:CONVERSATION[:THREAD]`) and what is reported there: `results` (default with a home), `all` or `off` ([multi-agent](../agents/multi-agent.md#teams-and-home-chats)) |
 | `budget` | | This agent's spending caps: `daily`, `monthly`, `per_turn` ([limits](../models/usage-and-limits.md#spending-limits)) |
 | `trust`, `channel_allow`, `allow_tainted_exec` | | Lift the extra checks on chat-driven and tainted turns ([security](../deploy/security.md)) |
+| `trusted_write_paths` | none | Folders outside the workspace where the file tools may save notes without approval; never commands, scripts or hidden files ([approvals](../agents/approvals.md#trusted-folders-for-notes)) |
 
 ## Channels
 
@@ -103,7 +104,8 @@ Enabled plugins add MCP servers, skills, hooks and commands to the loaded config
 | `account`, `homeserver` | Signal: the bot's number; Matrix: its user id and the homeserver URL |
 | `api_url` | Override the platform API base URL; Signal: the signal-cli daemon |
 | `voice_replies`, `voice_text` | Spoken replies: `off`, `mirror` or `always`, and whether the text is sent too |
-| `progress` | `draft` (default) or `off` |
+| `progress` | What a chat shows while the agent works: `plain` (default, one short line), `detailed` (a line per tool step; `draft` is its old name) or `off`. Changes apply without a restart ([settings](../channels/settings.md#what-a-chat-shows-while-the-agent-works)) |
+| `approvals_detail` | What an approval request shows: `summary` (default, plain words) or `full` (also the exact call). Changes apply without a restart ([settings](../channels/settings.md#approval-requests-in-plain-words)) |
 | `reactions` | React to the user's message when a turn starts and ends |
 | `language` | The language of Habakkuk's own messages on this channel |
 | `email`, `sms`, `msteams`, `googlechat`, `bluebubbles`, `line`, `mattermost`, `irc`, `ntfy`, `whatsappcloud`, `messenger`, `instagram`, `feishu`, `dingtalk`, `wecom`, `zulip`, `rocketchat`, `nextcloudtalk`, `twitch` | The block for that type; see the [channel's page](../channels/index.md#all-channels) |

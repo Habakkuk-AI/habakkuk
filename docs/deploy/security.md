@@ -46,7 +46,30 @@ Once a turn has read outside content (a web page, a search result, an MCP or oth
 
 A tainted turn also cannot write trusted memory, change the user profile or set the agent's identity, and `message_home` sends only a short status. A delegated task inherits its parent's taint and origin.
 
+The taint follows the turn across a restart. A turn that read a web page, then was interrupted by a deploy or a crash, is still tainted when it resumes: Habakkuk sets it again from the turn's own transcript, from any hosted search result and any call to a tool that can bring outside content in.
+
 `allow_tainted_exec: true` on an agent turns this off; the audit flags it.
+
+## Trusted folders for notes
+
+`trusted_write_paths` lets an agent write notes to named folders outside its workspace without approval, from a chat and after reading outside content ([how it works](../agents/approvals.md#trusted-folders-for-notes)).
+
+This is a real loosening, and you should know what it gives up. A web page or email the agent reads can steer what it writes, and with this setting nobody is asked first. Text planted by an attacker can end up in a trusted folder.
+
+What keeps that from doing more harm:
+
+- Only the file tools are covered. Commands still need approval, so a planted file cannot be run by the agent without you.
+- Scripts, programs, executables and hidden files are not written there.
+- Habakkuk's own folders are never covered, so a page cannot rewrite the agent's memory, skills, hooks or config this way.
+- Symlinks are resolved before the check.
+
+What it does not protect against:
+
+- **Another program that acts on files in that folder.** A build tool, a sync job, a static site generator, a script of your own that reads `todo.md`. If something runs or loads what is in the folder, do not trust the folder.
+- **Wrong or misleading notes.** The agent may write down something a page told it. Read a note with that in mind, as you would an email.
+- **Overwritten notes.** A trusted folder can be edited as well as added to. Keep it in version control or a backup if the notes matter.
+
+Use it for folders that hold only notes. `habakkuk security` lists each agent's trusted folders and flags them on an agent that chats or webhooks can reach.
 
 ## Skills and plugins from outside
 
@@ -79,7 +102,7 @@ So a web page you visit cannot drive the agent, read your chats or pair a device
 `habakkuk security` (also `habakkuk security audit`) checks:
 
 - file modes under `$HABAKKUK_HOME`;
-- agents in `full` mode or reachable by outsiders, and open channels;
+- agents in `full` mode or reachable by outsiders, open channels, and trusted folders (`trusted_write_paths`);
 - the HTTP listener and its token, and webhook secrets;
 - risky MCP servers, and skills and hooks others can write;
 - backups and free disk space.

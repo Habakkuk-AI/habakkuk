@@ -48,7 +48,8 @@ What counts as addressed depends on the platform; see the table [below](#what-ea
 | `allow_from` | Sender ids allowed to talk; `"*"` allows everyone |
 | `groups` | `off`, `mention` (default) or `all` |
 | `session_idle` | Start a fresh session after this much silence (default `24h`; the web chat never; `0` never) |
-| `progress` | `draft` (default): a long turn posts one message and edits it with each tool step, on platforms that can edit (Telegram, Slack); `off` turns it off |
+| `progress` | What a chat shows while the agent works: `plain` (default), `detailed` or `off`. See [below](#what-a-chat-shows-while-the-agent-works) |
+| `approvals_detail` | What an approval request shows: `summary` (default) or `full`. See [below](#approval-requests-in-plain-words) |
 | `reactions` | `true` reacts to the user's message when its turn starts and ends (Telegram, Slack, Discord, Nextcloud Talk) |
 | `voice_replies` | `off` (default), `mirror` (answer voice with voice) or `always`; see [Voice](../tools/voice.md#voice-notes-and-spoken-replies-in-chats) |
 | `voice_text` | With voice replies, also send the text (default `true`) |
@@ -56,6 +57,62 @@ What counts as addressed depends on the platform; see the table [below](#what-ea
 | `api_url` | Override the platform's API base URL |
 
 Platforms that need more settings take them in a block named after the type (`email:`, `sms:`, `msteams:` and so on).
+
+## What a chat shows while the agent works
+
+A turn that runs past 8 seconds shows that it is working. `progress` sets how:
+
+| `progress` | The chat shows |
+|---|---|
+| `plain` (default) | One short line in everyday words, edited as the work moves on and removed when the reply arrives |
+| `detailed` | One message with a line per tool step: the tool's name and its command or path. `draft` is the old name for this and still works |
+| `off` | Nothing but the typing indicator, or one "still working" notice |
+
+The plain line never shows a tool name, a command, a path, an id or JSON. It says what kind of work is going on:
+
+| The agent is | The line says |
+|---|---|
+| reading or changing files, or running a command | Looking through your files |
+| searching or reading the web, or using the browser | Checking the web |
+| reading or saving memory | Checking my notes |
+| handing work to another agent or the board | Handing this to Ada (the agent's own name) |
+| setting up a schedule or reminder | Setting that up |
+| using an MCP server | Checking Google Calendar (the server's name) |
+| making an image, a video or speech | Making that |
+| anything else | Working on it |
+
+After about 20 seconds the line also says how long the turn has run: `Working on it… (40s)`, then `(2 min)`. These lines are translated into every [supported language](../get-started/configuration.md).
+
+Only Telegram and Slack can edit a message. On every other platform `plain` and `detailed` show what `off` shows: the typing indicator where there is one, or one "still working" notice after a minute. The terminal, the terminal UI and the dashboard always show each step.
+
+## Approval requests in plain words
+
+When the agent needs your approval in a chat, it says what it wants to do in everyday words, why it is asking, and how to answer:
+
+```text
+I'd like to add a note to decisions.md in your Corner Bakery workspace.
+I'm asking because this conversation included a web page or email, and I check with you before acting on those.
+
+Reply yes or no. Reply details to see the exact command.
+```
+
+- **The first line** comes from the tool call itself, with no model involved, so the same call always reads the same. A shell command is named only when it is one simple step, such as adding to a file, deleting one, `git push` or contacting a website. Anything longer reads as "I'd like to run a command on your computer", so the line never says less than the command does.
+- **The second line** is there when the reason is more than the permission mode: the turn read outside content, the request came from a chat, the tool always asks, or the [reviewer](../agents/approvals.md#approvals) was unsure.
+- **Reply `details`** to see the exact command or call, with secrets removed and long calls cut short. The approval keeps waiting.
+- **`approvals_detail: full`** puts the exact call in every request, in a code block. The local web chat does this by default.
+
+Platforms with buttons show Approve and Deny as well. [Permissions and approvals](../agents/approvals.md#answering-approvals) covers who may answer and what happens across a restart.
+
+## Changing these without a restart
+
+`progress` and `approvals_detail` can be changed while `habakkuk serve` runs. The change applies from the next message, with no restart. Every way below edits `config.yaml` in place: comments stay, and the previous file is kept as `config.yaml.bak`.
+
+- **Dashboard.** The Config page has two controls for each chat channel: "While working, show" and "Approval requests show".
+- **In the chat.** `/progress plain|detailed|off` and `/approvals summary|full` change the channel you are writing in. With no argument they show the current setting. Only the owner can use them.
+- **Terminal.** `habakkuk setup channel NAME -progress plain -approvals-detail summary`. `NAME` is the channel's name under `channels:`, or its type when you have only one of that type.
+- **By hand.** Edit `config.yaml`; `serve` notices within a few seconds.
+
+Every other channel setting still needs a restart, and the log says so.
 
 ## Webhook channels
 
@@ -76,7 +133,7 @@ Adapter state that the platform cannot give back (where a mailbox was read up to
 - **Exactly once where it matters.** A turn's job ID is derived from the platform message ID, so a redelivered message never runs twice. A finished turn enqueues a delivery job with an ID derived from the turn, so a turn that reruns after a crash does not reply twice. A delivery records each chunk it sends, so a retry resumes at the first unsent chunk.
 - **Attachments.** Photos, files and voice notes are downloaded (up to 25 MB), stored as blobs and copied to the agent's `workspace/inbox/` so tools can open them. Images and PDFs also go to the model directly. Voice notes are transcribed through the [`transcription:` provider](../models/speech.md#speech-to-text).
 - **Sending files.** Agents send files with the `send_file` tool, within each platform's limits.
-- **Replies arrive whole.** Text is not streamed into the chat as it is written. A long turn shows progress instead: a draft message edited with each tool step, a typing indicator, or a "still working" notice.
+- **Replies arrive whole.** Text is not streamed into the chat as it is written. A long turn shows progress instead: one short line that changes as the work moves on, a typing indicator, or a "still working" notice. See [above](#what-a-chat-shows-while-the-agent-works).
 - **Supervision.** Every adapter runs under a supervisor that restarts it with backoff and tears down a connection that stays silent past its limit.
 
 [Architecture: channels](../reference/architecture.md#channels) has the details.
@@ -142,4 +199,4 @@ habakkuk send -to CHANNEL:CHAT[:THREAD] [-file PATH] TEXT
 | `nextcloudtalk` | text (shared files named) | text, reactions | no | no | `@Habakkuk` in the text |
 | `twitch` | chat messages | chat messages, threaded replies | no | no | `@login` or `login:` |
 
-Platforms without buttons show approvals as text: reply **yes** or **no**.
+Every platform takes a typed **yes** or **no** for an approval. Platforms with buttons show Approve and Deny too.

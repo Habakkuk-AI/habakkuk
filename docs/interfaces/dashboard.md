@@ -20,11 +20,11 @@ http:
 
 `http://127.0.0.1:8484/app/` is a control dashboard with these pages: overview, chat, sessions, board, schedules, memory, skills, usage, approvals and config. It is plain HTML, CSS and JavaScript embedded in the binary, over the JSON API under `/api/` with the same token ([HTTP API](../reference/api.md)).
 
-- **Overview** starts with a **Get started** panel (hide it once you are done): say hi, turn on a morning brief, teach your agent something. Each one opens Chat with the message ready to send.
+- **Overview** starts with a **Get started** panel on a new install: say hi, turn on a morning brief, teach your agent something. Each one opens Chat with the message ready to send. The panel goes away by itself once the agent has answered a message, or you have a schedule or a second chat channel. Hide removes it sooner.
 - **Empty pages explain themselves.** Chat, Sessions, Schedules, Memory, Skills and the Board each say what belongs there when they are empty and offer a one-click message that fills them.
 - **Chat** shows tool calls live, sends files as attachments and voice recordings for transcription, reads replies aloud through `tts`, and with `realtime:` offers Live mode (see [Voice](../tools/voice.md#live-mode-in-the-dashboard)).
 - **Approvals** waiting in any chat can be answered from the dashboard.
-- **Config** shows the configuration with the values of every secret variable, secret-named field and URL credential redacted.
+- **Config** shows the configuration with the values of every secret variable, secret-named field and URL credential redacted. For each chat channel it has two settings you can change there: what the chat shows while the agent works (a short status line, every step, or nothing) and what approval requests show (a plain summary, or the exact command). Saving edits `config.yaml` in place and applies from the next message, with no restart.
 - A service worker makes it installable as an app.
 
 [Habakkuk Desktop](desktop-app.md) wraps the same dashboard in a native window with notifications.
