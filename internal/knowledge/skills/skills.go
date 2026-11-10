@@ -343,6 +343,11 @@ func (l *Library) SaveContext(ctx context.Context, agent, name, description, bod
 		return s, false, err
 	}
 	dir := filepath.Join(root, name)
+	if _, untrusted := l.Untrusted(Skill{Name: name, Dir: dir}); untrusted {
+		// Writing over it would make another source's skill look like the
+		// agent's own work while it waits for approval.
+		return s, false, fmt.Errorf("skill %q came from outside and waits for the owner's approval (hk skills approve -agent %s %s); save under another name", name, agent, name)
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return s, false, err
 	}

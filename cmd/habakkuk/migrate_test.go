@@ -319,7 +319,7 @@ func TestMigrateClaudeCode(t *testing.T) {
 	}
 	text := out.String()
 	for _, want := range []string{"Found Claude Code at", "Adding the project in " + project, "+ review: shared",
-		"+ orders-db: orders-mcp --read-only (from the project " + project + ")",
+		"+ orders-db: orders-mcp --stdio (from the project " + project + ")",
 		"Set these in", "ANTHROPIC_API_KEY", "Imported 1 agent"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("output lacks %q:\n%s", want, text)

@@ -3,7 +3,7 @@
     "orders-db": {
       "command": "orders-mcp",
       "args": [
-        "--read-only"
+        "--stdio"
       ],
       "env": {
         "ORDERS_DB_URL": "${ORDERS_DB_URL}"

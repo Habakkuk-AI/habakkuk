@@ -248,6 +248,12 @@ type noteMeta struct {
 // index file (MEMORY.md) that only links the others is left out; one that
 // holds the memory itself is split by its sections.
 func (r *codingReader) memoryFiles(root string, tags ...string) error {
+	return r.memoryFrom(root, false, tags...)
+}
+
+// memoryFrom is memoryFiles; with untrusted set the notes are saved as
+// untrusted (Claude Code's auto memory, written from project sessions).
+func (r *codingReader) memoryFrom(root string, untrusted bool, tags ...string) error {
 	var files []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -285,7 +291,10 @@ func (r *codingReader) memoryFiles(root string, tags ...string) error {
 		if title == "" {
 			title = titleOf(body)
 		}
-		r.agent.Notes = append(r.agent.Notes, chunkNote(title, body, tags)...)
+		for _, n := range chunkNote(title, body, tags) {
+			n.Untrusted = untrusted
+			r.agent.Notes = append(r.agent.Notes, n)
+		}
 	}
 	for _, p := range index {
 		text, err := readText(p)
@@ -300,7 +309,10 @@ func (r *codingReader) memoryFiles(root string, tags ...string) error {
 			if title == "" {
 				title = titleOf(s.body)
 			}
-			r.agent.Notes = append(r.agent.Notes, chunkNote(title, s.body, tags)...)
+			for _, n := range chunkNote(title, s.body, tags) {
+				n.Untrusted = untrusted
+				r.agent.Notes = append(r.agent.Notes, n)
+			}
 		}
 	}
 	return nil
@@ -382,7 +394,10 @@ func readClaudeCode(dir string, o Options) (*Found, error) {
 	mems, _ := filepath.Glob(filepath.Join(dir, "projects", "*", "memory"))
 	slices.Sort(mems)
 	for _, m := range mems {
-		if err := r.memoryFiles(m, "claude-code"); err != nil {
+		// Claude Code wrote these itself while working in a project, from
+		// whatever that project held: they come in untrusted, like the
+		// project's CLAUDE.md.
+		if err := r.memoryFrom(m, true, "claude-code"); err != nil {
 			return nil, err
 		}
 	}

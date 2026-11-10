@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -158,7 +159,25 @@ func listSkills(cfg *config.Config, lib *skills.Library, args []string) error {
 	if err != nil {
 		return err
 	}
+	own, err := hub.ReadLock(filepath.Join(lib.AgentDir(name), hub.LockName))
+	if err != nil {
+		return err
+	}
+	var held []string
+	for _, skill := range slices.Sorted(maps.Keys(own.Packages)) {
+		e := own.Packages[skill]
+		s := skills.Skill{Name: skill, Dir: filepath.Join(lib.AgentDir(name), skill)}
+		if !e.Trusted && lib.Disabled(s) {
+			held = append(held, fmt.Sprintf("%-24s agent   disabled: from %s, needs your approval (hk skills approve -agent %s %s)", skill, e.Source, name, skill))
+		}
+	}
 	if len(list) == 0 {
+		for _, l := range held {
+			fmt.Println(l)
+		}
+		if len(held) > 0 {
+			return nil
+		}
 		fmt.Printf("no skills for agent %s; add folders with a SKILL.md under %s or %s, or hk skills install SOURCE\n", name, lib.SharedDir(), lib.AgentDir(name))
 		return nil
 	}
@@ -190,15 +209,8 @@ func listSkills(cfg *config.Config, lib *skills.Library, args []string) error {
 			fmt.Printf("%-24s shared  disabled: ships scripts and is not approved (hk skills approve %s)\n", name, name)
 		}
 	}
-	own, err := hub.ReadLock(filepath.Join(lib.AgentDir(name), hub.LockName))
-	if err != nil {
-		return err
-	}
-	for skill, e := range own.Packages {
-		s := skills.Skill{Name: skill, Dir: filepath.Join(lib.AgentDir(name), skill)}
-		if !e.Trusted && lib.Disabled(s) {
-			fmt.Printf("%-24s agent   disabled: from %s, needs your approval (hk skills approve -agent %s %s)\n", skill, e.Source, name, skill)
-		}
+	for _, l := range held {
+		fmt.Println(l)
 	}
 	return nil
 }

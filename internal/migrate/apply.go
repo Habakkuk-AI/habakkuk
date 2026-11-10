@@ -309,25 +309,25 @@ func (p *Plan) copySkill(it *Item) error {
 			return err
 		}
 	}
-	if err := os.Rename(staged, dest); err != nil {
-		return err
-	}
 	if it.skill.Held {
-		// Recorded in the agent's skills lock as not approved and held, so
-		// it does not load until the owner approves it.
+		// Recorded in the agent's skills lock as not approved and held
+		// before it is moved into place, so it never loads, even for a
+		// moment, until the owner approves it.
 		path := filepath.Join(parent, hub.LockName)
 		lock, err := hub.ReadLock(path)
 		if err != nil {
 			return err
 		}
-		sum, err := treeHash(dest, nil)
+		sum, err := treeHash(staged, nil)
 		if err != nil {
 			return err
 		}
 		lock.Packages[it.skill.Name] = &hub.Entry{Source: it.skill.Source, SHA256: sum, Installed: time.Now().UTC(), Held: true}
-		return lock.Write(path)
+		if err := lock.Write(path); err != nil {
+			return err
+		}
 	}
-	return nil
+	return os.Rename(staged, dest)
 }
 
 // applySchedules creates the schedules, each paused.

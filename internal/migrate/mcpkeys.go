@@ -10,53 +10,56 @@ import (
 
 // MCP servers and keys. A server's command line, URL and headers can hold
 // a key in more ways than any check can tell apart from ordinary values, so
-// the import does not guess. A remote server (one with a URL) is never
-// copied as it is. A local server is copied as it is only when:
+// the import does not judge words by their shape. A remote server (one with
+// a URL) is never copied as it is. A local server is copied as it is only
+// when its command is a bare program name or a plain path, and its
+// arguments, apart from plain paths and variable references, are one of:
 //
-//   - its command is a bare program name, or a plain path;
-//   - each argument is the package a runner starts (the first word after
-//     npx, uvx, bunx, pipx run and the like), a flag such as "-y" or
-//     "--stdio" with nothing attached, a plain path, or a variable
-//     reference (${NAME}, or --flag=${NAME}).
+//   - a runner and one package: npx, uvx or bunx, or pipx run or uv tool
+//     run, followed by one package name such as @scope/server@1.2 (a
+//     version starts with a digit, or is latest or next);
+//   - nothing at all, for a program that is not a runner;
 //
-// A plain path is absolute (or starts with "~/"), has no spaces, "@" or
-// ":", and either exists or lies in the source home (a file the old agent
-// kept, which the files copy may bring along).
+// with, anywhere, only these flags, which take no value: -y, --yes, -q,
+// --quiet, --stdio. Any other flag, and the word after it, makes the
+// server one whose values only .env may keep.
 //
-// A variable reference stays a reference: config.yaml keeps ${NAME}, and
-// the variable's value moves the way keys do (a ${NAME:-default} keeps the
-// default as the value when the source has none). Anything else is a value
-// only .env may keep. It moves into a variable of its own
-// (MCP_<NAME>_COMMAND, MCP_<NAME>_ARG<n>, MCP_<NAME>_URL for the whole
-// address, MCP_<NAME>_HEADER_<n>) that config.yaml names as ${...}, and the
-// server is marked Keyed: the plan imports it only when the keys are copied
+// A plain path is absolute (or starts with "~/"), has no spaces, line
+// breaks, "@" or ":", and exists on this computer. A variable reference
+// is an argument that is ${NAME} (or ${NAME:-default}), a flag set to one
+// (--token=${NAME}), or any flag followed by one: it holds no value, so
+// config.yaml keeps ${NAME}, and the variable's value moves the way keys do
+// (the default when the source has none).
+//
+// Everything else moves into a variable of its own (MCP_<NAME>_COMMAND,
+// MCP_<NAME>_ARG<n>, MCP_<NAME>_URL for the whole address,
+// MCP_<NAME>_HEADER_<n>) that config.yaml names as ${...}, and the server
+// is marked Keyed: the plan imports it only when the keys are copied
 // (--secrets copy), and leaves it out otherwise. A header that is a
 // variable reference ("${NAME}", or "Bearer ${NAME}" and the like) stays a
 // reference. An env value was always a variable; a literal one moves into
 // .env with the other keys.
 
 var (
-	reFlag     = regexp.MustCompile(`^--?[a-z][a-z0-9-]*$`)
-	reProgram  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	rePackage  = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@[A-Za-z0-9._-]+)?$`)
-	reArgRef   = regexp.MustCompile(`^(--?[a-z][a-z0-9-]*=)?\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
-	reHeader   = regexp.MustCompile(`^((Bearer|Basic|Token)\s+)?\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
-	pkgRunners = []string{"npx", "bunx", "pnpx", "uvx"}
-	subRunners = map[string][]string{"pipx": {"run"}, "pnpm": {"dlx"}, "yarn": {"dlx"}, "npm": {"exec"}, "uv": {"tool", "run"}, "bun": {"x"}}
+	reProgram    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	rePackage    = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|next|[0-9][0-9a-z.+-]*))?$`)
+	reRefOnly    = regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
+	reFlagRef    = regexp.MustCompile(`^(--?[A-Za-z][A-Za-z0-9_-]*=)\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
+	reHeader     = regexp.MustCompile(`^((Bearer|Basic|Token)\s+)?\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
+	plainFlags   = []string{"-y", "--yes", "-q", "--quiet", "--stdio"}
+	pkgRunners   = []string{"npx", "uvx", "bunx"}
+	runnerSubcmd = map[string][]string{"pipx": {"run"}, "uv": {"tool", "run"}}
 )
 
 // plainPath reports a plain path (see above).
 func (f *Found) plainPath(p string) bool {
-	if strings.ContainsAny(p, " \t@:") {
+	if strings.ContainsAny(p, " \t\r\n@:") {
 		return false
 	}
 	if rest, ok := strings.CutPrefix(p, "~/"); ok && f.userHome != "" {
 		p = filepath.Join(f.userHome, rest)
 	}
-	if !filepath.IsAbs(p) || filepath.Clean(p) != strings.TrimSuffix(p, "/") && filepath.Clean(p) != p {
-		return false
-	}
-	return exists(p) || f.Dir != "" && under(f.Dir, p)
+	return filepath.IsAbs(p) && exists(p)
 }
 
 // plainCommand reports a bare program name or a plain path.
@@ -69,22 +72,35 @@ const (
 	argKeyed // anything else: moves into a variable
 )
 
-// argKinds sorts a local server's arguments.
+// argKinds sorts a local server's arguments (see above).
 func (f *Found) argKinds(command string, args []string) []int {
 	base := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(filepath.Base(command), ".exe"), ".cmd"))
+	sub := runnerSubcmd[base]
 	wantPkg := slices.Contains(pkgRunners, base)
-	subs := subRunners[base]
-	out := make([]int, len(args))
 	pkgSeen := false
-	for i, a := range args {
+	out := make([]int, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch {
-		case reArgRef.MatchString(a):
+		case reRefOnly.MatchString(a) || reFlagRef.MatchString(a):
 			out[i] = argRef
-		case reFlag.MatchString(a):
+		case slices.Contains(plainFlags, a):
 			out[i] = argPlain
-		case !pkgSeen && !wantPkg && slices.Contains(subs, a):
+		case strings.HasPrefix(a, "-"):
+			// Any other flag: plain only when a variable follows it.
+			if i+1 < len(args) && reRefOnly.MatchString(args[i+1]) {
+				out[i], out[i+1] = argPlain, argRef
+				i++
+				continue
+			}
+			out[i] = argKeyed
+			if i+1 < len(args) && !slices.Contains(plainFlags, args[i+1]) && !reRefOnly.MatchString(args[i+1]) {
+				out[i+1] = argKeyed // its value, whatever it looks like
+				i++
+			}
+		case len(sub) > 0 && !pkgSeen && a == sub[0]:
 			out[i] = argPlain
-			if a != "tool" {
+			if sub = sub[1:]; len(sub) == 0 {
 				wantPkg = true
 			}
 		case wantPkg && !pkgSeen && rePackage.MatchString(a):
@@ -122,6 +138,20 @@ func (f *Found) readMCP(raw string, m map[string]any, env map[string]string, use
 		f.skip("MCP server %s: it uses the older SSE transport, which Habakkuk does not speak; if the server also offers Streamable HTTP (often at /mcp), add that URL to mcp_servers in config.yaml", raw)
 		return nil
 	}
+	// .env holds one line per value: a server with a line break in any of
+	// its values cannot be kept there.
+	values := append([]string{s.Command, s.URL}, s.Args...)
+	for _, k := range []string{"env", "headers"} {
+		if mm, _ := m[k].(map[string]any); mm != nil {
+			for _, v := range mm {
+				values = append(values, fmt.Sprint(v))
+			}
+		}
+	}
+	if slices.ContainsFunc(values, func(v string) bool { return strings.ContainsAny(v, "\r\n") }) {
+		f.skip("MCP server %s: one of its values has a line break, which .env cannot hold; add it to mcp_servers in config.yaml yourself", raw)
+		return nil
+	}
 	prefix := "MCP_" + envSuffix(name) + "_"
 	keyed := func(variable, value string) string {
 		s.Keyed = append(s.Keyed, variable)
@@ -145,9 +175,13 @@ func (f *Found) readMCP(raw string, m map[string]any, env map[string]string, use
 		for i, kind := range f.argKinds(s.Command, s.Args) {
 			switch kind {
 			case argRef:
-				sub := reArgRef.FindStringSubmatch(s.Args[i])
-				reference(sub[2], sub[4])
-				s.Args[i] = sub[1] + "${" + sub[2] + "}"
+				if sub := reRefOnly.FindStringSubmatch(s.Args[i]); sub != nil {
+					reference(sub[1], sub[3])
+					s.Args[i] = "${" + sub[1] + "}"
+				} else if sub := reFlagRef.FindStringSubmatch(s.Args[i]); sub != nil {
+					reference(sub[2], sub[4])
+					s.Args[i] = sub[1] + "${" + sub[2] + "}"
+				}
 			case argKeyed:
 				s.Args[i] = keyed(fmt.Sprintf("%sARG%d", prefix, i+1), s.Args[i])
 			}
@@ -164,9 +198,9 @@ func (f *Found) readMCP(raw string, m map[string]any, env map[string]string, use
 		s.Env = map[string]string{}
 		for _, k := range sortedKeys(envs) {
 			v := fmt.Sprint(envs[k])
-			if sub := reArgRef.FindStringSubmatch(strings.TrimSpace(v)); sub != nil && sub[1] == "" {
-				reference(sub[2], sub[4])
-				s.Env[k] = sub[2]
+			if sub := reRefOnly.FindStringSubmatch(strings.TrimSpace(v)); sub != nil {
+				reference(sub[1], sub[3])
+				s.Env[k] = sub[1]
 				continue
 			}
 			if ref, ok := refOnly(v); ok {

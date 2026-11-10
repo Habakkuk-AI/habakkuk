@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -325,6 +326,10 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 			author = "a scheduled task of the old agent"
 		case "subagent", "kanban", "curator", "tool", "delegate":
 			author = "the old agent itself"
+		case "bot_room":
+			author = "another bot in a shared room"
+		case "a2a":
+			author = "a remote agent"
 		}
 		f.conversation(a, &Conversation{
 			ID: a.From + "/" + id, Title: title, Started: unixTime(started), Platform: src, Chat: chat, Thread: thread,
@@ -333,26 +338,36 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 			load: func() ([]session.ImportedMessage, bool, error) {
 				seen := map[string]bool{}
 				// Turns a compaction carried into this session from the one it
-				// continues are imported with that one.
-				if uid != "''" {
-					var chain []any
-					for p, n := parents[sid], 0; p != "" && n < 50; p, n = parents[p], n+1 {
-						chain = append(chain, p)
+				// continues are imported with that one. Without message_uid
+				// or display_order, a carried turn is known by its role, text
+				// and time, which the copy keeps.
+				byContent := !mc["message_uid"] && !mc["display_order"]
+				var chain []any
+				for p, n := parents[sid], 0; p != "" && n < 50; p, n = parents[p], n+1 {
+					chain = append(chain, p)
+				}
+				if len(chain) > 0 && (uid != "''" || byContent) {
+					q := `SELECT '', '', 0, message_uid FROM messages WHERE message_uid IS NOT NULL AND session_id IN (?`
+					if byContent {
+						q = `SELECT role, COALESCE(content, ''), ` + ts + `, '' FROM messages WHERE session_id IN (?`
 					}
-					if len(chain) > 0 {
-						urows, err := db.Query(`SELECT message_uid FROM messages WHERE message_uid IS NOT NULL AND session_id IN (?`+
-							strings.Repeat(", ?", len(chain)-1)+`)`, chain...)
-						if err != nil {
-							return nil, false, err
-						}
-						for urows.Next() {
-							var u string
-							if urows.Scan(&u) == nil {
-								seen["u"+u] = true
-							}
-						}
-						urows.Close()
+					urows, err := db.Query(q+strings.Repeat(", ?", len(chain)-1)+`)`, chain...)
+					if err != nil {
+						return nil, false, err
 					}
+					for urows.Next() {
+						var role, content, u string
+						var at float64
+						if urows.Scan(&role, &content, &at, &u) != nil {
+							continue
+						}
+						if byContent {
+							seen[contentKey(role, content, at)] = true
+						} else {
+							seen["u"+u] = true
+						}
+					}
+					urows.Close()
 				}
 				rows, err := db.Query(`SELECT role, content, `+ts+`, `+key+`, `+uid+` FROM messages WHERE session_id = ? AND `+shown+` ORDER BY `+order, sid)
 				if err != nil {
@@ -365,6 +380,9 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 					var at float64
 					if err := rows.Scan(&role, &content, &at, &k, &u); err != nil {
 						return nil, false, err
+					}
+					if byContent {
+						k = contentKey(role, content, at)
 					}
 					if seen[k] || u != "" && seen["u"+u] {
 						continue // a copy of a row already read
@@ -384,6 +402,12 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 	if err := rows.Err(); err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 	}
+}
+
+// contentKey names a message by its role, text and time: what a
+// compaction's copy of a turn keeps.
+func contentKey(role, content string, at float64) string {
+	return "c" + role + "\x00" + content + "\x00" + strconv.FormatFloat(at, 'f', -1, 64)
 }
 
 // summaryText reports a compaction summary written as a user message.
@@ -909,8 +933,17 @@ func stripInbound(text string) (string, bool) {
 	}
 	stamp := reStamp.FindString(t)
 	t = strings.TrimPrefix(t, stamp)
-	if !strings.ContainsFunc(t, func(r rune) bool { return r == '⟦' }) && !strings.Contains(t, "ntrusted") &&
-		!strings.Contains(t, "Current message:") && !strings.Contains(t, "Conversation context") && !strings.Contains(t, "chat history") {
+	// The older envelope: the chat since the last reply under one bracketed
+	// marker, then the message itself under another.
+	if i := strings.Index(t, currentMarker); i >= 0 {
+		return strings.TrimSpace(t[i+len(currentMarker):]), true
+	}
+	if strings.Contains(t, historyMarker) {
+		return "", true // the history with no marked message after it
+	}
+	low := strings.ToLower(t)
+	if !strings.ContainsRune(t, '⟦') && !strings.Contains(low, "untrusted") && !strings.Contains(low, "current message") &&
+		!strings.Contains(low, "conversation context") && !strings.Contains(low, "chat history") && !strings.Contains(low, "chat messages") {
 		return text, false
 	}
 	paras := strings.Split(t, "\n\n")
@@ -958,6 +991,12 @@ func stripInbound(text string) (string, bool) {
 	}
 	return strings.TrimSpace(strings.Join(rest, "\n\n")), found
 }
+
+// The older envelope's markers.
+const (
+	historyMarker = "[Chat messages since your last reply - for context]"
+	currentMarker = "[Current message - respond to this]"
+)
 
 // reChatLine is a chat window entry: "#<id> <time> <sender>: <body>", or
 // an older "[sender] body" line.

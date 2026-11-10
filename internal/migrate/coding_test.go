@@ -56,6 +56,11 @@ func TestReadClaudeCode(t *testing.T) {
 	if got, want := noteTitles(a), []string{"Oven schedule", "Short answers"}; !slices.Equal(got, want) {
 		t.Errorf("notes = %v, want %v (the MEMORY.md index is left out)", got, want)
 	}
+	for _, n := range a.Notes {
+		if !n.Untrusted {
+			t.Errorf("note %q is trusted; Claude Code's project memory comes in untrusted", n.Title)
+		}
+	}
 	if got := names(f.MCP, func(m *MCPServer) string { return m.Name }); !slices.Equal(got, []string{"calendar", "db-cli", "github", "search", "tracker", "warehouse"}) {
 		t.Errorf("mcp = %v", got)
 	}
@@ -206,7 +211,7 @@ func TestReadClaudeCodeProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if it := item(p, "mcp", "orders-db"); it == nil || it.Detail != "orders-mcp --read-only (from the project "+project+")" {
+	if it := item(p, "mcp", "orders-db"); it == nil || it.Detail != "orders-mcp --stdio (from the project "+project+")" {
 		t.Errorf("orders-db = %+v", it)
 	}
 	if it := item(p, "skill", "deploy-check"); it == nil || !strings.Contains(it.Detail, "needs your approval before it loads: hk skills approve -agent habakkuk deploy-check") {
@@ -472,20 +477,39 @@ func TestArgKinds(t *testing.T) {
 		want    string // p plain, r reference, k keyed
 	}{
 		{"npx", []string{"-y", "@modelcontextprotocol/server-github"}, "pp"},
-		{"uvx", []string{"mcp-server-time", "--local-timezone"}, "pp"},
+		{"npx", []string{"--yes", "@scope/server@1.2.3", "--stdio"}, "ppp"},
+		{"uvx", []string{"mcp-server-time"}, "p"},
 		{"pipx", []string{"run", "mcp-server-fetch"}, "pp"},
+		{"uv", []string{"tool", "run", "mcp-server-fetch"}, "ppp"},
+		{"uvx", []string{"mcp-server-time", "--local-timezone"}, "pk"},
 		{"npx", []string{"-y", "pkg", "8f14e45f-ceea-467a-9575-0b6b5c4e7a91"}, "ppk"},
 		{"npx", []string{"-y", "Secret-Value-Pkg1010"}, "pk"},
-		{"pkg", []string{"-k", "shortsecretvalue94"}, "pk"},
+		{"npx", []string{"-y", "pkg@SkLiveM6SecretValue"}, "pk"},
+		{"npx", []string{"-y", "pkg", "m15secondsecretword"}, "ppk"},
+		{"npx", []string{"--registry-token", "3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c", "-y", "real-pkg"}, "kkpp"},
+		{"pipx", []string{"run", "--spec", "pipxsecretm4value", "pkg"}, "pkkp"},
+		{"uv", []string{"tool", "run", "--from", "uvfromsecretm5", "pkg"}, "ppkkp"},
+		{"uv", []string{"tool", "m17uvtoolsecret"}, "pk"},
+		{"yarn", []string{"dlx", "m16yarnsecretword"}, "kk"},
+		{"pkg", []string{"-k", "shortsecretvalue94"}, "kk"},
 		{"pkg", []string{"--key=k1515value"}, "k"},
 		{"mysqlmcp", []string{"-pHunter2SecretPw"}, "k"},
-		{"tool", []string{"--token", "-xNegativeLooking77"}, "pk"},
+		{"mysqlmcp", []string{"-phunter2secretpwm2"}, "k"},
+		{"tool", []string{"--token", "-xNegativeLooking77"}, "kk"},
+		{"tool", []string{"--token", "-xnegativelookingm3"}, "kk"},
+		{"tool", []string{"--tokenm14lowersecret"}, "k"},
+		{"tool", []string{"$M12_SECRET"}, "k"},
 		{"tool", []string{"//user:dslashpw55@host/x"}, "k"},
 		{"node", []string{"/srv/server.js --api-key pathspacesecret44"}, "k"},
+		{"node", []string{"~/m11tildesecretvalue"}, "k"},
+		{"node", []string{abs + "/a\nm20nlsecret"}, "k"},
+		{"node", []string{abs + "/m10nosuchfile"}, "k"},
 		{"pkg", []string{"sbp_0123456789abcdef0123456789abcdef01234598"}, "k"},
 		{"env", []string{"TOKEN=plainsecret99", "node", "server.js"}, "kkk"},
 		{"node", []string{abs, "/no/such/file.js"}, "pk"},
+		{"github-mcp-server", []string{"--stdio"}, "p"},
 		{"npx", []string{"-y", "pkg", "--token", "${NOTION_TOKEN}", "--key=${K:-x}"}, "ppprr"},
+		{"tool", []string{"--api-key=${M7_KEY:-m7defaultsecret}"}, "r"},
 	} {
 		var got strings.Builder
 		for _, k := range (&Found{}).argKinds(c.command, c.args) {
@@ -536,13 +560,23 @@ var verifyServers = map[string]map[string]any{
 	"n11-seg24":            {"url": "https://m.example/sk-proj-abcdefghijklmnop/mcp"},
 	"r1-argref":            {"command": "npx", "args": []any{"-y", "pkg", "--token", "${NOTION_TOKEN}"}},
 	"r2-urlref":            {"url": "https://q.example/mcp?key=${WEATHER_API_KEY}"},
+	"m1-flag-hex":          {"command": "npx", "args": []any{"--registry-token", "3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c", "-y", "real-pkg"}},
+	"m6-ver-secret":        {"command": "npx", "args": []any{"-y", "pkg@SkLiveM6SecretValue"}},
+	"m7-ref-default":       {"command": "tool", "args": []any{"--api-key=${M7_KEY:-m7defaultsecret}"}},
+	"m8-env-ref-default":   {"command": "tool", "env": map[string]any{"TOKEN": "${M8_TOK:-m8envdefaultsecret}"}},
+	"m9-hdr-default":       {"url": "https://m9.example/mcp", "headers": map[string]any{"Authorization": "Bearer ${M9_TOK:-m9hdrdefaultsecret}"}},
+	"m13-cmd-ref":          {"command": "${M13_CMD:-m13cmdsecret}"},
+	"m18-baseurl":          {"baseUrl": "https://m18.example/mcp?key=m18baseurlsecret"},
+	"m19-env-mixed":        {"command": "tool", "env": map[string]any{"DSN": "postgres://u:m19dsnsecret@h/db"}},
 }
 
 var verifySecrets = []string{"8f14e45f-ceea-467a-9575-0b6b5c4e7a91", "8f14e45f-ceea-467a-9575-0b6b5c4e7a92", "8f14e45f-ceea-467a-9575-0b6b5c4e7a93",
 	"shortsecretvalue94", "abcdefgh12345695", "literalvalue97xyz", "sbp_0123456789abcdef0123456789abcdef01234598", "plainsecret99",
 	"hdrliteral1010", "mixedliteral1111", "pw1313xx", "AbCdEfGh1234IjKlMnOp5678QrStUv90", "k1515value", "frag1616value",
 	"kHqTrWbZxLmNpQsVyEaJdF", "Hunter2SecretPw", "cmdspacesecret33", "pathspacesecret44", "dslashpw55", "defaultsecret66",
-	"NegativeLooking77", "tok88abcdefghij", "envtmplsecret99", "Secret-Value-Pkg1010", "sk-proj-abcdefghijklmnop"}
+	"NegativeLooking77", "tok88abcdefghij", "envtmplsecret99", "Secret-Value-Pkg1010", "sk-proj-abcdefghijklmnop",
+	"3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c", "SkLiveM6SecretValue", "m7defaultsecret", "m8envdefaultsecret", "m9hdrdefaultsecret",
+	"m13cmdsecret", "m18baseurlsecret", "m19dsnsecret"}
 
 // configText is what config.yaml would hold for a server.
 func configText(m *MCPServer) string {
@@ -554,7 +588,8 @@ func TestReadMCPKeyed(t *testing.T) {
 	env := map[string]string{"USERNAME": "sam", "NOTION_TOKEN": "ntn-from-env", "WEATHER_API_KEY": "wx-from-env"}
 	// Only local servers made of plain parts and references stay as they
 	// are; every remote server and every other value is keyed.
-	plain := map[string]bool{"s7-env-literal": true, "n9-env-template": true, "r1-argref": true}
+	plain := map[string]bool{"s7-env-literal": true, "n9-env-template": true, "r1-argref": true, "m7-ref-default": true,
+		"m8-env-ref-default": true, "m19-env-mixed": true}
 	got := map[string]*MCPServer{}
 	for _, raw := range sortedKeys(verifyServers) {
 		s := f.readMCP(raw, verifyServers[raw], env, map[string]bool{})
@@ -572,7 +607,7 @@ func TestReadMCPKeyed(t *testing.T) {
 			}
 		}
 	}
-	if s := got["s4-short-flag"]; !slices.Equal(s.Args, []string{"-k", "${MCP_S4_SHORT_FLAG_ARG2}"}) || f.Secrets["MCP_S4_SHORT_FLAG_ARG2"] != "shortsecretvalue94" {
+	if s := got["s4-short-flag"]; !slices.Equal(s.Args, []string{"${MCP_S4_SHORT_FLAG_ARG1}", "${MCP_S4_SHORT_FLAG_ARG2}"}) || f.Secrets["MCP_S4_SHORT_FLAG_ARG2"] != "shortsecretvalue94" {
 		t.Errorf("s4 = %+v", s)
 	}
 	if s := got["s17-streamable"]; s.URL != "${MCP_S17_STREAMABLE_URL}" || f.Secrets["MCP_S17_STREAMABLE_URL"] != "https://ok.example/mcp" {
@@ -603,6 +638,10 @@ func TestReadMCPKeyed(t *testing.T) {
 	}
 	if s := got["n9-env-template"]; s.Env["AUTH"] != "AUTH" || f.Secrets["AUTH"] != "Bearer envtmplsecret99" {
 		t.Errorf("n9 = %+v", s)
+	}
+	// .env holds one line per value.
+	if s := f.readMCP("m20", map[string]any{"command": "node", "args": []any{"/a\nm20nlsecret"}}, env, map[string]bool{}); s != nil {
+		t.Errorf("a server with a line break in a value = %+v", s)
 	}
 }
 

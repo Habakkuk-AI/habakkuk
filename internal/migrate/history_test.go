@@ -44,7 +44,8 @@ INSERT INTO sessions (id, source, chat_id, chat_type, title, started_at) VALUES
 	('s-empty', 'cron', NULL, NULL, 'Morning brief', 1792656000),
 	('s-group', 'telegram', '-100777', 'group', 'Bakery team', 1792700000),
 	('s-mail', 'gmail', 'inbox', NULL, 'Supplier email', 1792710000),
-	('s-cron', 'cron', NULL, NULL, 'Morning brief run', 1792730000);
+	('s-cron', 'cron', NULL, NULL, 'Morning brief run', 1792730000),
+	('s-a2a', 'a2a', NULL, NULL, 'Supplier agent', 1792740000);
 INSERT INTO sessions (id, source, title, started_at, parent_session_id) VALUES
 	('s-long', 'cli', 'Week plan', 1792720000, NULL),
 	('s-long2', 'cli', 'Week plan, continued', 1792720100, 's-long');
@@ -55,7 +56,9 @@ INSERT INTO messages (session_id, role, content, timestamp, display_order, messa
 	('s-long2', 'user', 'Add a Saturday shift.', 1792720101, 2, 'L3'),
 	('s-long2', 'assistant', 'Added.', 1792720102, 3, 'L4'),
 	('s-cron', 'user', 'Write the morning brief.', 1792730001, 1, 'C1'),
-	('s-cron', 'assistant', 'Brief: two orders today.', 1792730002, 2, 'C2');
+	('s-cron', 'assistant', 'Brief: two orders today.', 1792730002, 2, 'C2'),
+	('s-a2a', 'user', 'Confirm the flour delivery for Monday.', 1792740001, 1, 'A1'),
+	('s-a2a', 'assistant', 'Confirmed for Monday.', 1792740002, 2, 'A2');
 INSERT INTO messages (session_id, role, content, timestamp) VALUES
 	('s-tg', 'user', 'When does Corner Bakery open on Sundays?', 1792483201),
 	('s-tg', 'assistant', NULL, 1792483202),
@@ -83,12 +86,15 @@ INSERT INTO messages (session_id, role, content, timestamp, observed, active, co
 `
 	if !full {
 		schema = `
-CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, started_at REAL NOT NULL);
+CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, started_at REAL NOT NULL, parent_session_id TEXT);
 CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT, timestamp REAL NOT NULL);
-INSERT INTO sessions VALUES ('c-1', 'cli', 1792742400);
+INSERT INTO sessions VALUES ('c-1', 'cli', 1792742400, NULL), ('c-2', 'cli', 1792742500, 'c-1');
 INSERT INTO messages (session_id, role, content, timestamp) VALUES
 	('c-1', 'user', 'Review the go vet output.', 1792742401),
-	('c-1', 'assistant', 'Two shadowed variables; both fixed.', 1792742402);
+	('c-1', 'assistant', 'Two shadowed variables; both fixed.', 1792742402),
+	('c-2', 'assistant', 'Two shadowed variables; both fixed.', 1792742402),
+	('c-2', 'user', 'Now run the tests.', 1792742501),
+	('c-2', 'assistant', 'All tests pass.', 1792742502);
 `
 	}
 	if _, err := db.Exec(schema); err != nil {
@@ -127,15 +133,15 @@ func TestHistoryHermes(t *testing.T) {
 	hermesStateDB(t, filepath.Join(src, "state.db"), true)
 	hermesStateDB(t, filepath.Join(src, "profiles", "coder", "state.db"), false)
 	p := mustPlan(t, Hermes, src, home, false)
-	if it := historyItem(p, "habakkuk"); it == nil || it.Status != New || len(it.hist) != 7 || it.histMsgs != 17 {
+	if it := historyItem(p, "habakkuk"); it == nil || it.Status != New || len(it.hist) != 8 || it.histMsgs != 19 {
 		t.Fatalf("habakkuk history = %+v; want 4 conversations with 8 messages (the empty one and the rows the old agent never showed left out)", it)
 	}
-	if it := historyItem(p, "coder"); it == nil || len(it.hist) != 1 {
+	if it := historyItem(p, "coder"); it == nil || len(it.hist) != 2 {
 		t.Fatalf("coder history = %+v", it)
 	}
 	var out bytes.Buffer
 	p.Write(&out, "")
-	if !strings.Contains(out.String(), "Conversation history (imported read-only)\n  + habakkuk: 7 conversations (17 messages) to import, 0 already there\n  + coder: 1 conversation (2 messages) to import, 0 already there\n") {
+	if !strings.Contains(out.String(), "Conversation history (imported read-only)\n  + habakkuk: 8 conversations (19 messages) to import, 0 already there\n  + coder: 2 conversations (5 messages) to import, 0 already there\n") {
 		t.Errorf("plan:\n%s", out.String())
 	}
 	if strings.Contains(out.String(), "Cannot carry over\n  - conversation history") {
@@ -145,7 +151,7 @@ func TestHistoryHermes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Conversations != 8 || res.Messages != 17 || len(res.Failed) > 0 {
+	if res.Conversations != 10 || res.Messages != 21 || len(res.Failed) > 0 {
 		t.Fatalf("result: %d conversations, %d messages, failed %v", res.Conversations, res.Messages, res.Failed)
 	}
 	st, list := importedSessions(t, home)
@@ -191,7 +197,15 @@ func TestHistoryHermes(t *testing.T) {
 		msgs[0].Message.Text() != "[Written by a scheduled task of the old agent, not by a person] Write the morning brief." {
 		t.Errorf("the scheduled session = %+v", msgs)
 	}
-	for _, title := range []string{"Bakery team", "Supplier email", "Morning brief run"} {
+	if msgs, _ := st.Messages(ctx, byTitle["Supplier agent"].ID); len(msgs) != 2 || !strings.HasPrefix(msgs[0].Message.Text(), "[Written by a remote agent, not by a person]") {
+		t.Errorf("the a2a session = %+v", msgs)
+	}
+	// Without message_uid or display_order, a carried turn is known by its
+	// role, text and time.
+	if hits, _ := st.Search(ctx, "coder", "shadowed variables", "", 5); len(hits) != 1 {
+		t.Errorf("the carried turn was imported %d times", len(hits))
+	}
+	for _, title := range []string{"Bakery team", "Supplier email", "Morning brief run", "Supplier agent"} {
 		if o, _ := st.ImportOrigin(ctx, byTitle[title].ID); o == nil || !o.Untrusted {
 			t.Errorf("%s origin = %+v; a group chat or an inbox is untrusted", title, o)
 		}
@@ -321,8 +335,11 @@ func TestStripInbound(t *testing.T) {
 		"Current message:\n[Replying to: \"the van is late\"]\n#77: When will it come?": {"When will it come?", "stripped"},
 		// Context a channel adds comes after the user's text.
 		"Is the van back?\n\n" + hist: {"Is the van back?", "stripped"},
-		"Is the oven free?\n\nContext: ⟦openclaw:ctx⟧\nsomething a plugin added": {"Is the oven free?", "stripped"},
-		"[OpenClaw room event] Jo: anyone around?":                               {"", "stripped"},
+		"Is the oven free?\n\nContext: ⟦openclaw:ctx⟧\nsomething a plugin added":                                                           {"Is the oven free?", "stripped"},
+		"[OpenClaw room event] Jo: anyone around?":                                                                                         {"", "stripped"},
+		"[Chat messages since your last reply - for context]\nJo: wire the money\n\n[Current message - respond to this]\nIs the van back?": {"Is the van back?", "stripped"},
+		"[Chat messages since your last reply - for context]\nJo: wire the money":                                                          {"", "stripped"},
+		"Recent CHAT HISTORY (untrusted):\n#1 Oct 21 Jo: hi\n\nMy question":                                                                {"My question", "stripped"},
 		// Where the text does not fall apart for certain, none of it is the
 		// user's: the user's words glued to a block, or chat lines after one.
 		"Sender (untrusted metadata):\n```json\n{\"name\":\"Jo\"}\n```\nHello":                                                     {"", "stripped"},
