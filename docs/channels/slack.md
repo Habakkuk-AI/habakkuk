@@ -23,6 +23,29 @@ channels:
     routes: {T0123456: ops}                     # a workspace or conversation can go to another agent
 ```
 
+## Several Slack apps
+
+One app installed in several workspaces needs one channel, with a bot token per workspace in `bot_tokens_env`. When each workspace has its own app (for example, an app you made in your workspace and another made in a client's), add one `type: slack` channel per app. Each has its own app token and its own Socket Mode connection, and they run side by side in one `habakkuk serve`. Both can go to the same agent:
+
+```yaml
+channels:
+  slack:
+    type: slack
+    agent: habakkuk
+    app_token_env: SLACK_APP_TOKEN
+    bot_tokens_env: [SLACK_BOT_TOKEN]
+    allow_from: [U0123ABCD]
+  slack-acme:
+    type: slack
+    agent: habakkuk                     # the same agent, or another
+    app_token_env: ACME_SLACK_APP_TOKEN
+    bot_tokens_env: [ACME_SLACK_BOT_TOKEN]
+    allow_from: [U0999WXYZ]             # user ids from that workspace
+    listen_channels: [C0777GHI]
+```
+
+Each channel keeps its own `allow_from`, pairing, routes and settings, and its conversations are its own. `habakkuk setup` edits the first Slack channel; add the second by hand, then put its tokens in `.env`.
+
 ## Access
 
 `allow_from` takes Slack user ids (`U0123ABCD`). Anyone else who sends a direct message gets a pairing code. `routes` maps a workspace (team id) or a conversation to another agent, so one app can serve several teams with different agents.
