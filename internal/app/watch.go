@@ -152,9 +152,45 @@ func (a *App) reloadConfig() {
 		a.Log.Info("hooks reloaded", "count", a.Hooks.Count())
 	}
 	a.reloadBudget(next)
+	a.reloadDisplay(next)
 	if pending := restartNeeded(a.Cfg, next); len(pending) > 0 {
 		a.Log.Warn("config.yaml changed; restart habakkuk serve to apply", "sections", strings.Join(pending, ", "))
 	}
+}
+
+// reloadDisplay applies each channel's progress and approvals_detail from
+// the file to the running gateway, which uses them from the next turn. The
+// config the process started with is left as it was; the gateway holds the
+// live values (channel.Gateway.Display).
+func (a *App) reloadDisplay(next *config.Config) {
+	if a.Gateway == nil {
+		return
+	}
+	for name, ch := range next.Channels {
+		if _, running := a.Cfg.Channels[name]; !running || ch == nil {
+			continue // a channel added to the file starts with the next restart
+		}
+		before := a.Gateway.Display(name)
+		a.Gateway.SetDisplay(name, ch)
+		if after := a.Gateway.Display(name); after != before {
+			a.Log.Info("channel display settings reloaded", "channel", name,
+				"progress", after.Progress, "approvals_detail", after.ApprovalsDetail)
+		}
+	}
+}
+
+// withoutDisplay is the channels without the two settings that reload in
+// place, so changing only those does not ask for a restart.
+func withoutDisplay(channels map[string]*config.Channel) map[string]config.Channel {
+	out := make(map[string]config.Channel, len(channels))
+	for name, ch := range channels {
+		if ch != nil {
+			c := *ch
+			c.Progress, c.ApprovalsDetail = "", ""
+			out[name] = c
+		}
+	}
+	return out
 }
 
 // restartNeeded names the config sections that differ and only take effect
@@ -166,8 +202,8 @@ func restartNeeded(cur, next *config.Config) []string {
 		a, b any
 	}{
 		{"providers", cur.Providers, next.Providers},
-		{"agents", withoutBudgets(cur.Agents), withoutBudgets(next.Agents)}, // budgets reload in place
-		{"channels", cur.Channels, next.Channels},
+		{"agents", withoutBudgets(cur.Agents), withoutBudgets(next.Agents)},       // budgets reload in place
+		{"channels", withoutDisplay(cur.Channels), withoutDisplay(next.Channels)}, // progress and approvals_detail reload in place
 		{"mcp_servers", cur.MCP, next.MCP},
 		{"http", cur.HTTP, next.HTTP},
 		{"transcription", cur.Transcription, next.Transcription},
