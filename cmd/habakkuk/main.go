@@ -130,6 +130,9 @@ Usage:
   hk computer view                    how to watch the agents' virtual desktops (computer backend xvfb)
   hk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
                                     print habakkuk.log readably (-f keeps following it)
+  hk approvals [list] [-agent A] | rm ID
+                                    approval rules: calls an agent makes without asking, from
+                                    "Always allow" answers and agents.<name>.allow
   hk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
   hk expose tailscale [-port 443] [-print] | status | off
@@ -257,6 +260,8 @@ func main() {
 		err = logsCmd(ctx, home, args, os.Stdout)
 	case "security":
 		err = securityCmd(home, args, os.Stdout)
+	case "approvals":
+		err = approvalsCmd(home, args, os.Stdout)
 	case "expose":
 		err = exposeCmd(ctx, home, args, os.Stdout, nil)
 	case "auth":

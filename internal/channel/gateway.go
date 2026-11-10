@@ -839,33 +839,47 @@ type chatApprover struct {
 
 // pendingApproval is one approval prompt waiting in a chat.
 type pendingApproval struct {
-	answer chan bool
+	answer chan tools.Decision
 	once   sync.Once
 	hash   string // callHash of the call, carried by the prompt's buttons
 	req    tools.ApprovalRequest
+	always bool // the prompt offers "Always allow" (req.Rule is set)
 }
 
 // resolve answers the approval; only the first answer counts.
-func (p *pendingApproval) resolve(ok bool) (first bool) {
-	p.once.Do(func() { p.answer <- ok; first = true })
+func (p *pendingApproval) resolve(d tools.Decision) (first bool) {
+	p.once.Do(func() { p.answer <- d; first = true })
 	return first
 }
 
 func (c *chatApprover) Approve(ctx context.Context, req tools.ApprovalRequest) (bool, error) {
+	req.Rule = nil // a plain yes or no: Always allow is offered only through Decide
+	d, err := c.Decide(ctx, req)
+	return d != tools.DecisionDeny, err
+}
+
+// Decide asks in the chat: Allow once, Always allow (when the request
+// carries a rule) or Deny. A scheduled run has no conversation of its own;
+// it asks in the chat it delivers to.
+func (c *chatApprover) Decide(ctx context.Context, req tools.ApprovalRequest) (tools.Decision, error) {
 	g := c.g
-	conv, err := g.Store.BySession(ctx, c.session)
+	to, agentName, ok, err := c.where(ctx, req)
 	if err != nil {
-		return false, err
+		return tools.DecisionDeny, err
 	}
-	if conv == nil {
-		return false, tools.ErrNoApprover // not a channel session: nobody to ask
+	if !ok {
+		return tools.DecisionDeny, tools.ErrNoApprover // not a channel session: nobody to ask
 	}
-	to := conv.Address
 	mu, _ := g.approveMu.LoadOrStore(to.key(), &sync.Mutex{})
 	mu.(*sync.Mutex).Lock()
 	defer mu.(*sync.Mutex).Unlock()
 
-	p := &pendingApproval{answer: make(chan bool, 1), hash: callHash(conv.Agent, c.session, req), req: req}
+	p := &pendingApproval{answer: make(chan tools.Decision, 1), hash: callHash(agentName, c.session, req), req: req, always: req.Rule != nil}
+	if p.always {
+		// A press from a prompt laid out without Always allow (before a
+		// restart) must not be read against this one's buttons.
+		p.hash += "a"
+	}
 	g.pending.Store(to.key(), p)
 	defer g.pending.Delete(to.key())
 	defer g.recordApproval(to, c.session, req.Tool, req.Summary, req.Review)()
@@ -874,44 +888,74 @@ func (c *chatApprover) Approve(ctx context.Context, req tools.ApprovalRequest) (
 	if timeout == 0 {
 		timeout = 15 * time.Minute
 	}
-	rows, withdraw := g.approvalButtons(to, p.hash)
+	rows, withdraw := g.approvalButtons(to, p.hash, p.always)
 	defer withdraw()
-	if err := g.sendChoice(ctx, to, g.approvalPrompt(to, req), rows); err != nil {
-		return false, nil // could not ask, so do not allow
+	if err := g.sendChoice(ctx, to, g.approvalPrompt(ctx, to, req), rows); err != nil {
+		return tools.DecisionDeny, nil // could not ask, so do not allow
 	}
 	g.rememberAsked(to, p.hash)
 	select {
-	case ok := <-p.answer:
+	case d := <-p.answer:
 		g.forgetAsked(to)
-		return ok, nil
+		return d, nil
 	case <-ctx.Done():
 		// The turn stopped with the prompt still in the chat: a restart, or
 		// a lost lease. The record stays, so an answer to that prompt is
 		// explained rather than dropped; the resumed turn asks again.
-		return false, ctx.Err()
+		return tools.DecisionDeny, ctx.Err()
 	case <-time.After(timeout):
 		g.forgetAsked(to)
 		g.reply(to, g.t(to, "approval.timeout"))
-		return false, nil
+		return tools.DecisionDeny, nil
 	}
+}
+
+// where is the chat to ask in: the session's own conversation, or, for a
+// scheduled run, the chat the schedule delivers to. ok is false when there
+// is none, and the call is decided as in any unattended run.
+func (c *chatApprover) where(ctx context.Context, req tools.ApprovalRequest) (to Address, agentName string, ok bool, err error) {
+	conv, err := c.g.Store.BySession(ctx, c.session)
+	if err != nil {
+		return Address{}, "", false, err
+	}
+	if conv != nil {
+		return conv.Address, conv.Agent, true, nil
+	}
+	if agent.SourceFrom(ctx) != agent.SourceSchedule {
+		return Address{}, "", false, nil
+	}
+	origin := agent.OriginFrom(ctx)
+	if len(origin) == 0 || json.Unmarshal(origin, &to) != nil || to.Account == "" || c.g.Adapters[to.Account] == nil {
+		return Address{}, "", false, nil
+	}
+	to.ReplyTo = ""
+	return to, req.Agent, true, nil
 }
 
 // approvalPrompt is what a chat is asked: what the agent wants to do in
 // everyday words, why it asks when there is a reason beyond the permission
 // mode, and how to answer. The exact call is shown only on channels with
 // approvals_detail: full; elsewhere the prompt says how to see it.
-func (g *Gateway) approvalPrompt(to Address, req tools.ApprovalRequest) string {
+func (g *Gateway) approvalPrompt(ctx context.Context, to Address, req tools.ApprovalRequest) string {
 	lang := g.lang(to)
 	var b strings.Builder
 	b.WriteString(g.describeCall(lang, req))
 	if why := g.why(lang, req); why != "" {
 		b.WriteString("\n" + why)
 	}
+	if task := agent.TaskFrom(ctx); task != "" && agent.SourceFrom(ctx) != "" {
+		b.WriteString("\n" + i18n.T(lang, "approval.for_task", clean(task, 120)))
+	}
 	full := g.Display(to.Account).ApprovalsDetail == config.ApprovalsFull
 	if full {
 		b.WriteString("\n\n" + g.exactCall(req, maxDetailInline))
 	}
-	b.WriteString("\n\n" + i18n.T(lang, "approval.reply"))
+	if req.Rule != nil {
+		b.WriteString("\n\n" + i18n.T(lang, "approval.always_covers", g.ruleText(lang, req)))
+		b.WriteString("\n\n" + i18n.T(lang, "approval.reply_always"))
+	} else {
+		b.WriteString("\n\n" + i18n.T(lang, "approval.reply"))
+	}
 	if !full {
 		b.WriteString(" " + i18n.T(lang, "approval.details_hint"))
 	}
@@ -959,17 +1003,28 @@ func (g *Gateway) answerApproval(to Address, text string) bool {
 		return true
 	}
 	p := v.(*pendingApproval)
+	reply := "approval.reply"
+	if p.always {
+		reply = "approval.reply_always"
+	}
 	switch {
 	case g.isYes(to, word):
-		if p.resolve(true) {
+		if p.resolve(tools.DecisionOnce) {
 			g.reply(to, g.t(to, "approval.approved"))
 		}
 	case g.isNo(to, word):
-		if p.resolve(false) {
+		if p.resolve(tools.DecisionDeny) {
 			g.reply(to, g.t(to, "approval.denied"))
 		}
+	case g.isAlways(to, word):
+		switch {
+		case !p.always:
+			g.reply(to, g.t(to, "approval.always_unavailable"))
+		case p.resolve(tools.DecisionAlways):
+			g.reply(to, g.t(to, "approval.always_saved", g.ruleText(g.lang(to), p.req)))
+		}
 	case slices.Contains(i18n.Words(g.lang(to), "approval.details_words"), word):
-		g.reply(to, g.t(to, "approval.details")+"\n"+g.exactCall(p.req, maxDetail)+"\n\n"+g.t(to, "approval.reply"))
+		g.reply(to, g.t(to, "approval.details")+"\n"+g.exactCall(p.req, maxDetail)+"\n\n"+g.t(to, reply))
 	case strings.HasPrefix(word, "/"):
 		return false // commands always get through; /new and /stop decline the approval
 	default:
@@ -981,8 +1036,18 @@ func (g *Gateway) answerApproval(to Address, text string) bool {
 // resolveApproval answers the conversation's pending approval, if any; it
 // reports whether this call was the answer.
 func (g *Gateway) resolveApproval(to Address, ok bool) bool {
+	d := tools.DecisionDeny
+	if ok {
+		d = tools.DecisionOnce
+	}
+	return g.resolveDecision(to, d)
+}
+
+// resolveDecision answers the conversation's pending approval with d; it
+// reports whether this call was the answer.
+func (g *Gateway) resolveDecision(to Address, d tools.Decision) bool {
 	if v, found := g.pending.Load(to.key()); found {
-		return v.(*pendingApproval).resolve(ok)
+		return v.(*pendingApproval).resolve(d)
 	}
 	return false
 }

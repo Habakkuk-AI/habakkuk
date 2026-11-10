@@ -95,7 +95,9 @@ func TestTurnPolicyCarriesTrustedFolders(t *testing.T) {
 			t.Errorf("%s is not protected: %q", want, p.Protected)
 		}
 	}
-	if p, _ := TurnPolicy(cfg, "other", nil); len(p.TrustedWrite) != 0 || len(p.Protected) != 0 {
+	// Without the setting there are no trusted folders, but the protected
+	// ones still bound approval rules.
+	if p, _ := TurnPolicy(cfg, "other", nil); len(p.TrustedWrite) != 0 || !slices.Contains(p.Protected, filepath.Join(home, "agents")) {
 		t.Fatalf("an agent without the setting: %+v", p)
 	}
 }

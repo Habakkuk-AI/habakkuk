@@ -1334,6 +1334,28 @@ pages.approvals = view => {
     }
   });
   view.append(out);
+  // Saved rules: what each agent may do without asking. Never in a turn that
+  // read outside content, never for a guest.
+  const rules = h("div", { class: "panel" });
+  const loadRules = async () => {
+    let j;
+    try { j = await api("approval-rules"); } catch (err) { rules.textContent = ""; rules.append(h("div", { class: "empty err" }, err.message)); return; }
+    rules.textContent = "";
+    rules.append(h("h3", {}, "Always allowed"),
+      h("p", { class: "small muted" }, "Calls an agent makes without asking, saved by Always allow or set in agents.<name>.allow. They never apply after a turn has read a web page, an email or other outside content, or to a guest."));
+    if (!j.rules.length) { rules.append(h("div", { class: "empty" }, "No rules yet.")); return; }
+    rules.append(table(["Agent", "Covers", "From", ""], j.rules.map(r => h("tr", {},
+      h("td", {}, r.agent),
+      h("td", { class: "mono small" }, r.text),
+      h("td", { class: "small muted" }, r.source + (r.added ? " · " + r.added.slice(0, 10) : "")),
+      h("td", {}, r.source === "config" ? h("span", { class: "small muted" }, "edit config.yaml") :
+        h("button", { type: "button", class: "danger small", onclick: async () => {
+          if (!confirm("Remove this rule? The agent asks again next time.")) return;
+          try { await api(`approval-rules/${encodeURIComponent(r.agent)}/${encodeURIComponent(r.id)}`, { method: "DELETE" }); toast("Removed"); loadRules(); } catch (err) { fail(err); }
+        } }, "Remove"))))));
+  };
+  loadRules();
+  view.append(rules);
 };
 function setApprovalCount(n) {
   const c = $("approvalCount");

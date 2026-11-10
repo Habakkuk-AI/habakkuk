@@ -767,3 +767,28 @@ hooks:
 		t.Fatalf("config view: %s", data)
 	}
 }
+
+func TestDashApprovalRules(t *testing.T) {
+	r := newDashRig(t)
+	cfg := r.s.Dash.Config
+	cfg.Agents["habakkuk"].Allow = []config.AllowRule{{Command: "git status"}}
+	rf := &tools.RuleFile{Path: filepath.Join(cfg.AgentDir("habakkuk"), tools.RulesFileName)}
+	saved, err := rf.Save(tools.Rule{Tool: "exec", Command: "npm test", Source: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := list(r.get(t, "/api/approval-rules"), "rules")
+	if len(l) != 2 {
+		t.Fatalf("rules: %v", l)
+	}
+	first, second := l[0].(map[string]any), l[1].(map[string]any)
+	if first["source"] != "config" || first["text"] != "exec `git status` in the workspace" || second["id"] != saved.ID || second["agent"] != "habakkuk" {
+		t.Fatalf("rules: %v", l)
+	}
+	r.send(t, "DELETE", "/api/approval-rules/habakkuk/config-1", "", http.StatusNotFound)
+	r.send(t, "DELETE", "/api/approval-rules/nobody/"+saved.ID, "", http.StatusNotFound)
+	r.send(t, "DELETE", "/api/approval-rules/habakkuk/"+saved.ID, "", http.StatusNoContent)
+	if l := list(r.get(t, "/api/approval-rules"), "rules"); len(l) != 1 {
+		t.Fatalf("after delete: %v", l)
+	}
+}

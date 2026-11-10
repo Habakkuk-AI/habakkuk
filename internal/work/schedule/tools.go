@@ -17,9 +17,10 @@ import (
 type Here func(ctx context.Context, sessionID string) json.RawMessage
 
 // RegisterTools adds the "schedule" toolset. Creating a schedule grants no
-// new power: scheduled runs are unattended, so anything needing approval is
-// denied there. The tools therefore carry network risk (allowed in workspace
-// mode, denied in read-only mode).
+// new power: a call that needs approval in a scheduled run asks the owner
+// in the chat the schedule delivers to (or is covered by a rule the owner
+// saved), and is denied when there is no such chat. The tools therefore
+// carry network risk (allowed in workspace mode, denied in read-only mode).
 func RegisterTools(r *tools.Registry, st *Store, here Here) {
 	r.Register("schedule", createTool{st, here})
 	r.Register("schedule", listTool{st})

@@ -286,6 +286,7 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	ctx = llm.WithCaller(ctx, caller)
 	ctx = withOrigin(ctx, p.Origin)
+	ctx = withSource(ctx, p.Source, p.Task)
 	chain, overridden := r.chainFor(ctx, sess.ID, spec)
 	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden}
 	t.useSub(p.Sub)

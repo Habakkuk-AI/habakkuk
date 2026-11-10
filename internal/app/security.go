@@ -20,12 +20,12 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 	ac := cfg.Agents[agentName]
 	if ac != nil {
 		p.AllowTaintedExec = ac.AllowTaintedExec
-		if p.TrustedWrite, _ = cfg.TrustedWriteDirs(agentName); len(p.TrustedWrite) > 0 {
-			p.Protected = cfg.ProtectedDirs()
-			for _, name := range cfg.AgentNames() { // an agent home configured elsewhere
-				p.Protected = append(p.Protected, cfg.AgentDir(name))
-			}
-		}
+		p.TrustedWrite, _ = cfg.TrustedWriteDirs(agentName)
+	}
+	// Folders that neither a trusted folder nor an approval rule covers.
+	p.Protected = cfg.ProtectedDirs()
+	for _, name := range cfg.AgentNames() { // an agent home configured elsewhere
+		p.Protected = append(p.Protected, cfg.AgentDir(name))
 	}
 	if len(origin) == 0 {
 		return p, false
@@ -62,9 +62,7 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 // applyPolicy is the Runner's PolicyFunc.
 func (a *App) applyPolicy(ctx context.Context, spec *agent.Spec, origin json.RawMessage, env *tools.Env) {
 	p, external := TurnPolicy(a.Cfg, spec.Name, origin)
-	if len(p.TrustedWrite) > 0 {
-		p.Protected = append(p.Protected, a.scheduledScriptDirs(ctx)...)
-	}
+	p.Protected = append(p.Protected, a.scheduledScriptDirs(ctx)...)
 	env.Policy = p
 	if external {
 		env.Taint.Mark()
@@ -98,4 +96,10 @@ func (a *App) scheduledScriptDirs(ctx context.Context) []string {
 		out = append(out, config.CommandDirs(sc.Command)...)
 	}
 	return out
+}
+
+// Rules are an agent's approval rules: agents.<name>.allow, then the ones
+// saved by "Always allow" in the agent's folder.
+func (a *App) Rules(agentName string) *tools.RuleFile {
+	return &tools.RuleFile{Path: filepath.Join(a.Cfg.AgentDir(agentName), tools.RulesFileName), Config: a.Cfg.AllowRules(agentName)}
 }

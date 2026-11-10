@@ -50,6 +50,8 @@ The taint stays with the turn across a restart. Say a turn reads a web page and 
 
 Setting `allow_tainted_exec: true` on an agent turns this off. The audit flags it.
 
+Saved approval rules don't change this. A rule from **Always allow** or `agents.<name>.allow` never answers for a tainted turn, and a tainted turn is never offered **Always allow**. See [Saved approval rules](#saved-approval-rules).
+
 ## Trusted folders for notes
 
 `trusted_write_paths` lets an agent write notes to named folders outside its workspace without approval. That applies from a chat, and after the agent has read outside content. See [how it works](../agents/approvals.md#trusted-folders-for-notes).
@@ -70,6 +72,20 @@ It doesn't protect you against these:
 - **Overwritten notes.** A trusted folder can be edited as well as added to. If the notes matter, keep the folder in version control or a backup.
 
 Use this setting for folders that hold only notes. `hk security` lists each agent's trusted folders. It flags them on an agent that chats or webhooks can reach.
+
+## Saved approval rules
+
+**Always allow** in a chat, and `agents.<name>.allow` in the config, let an agent run a command or write to a folder without asking you each time. See [how it works](../agents/approvals.md#always-allow).
+
+A rule is a standing yes, so it's held to the same promises as everything else here:
+
+- **Never in a tainted turn.** Once a turn has read outside content, a rule doesn't answer. A person does.
+- **Never for a guest.** A guest's turn gets no risky capability, rule or not.
+- **Never past the hardline.** Commands on the blocklist never run, whatever a rule says.
+- **Never for the agent's instructions.** Writes to `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `USER.md` and the saved rules file always ask, in every mode.
+- **Never Habakkuk's own folders.** A file rule doesn't cover agent homes, skills, plugins, hooks, channel credentials, backups or the folders scheduled scripts run from. Hidden files and folders still ask.
+
+Command patterns only match a program and its arguments. Anything a shell would expand or chain is left to a person. That covers `;`, `&&`, pipes, redirects, `$`, backquotes, wildcards and `~`. A broad pattern such as `python *` still covers a lot, so keep patterns narrow. `hk approvals list` shows every rule, and `hk approvals rm ID` removes a saved one.
 
 ## Skills and plugins from outside
 

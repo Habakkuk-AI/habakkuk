@@ -52,3 +52,30 @@ type ChatNotes interface {
 	// the transcript, so no later turn shows them again.
 	NotesSeen(ctx context.Context, jobID string)
 }
+
+type sourceKey struct{}
+
+type source struct{ source, task string }
+
+// withSource notes what started the running turn (TurnPayload.Source and
+// Task), so an approver can tell a scheduled run from a chat message.
+func withSource(ctx context.Context, src, task string) context.Context {
+	if src == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, sourceKey{}, source{src, task})
+}
+
+// SourceFrom is what started the turn running in ctx (SourceSchedule,
+// SourceBoard, SourceA2A), or "" for a chat message or a local client.
+func SourceFrom(ctx context.Context) string {
+	s, _ := ctx.Value(sourceKey{}).(source)
+	return s.source
+}
+
+// TaskFrom names the work that started the turn (`scheduled task
+// "inbox"`), or "".
+func TaskFrom(ctx context.Context) string {
+	s, _ := ctx.Value(sourceKey{}).(source)
+	return s.task
+}

@@ -231,3 +231,17 @@ approvals.pick: "इनमें से एक चुनें: summary, full।
 approvals.name.summary: "सरल सारांश"
 approvals.name.full: "सटीक कमांड भी"
 settings.failed: "माफ़ कीजिए, मैं वह सेटिंग सहेज नहीं सका।"
+
+# Always allow (approval rules) and approvals for scheduled tasks
+button.allow_once: "एक बार अनुमति दें"
+button.always: "हमेशा अनुमति दें"
+approval.always_words: "हमेशा, हमेशा अनुमति दें"
+approval.reply_always: "एक बार अनुमति देने के लिए **हाँ**, अब से हमेशा अनुमति देने के लिए **हमेशा**, या **नहीं** लिखें।"
+approval.always_covers: "**हमेशा अनुमति दें** एक नियम सहेजता है, फिर मैं %s के लिए दोबारा नहीं पूछूँगा।"
+approval.always_saved: "मंज़ूर। मैंने एक नियम सहेज लिया है और %s के लिए दोबारा नहीं पूछूँगा।"
+approval.always_unavailable: "इसके लिए मैं नियम नहीं सहेज सकता। **हाँ** या **नहीं** लिखें।"
+approval.rule.command: "%[2]s में चलाया गया %[1]s"
+approval.rule.prefix: "%[2]s में चलाया गया %[1]s, किसी भी और आर्गुमेंट के साथ"
+approval.rule.exact: "%[2]s में चलाया गया ठीक यही %[1]s"
+approval.rule.write: "%s में इस तरह के फ़ाइल बदलाव"
+approval.for_task: "यह इसके लिए है: %s।"

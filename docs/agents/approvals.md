@@ -27,10 +27,11 @@ agents:
 
 ## Answering approvals
 
-- **In a chat**, Habakkuk says in everyday words what it wants to do and why it's asking. Then it waits for the owner to answer **yes** or **no**. Platforms with buttons show Approve and Deny. Reply **details** to see the exact command. The request keeps waiting. If there's no answer after 15 minutes, Habakkuk skips the step. See [what the request looks like](../channels/settings.md#approval-requests-in-plain-words).
+- **In a chat**, Habakkuk says in everyday words what it wants to do and why it's asking. Then it waits for the owner to answer. Platforms with buttons show **Allow once**, **Always allow** and **Deny**. Elsewhere you reply **yes**, **always** or **no**. Reply **details** to see the exact command. The request keeps waiting. If there's no answer after 15 minutes, Habakkuk skips the step. See [what the request looks like](../channels/settings.md#approval-requests-in-plain-words) and [Always allow](#always-allow).
 - **In the terminal UI**, a prompt lets you allow the call once, allow it for the session, or deny it.
-- **In the dashboard and desktop app**, the Approvals page lets you answer approvals that are waiting in any chat.
-- **Unattended runs** have nobody to ask. These are schedules, sub-agents, webhooks and the OpenAI-compatible API. Calls that need approval are denied there, unless a reviewer decides.
+- **In the dashboard and desktop app**, the Approvals page lets you answer approvals that are waiting in any chat. It also lists each agent's saved rules, and you can remove one there.
+- **Scheduled runs** ask you in the chat the schedule delivers to, and wait as a chat does. See [Approvals in scheduled runs](#approvals-in-scheduled-runs).
+- **Other unattended runs** have nobody to ask. These are sub-agents, board cards, webhooks and the OpenAI-compatible API. Calls that need approval are denied there, unless a reviewer decides or a [saved rule](#always-allow) covers them.
 
 ### Approvals and restarts
 
@@ -65,6 +66,62 @@ Habakkuk logs every decision and sends the reason back to the agent, so the agen
 
 > [!IMPORTANT]
 > Habakkuk never asks the reviewer about a turn that has read outside content, because the same text could steer the reviewer model too. Those calls go to a human. See [Security](../deploy/security.md#outside-content-taints-a-turn).
+
+## Always allow
+
+Answering the same request every day gets old. When you pick **Always allow** (or reply **always**), Habakkuk saves a rule for that agent and stops asking about calls like this one. The request tells you what the rule will cover before you answer, for example:
+
+> **Always allow** saves a rule, so I won't ask again for `git status` run in your workspace.
+
+A rule covers one of these:
+
+- **A command:** a program and its arguments, run in the workspace or in the folder the command ran in. `git status` covers `git status` and nothing else. Add `*` at the end in the config to allow any further arguments: `npm run *`.
+- **An exact command line:** a command with pipes, `&&`, redirects or other shell syntax is saved exactly as it was. Only that same line is covered.
+- **A file tool in a folder:** `write_file`, `edit_file` or `apply_patch` writing inside the folder of the file you approved.
+
+Patterns only match plain commands. A command with `;`, `&&`, `|`, redirects, `$`, backquotes, wildcards, `~` or a variable set in front of it is never covered by a pattern, and neither is quoting that doesn't close. When in doubt, Habakkuk asks.
+
+You can also write rules in the config:
+
+```yaml
+agents:
+  habakkuk:
+    allow:
+      - command: git status              # this program with these arguments
+      - command: npm run *               # * at the end: any further arguments
+        in: ~/code/shop                  # where it may run (default: the workspace)
+      - exact: make build && make test   # this exact command line
+      - tool: write_file                 # a file tool...
+        path: ~/Documents/reports        # ...writing inside this folder
+```
+
+Saved rules live in `approvals.json` in the agent's folder and apply across restarts. Run `hk approvals list` to see every rule and `hk approvals rm ID` to remove a saved one. Remove a config rule by editing the config.
+
+> [!IMPORTANT]
+> A rule never answers in these cases, whatever it says:
+>
+> - **A turn that has read outside content.** A web page, search result, email, MCP tool, webhook, Home Assistant payload or device output could have written the command. Those calls go to a person, and **Always allow** isn't offered. See [Security](../deploy/security.md#outside-content-taints-a-turn).
+> - **A guest's turn.** Guests get no risky capability at all.
+> - **A command on the hardline blocklist.** Those never run. See [Safety guards](#safety-guards).
+> - **A call that always asks**, such as a write to the agent's instruction files. See [Instruction files](#instruction-files).
+
+Rules sit next to the permission mode. They answer only for calls that would otherwise ask you. In `read-only` mode nothing runs, rule or not.
+
+## Approvals in scheduled runs
+
+A scheduled run has no chat of its own. When one of its calls needs approval, Habakkuk asks you in the chat the schedule delivers to, says which scheduled task it's for, and waits up to the same 15 minutes. Your answer works the same way as in any chat, **Always allow** included. The next run then goes ahead without asking.
+
+Some runs still can't get a yes:
+
+- A schedule with no delivery chat has nobody to ask, so the call is denied.
+- A run on an account that's open to everyone (`allow_from: ["*"]`) counts as a guest's turn, so risky calls are refused.
+- A run that has read outside content asks you every time. No rule covers it.
+
+## Instruction files
+
+`SOUL.md`, `AGENTS.md`, `IDENTITY.md` and `USER.md` tell the agent who it is and how to behave. A write to a file with one of those names, through `write_file`, `edit_file` or `apply_patch`, always needs your approval. That holds in `full` mode, in a trusted notes folder, under a rule, and with a reviewer. The same goes for the agent's saved rules file. **Always allow** isn't offered for these, and no rule covers a command that names one of them.
+
+The tools that keep the user profile and the agent's identity have their own limits and aren't changed by this. A turn that has read outside content still can't use them.
 
 ## Trusted folders for notes
 

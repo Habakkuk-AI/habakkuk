@@ -132,7 +132,7 @@ func (r *Registry) toolsetsOf(name string) []string {
 // gate applies the turn's Policy to a call that uses cp. handled is false
 // when the policy has nothing to say and the permission mode decides; when
 // it is true, err (nil or not) is the decision and note goes on the result.
-func gate(ctx context.Context, env *Env, cp Capability, risk Risk, call llm.Block, confirm string) (note string, handled bool, err error) {
+func gate(ctx context.Context, env *Env, t Tool, cp Capability, risk Risk, call llm.Block, confirm string) (note string, handled bool, err error) {
 	p := env.Policy
 	if p == nil {
 		p = &Policy{}
@@ -155,8 +155,13 @@ func gate(ctx context.Context, env *Env, cp Capability, risk Risk, call llm.Bloc
 		if confirm != "" {
 			return "", true, confirmByHuman(ctx, env, call, confirm, CauseConfirm)
 		}
+		// The owner said "Always allow" for calls like this one (allow.go).
+		if rule, ok := coveredByRule(env, t, call); ok {
+			return rule.Note(), true, nil
+		}
 		note, err := Ask(ctx, env, ApprovalRequest{Tool: call.ToolName, Cause: CauseChannel,
-			Summary: fmt.Sprintf("[%s via channel %s] %s", cp, p.Channel, summarize(call.Input)), Input: call.Input})
+			Summary: fmt.Sprintf("[%s via channel %s] %s", cp, p.Channel, summarize(call.Input)), Input: call.Input,
+			Rule: ProposeRule(env, t, call)})
 		return note, true, err
 	}
 	return "", false, nil
