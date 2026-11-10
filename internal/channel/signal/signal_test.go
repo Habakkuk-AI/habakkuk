@@ -119,7 +119,7 @@ func TestReceiveEvents(t *testing.T) {
 		env("+1666", "u2", "Bo", 11, `{"timestamp":11,"message":"￼ what's up","mentions":[{"name":"+1000","number":"+1000","uuid":"bot-uuid","start":0,"length":1}],`+group+`}`),
 		env("+1666", "u2", "Bo", 12, `{"timestamp":12,"message":"just chatting",`+group+`}`),
 		env("+1666", "u2", "Bo", 13, `{"timestamp":13,"message":"Habakkuk, deploy it",`+group+`}`),
-		env("+1666", "u2", "Bo", 14, `{"timestamp":14,"message":"look","quote":{"id":3,"authorNumber":"+1000","authorUuid":"bot-uuid"},"attachments":[{"contentType":"image/jpeg","filename":"p.jpg","id":"att1","size":4}],`+group+`}`),
+		env("+1666", "u2", "Bo", 14, `{"timestamp":14,"message":"look","quote":{"id":3,"authorNumber":"+1000","authorUuid":"bot-uuid","text":"which chart?"},"attachments":[{"contentType":"image/jpeg","filename":"p.jpg","id":"att1","size":4}],`+group+`}`),
 		env("+1000", "bot-uuid", "Me", 15, `{"timestamp":15,"message":"my own echo"}`),
 		`{"envelope":{"sourceNumber":"+1555","sourceUuid":"u1","timestamp":16,"receiptMessage":{"isRead":true}},"account":"+1000"}`,
 		`{"jsonrpc":"2.0","method":"receive","params":{"envelope":{"sourceNumber":"","sourceUuid":"u9","sourceName":"Hidden","timestamp":17,"dataMessage":{"message":"no number"}}}}`,
@@ -157,6 +157,12 @@ func TestReceiveEvents(t *testing.T) {
 	m := in.msgs[4]
 	if !m.Mentioned || len(m.Attachments) != 1 || m.Attachments[0].Name != "p.jpg" {
 		t.Fatalf("reply with photo: %+v", m)
+	}
+	if m.Quote == nil || !m.Quote.Self || m.Quote.Text != "which chart?" {
+		t.Fatalf("quoted message: %+v", m.Quote)
+	}
+	if in.msgs[0].Quote != nil {
+		t.Fatalf("a message without a quote got one: %+v", in.msgs[0].Quote)
 	}
 	data, err := m.Attachments[0].Fetch(context.Background())
 	if err != nil || string(data) != "JPEG:att1" {

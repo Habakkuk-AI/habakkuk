@@ -293,6 +293,11 @@ type envelope struct {
 		Quote *struct {
 			AuthorNumber string `json:"authorNumber"`
 			AuthorUUID   string `json:"authorUuid"`
+			Text         string `json:"text"`
+			Attachments  []struct {
+				ContentType string `json:"contentType"`
+				Filename    string `json:"filename"`
+			} `json:"attachments"`
 		} `json:"quote"`
 		Reaction     json.RawMessage `json:"reaction"`
 		RemoteDelete json.RawMessage `json:"remoteDelete"`
@@ -356,6 +361,21 @@ func (a *Adapter) convert(raw json.RawMessage) (channel.Message, bool) {
 	text, mentioned := replaceMentions(d.Message, d.Mentions, isSelf)
 	if d.Quote != nil && isSelf(d.Quote.AuthorNumber, d.Quote.AuthorUUID) {
 		mentioned = true // a reply to the bot
+	}
+	if q := d.Quote; q != nil {
+		text := q.Text
+		if text == "" && len(q.Attachments) > 0 {
+			text = "(attachment " + q.Attachments[0].Filename + ")"
+			if q.Attachments[0].Filename == "" {
+				text = "(" + q.Attachments[0].ContentType + " attachment)"
+			}
+		}
+		if text != "" {
+			m.Quote = &channel.Quote{Text: text, Self: isSelf(q.AuthorNumber, q.AuthorUUID)}
+			if (q.AuthorUUID != "" && q.AuthorUUID == e.SourceUUID) || (q.AuthorNumber != "" && q.AuthorNumber == e.SourceNumber) {
+				m.Quote.From = e.SourceName
+			}
+		}
 	}
 	if rest, ok := cutName(text, a.Name); ok {
 		text, mentioned = rest, true
