@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -201,5 +202,22 @@ func TestUnavailableNoticePerChat(t *testing.T) {
 	}
 	if r.UnavailableNotice(key, "chat 100") || r.UnavailableNotice(key, "chat 200") {
 		t.Fatal("a chat was told twice")
+	}
+}
+
+type goneLogin struct{}
+
+func (goneLogin) Error() string   { return "login expired or revoked" }
+func (goneLogin) LoginGone() bool { return true }
+
+func TestExpiredLoginIsAnOutage(t *testing.T) {
+	r := newRouter(&Endpoint{Name: "chatgpt", Provider: &scripted{}, Credentials: []Credential{{Name: "login",
+		Token: func(context.Context) (string, error) {
+			return "", fmt.Errorf("chatgpt: %w: 401 invalid_grant", goneLogin{})
+		}}}})
+	_, err := r.Send(context.Background(), []Target{{"chatgpt", "gpt"}}, Request{}, nil)
+	ue := new(UnavailableError)
+	if !errors.As(err, &ue) || ue.Key != "unavailable:chatgpt=auth" || !jobs.IsPermanent(err) {
+		t.Fatalf("err = %v, want a chatgpt=auth outage", err)
 	}
 }

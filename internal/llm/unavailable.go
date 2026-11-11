@@ -31,12 +31,21 @@ func (e *UnavailableError) Permanent() bool { return true }
 // the same providers stay refused, background work says so again after it.
 const unavailableAgain = 24 * time.Hour
 
-// refreshError is a login whose token couldn't be refreshed. It counts as
-// an auth failure for falling back, but never as an outage: the login
-// server may only be down for a moment.
+// refreshError is a login whose token couldn't be refreshed for a reason
+// other than the login being gone (LoginGone). It counts as an auth
+// failure for falling back, but never as an outage: the login server may
+// only be down for a moment.
 type refreshError struct{ error }
 
 func (e refreshError) Unwrap() error { return e.error }
+
+// LoginGone reports whether err says a login is missing, expired or
+// revoked, so only signing in again helps (auth.ErrNotLoggedIn and
+// auth.ErrLoginExpired say so through a LoginGone method).
+func LoginGone(err error) bool {
+	var g interface{ LoginGone() bool }
+	return errors.As(err, &g) && g.LoginGone()
+}
 
 // refusals collects, for one Send, the providers that refused the call for
 // credit or a rejected key, in chain order.

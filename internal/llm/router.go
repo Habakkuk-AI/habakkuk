@@ -165,7 +165,10 @@ func (r *Router) sendTarget(ctx context.Context, ep *Endpoint, t Target, req Req
 				// It's wrapped as a refresh error so a refresh that failed
 				// for a passing reason (the login server down) is never
 				// taken for an outage.
-				if Classify(err).Kind != ErrNetwork {
+				switch {
+				case LoginGone(err):
+					err = &APIError{Status: 401, Message: c.Name + ": " + err.Error(), Err: err}
+				case Classify(err).Kind != ErrNetwork:
 					err = &APIError{Status: 401, Message: c.Name + ": " + err.Error(), Err: refreshError{err}}
 				}
 				lastErr = err
