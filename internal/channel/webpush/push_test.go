@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
+	"encoding/asn1"
 	"encoding/json"
 	"io"
 	"math/big"
@@ -94,11 +95,15 @@ func TestKeysPersistAndSignVAPID(t *testing.T) {
 	if claims.Aud != "https://push.example.com" || claims.Sub != "mailto:sam@example.com" || claims.Exp != 1_800_000_000+12*3600 {
 		t.Fatalf("claims %+v", claims)
 	}
-	pub := mustB64(t, k1.Public)
-	x, y := new(big.Int).SetBytes(pub[1:33]), new(big.Int).SetBytes(pub[33:])
+	pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), mustB64(t, k1.Public))
+	if err != nil {
+		t.Fatal(err)
+	}
 	sig := mustB64(t, parts[2])
 	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
-	if !ecdsa.Verify(&ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, digest[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
+	// JWS carries r and s as two 32-byte halves; VerifyASN1 wants DER.
+	der := asn1Sig(t, sig[:32], sig[32:])
+	if !ecdsa.VerifyASN1(pub, digest[:], der) {
 		t.Fatal("JWT signature does not verify")
 	}
 }
@@ -305,4 +310,14 @@ func TestSendChecksTheEndpointAgain(t *testing.T) {
 	if err := s.Test(context.Background(), id, Message{Title: "x"}); err == nil || hit {
 		t.Fatalf("sent to an endpoint that is not a push service: err=%v hit=%v", err, hit)
 	}
+}
+
+// asn1Sig encodes r and s as the DER SEQUENCE ecdsa.VerifyASN1 reads.
+func asn1Sig(t *testing.T, r, s []byte) []byte {
+	t.Helper()
+	der, err := asn1.Marshal(struct{ R, S *big.Int }{new(big.Int).SetBytes(r), new(big.Int).SetBytes(s)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
 }

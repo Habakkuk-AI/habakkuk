@@ -26,7 +26,7 @@ func putFile(root, rel string, data []byte, protected func() bool) error {
 	if err != nil {
 		return err
 	}
-	defer func() { unix.Close(dirfd) }()
+	defer func() { _ = unix.Close(dirfd) }()
 	parts := strings.Split(filepath.ToSlash(rel), "/")
 	for _, part := range parts[:len(parts)-1] {
 		if part == "" || part == "." || part == ".." {
@@ -42,7 +42,7 @@ func putFile(root, rel string, data []byte, protected func() bool) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w (a link or not a folder)", part, err)
 		}
-		unix.Close(dirfd)
+		_ = unix.Close(dirfd)
 		dirfd = next
 	}
 	name := parts[len(parts)-1]
