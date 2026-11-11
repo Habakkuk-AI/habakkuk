@@ -561,15 +561,22 @@ func filesPut(root string, protected []string, args json.RawMessage) (*Result, e
 	if len(data) > MaxFile {
 		return nil, fmt.Errorf("the file is over the %d MB limit", MaxFile>>20)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	rootReal, err := filepath.Abs(root)
+	if err != nil {
 		return nil, err
 	}
-	tmp := path + ".habakkuk-tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return nil, err
+	if r, err := filepath.EvalSymlinks(rootReal); err == nil {
+		rootReal = r
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+	rel, err := filepath.Rel(rootReal, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("%s is outside the directory this node shares", in.Path)
+	}
+	// Written without following a link anywhere on the way: a link put in
+	// the shared folder (at a temp name, or as a folder) cannot lead the
+	// write out of it (putfile_*.go). The protected check runs again just
+	// before the file takes its name.
+	if err := putFile(rootReal, rel, data, func() bool { return underProtected(path, protected) }); err != nil {
 		return nil, err
 	}
 	return &Result{Text: fmt.Sprintf("wrote %s (%d bytes)", in.Path, len(data))}, nil

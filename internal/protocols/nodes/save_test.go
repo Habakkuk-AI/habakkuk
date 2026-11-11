@@ -76,3 +76,43 @@ func TestFilesPutRefusesAnyHabakkukHome(t *testing.T) {
 		t.Fatalf("an ordinary put failed: %v", err)
 	}
 }
+
+// files.put never writes through a link: not one waiting at the old temp
+// name, not one at the file's own name, not one standing in for a folder.
+func TestFilesPutDoesNotWriteThroughLinks(t *testing.T) {
+	shared, outside := t.TempDir(), t.TempDir()
+	victim := filepath.Join(outside, "trusted.json")
+	os.WriteFile(victim, []byte("original"), 0o600)
+	os.Symlink(victim, filepath.Join(shared, "notes.md.habakkuk-tmp")) // the old fixed temp name
+	os.Symlink(victim, filepath.Join(shared, "readme.md"))             // the target name itself
+	put := LocalCaps(LocalOptions{Dir: shared})[CmdFilesPut]
+	// A link at the old temp name: the write goes to notes.md itself.
+	if _, err := put.Run(context.Background(), []byte(`{"path":"notes.md","text":"planted"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(filepath.Join(shared, "notes.md")); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("notes.md is not a plain file in the shared folder: %v", err)
+	}
+	// A link at the target name out of the folder: refused.
+	if _, err := put.Run(context.Background(), []byte(`{"path":"readme.md","text":"planted"}`)); err == nil {
+		t.Fatal("wrote to a name that links out of the shared folder")
+	}
+	if data, _ := os.ReadFile(victim); string(data) != "original" {
+		t.Fatalf("a file outside the shared folder was written: %q", data)
+	}
+	// A link standing in for a folder.
+	os.Symlink(outside, filepath.Join(shared, "sub"))
+	if _, err := put.Run(context.Background(), []byte(`{"path":"sub/x.txt","text":"planted"}`)); err == nil {
+		t.Fatal("wrote through a folder link")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "x.txt")); !os.IsNotExist(err) {
+		t.Fatal("a file landed outside the shared folder")
+	}
+	// Nested new folders still work.
+	if _, err := put.Run(context.Background(), []byte(`{"path":"a/b/c.txt","text":"ok"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(shared, "a", "b", "c.txt")); string(data) != "ok" {
+		t.Fatal("nested put failed")
+	}
+}
