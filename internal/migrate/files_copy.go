@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -251,16 +252,21 @@ func (p *Plan) copyFile(src, dest string, si fs.FileInfo) (int, error) {
 			head, refs = p.rw.bytes(head)
 		}
 	}
-	tmp := dest + partSuffix
-	// A leftover (or a link) at the temp name goes first; the new file is
-	// made exclusively, so nothing is written through a link.
-	if err := os.Remove(tmp); err != nil && !os.IsNotExist(err) {
-		return 0, err
+	// Leftovers of a copy cut short are tidied (removing never follows a
+	// link), and the file is written under a fresh random name made
+	// exclusively, so nothing planted at a known name can redirect or
+	// block the write.
+	_ = os.Remove(dest + partSuffix)
+	if old, _ := filepath.Glob(globEscape(dest+partSuffix) + "-*"); len(old) > 0 {
+		for _, o := range old {
+			_ = os.Remove(o)
+		}
 	}
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	out, err := os.CreateTemp(filepath.Dir(dest), filepath.Base(dest)+partSuffix+"-*")
 	if err != nil {
 		return 0, err
 	}
+	tmp := out.Name()
 	_, err = out.Write(head)
 	if err == nil {
 		_, err = io.Copy(out, in)
@@ -338,4 +344,17 @@ func (p *Plan) applyFiles(ctx context.Context) (*FilesResult, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+// globEscape quotes the characters filepath.Glob treats as patterns.
+func globEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '*', '?', '[', '\\':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

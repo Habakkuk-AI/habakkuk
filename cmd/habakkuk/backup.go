@@ -84,16 +84,14 @@ func writeBackupOpts(ctx context.Context, home, path string, o backupOptions) (i
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	// Whatever sits at the temp name goes first, and the new file is made
-	// exclusively, so a link waiting there is never written through.
-	if err := os.Remove(path + ".tmp"); err != nil && !os.IsNotExist(err) {
-		return 0, err
-	}
-	f, err := os.OpenFile(path+".tmp", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	// A fresh random name, made exclusively (owner-only), beside the
+	// archive: nothing planted at a known name can redirect or block it.
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return 0, err
 	}
-	defer os.Remove(path + ".tmp")
+	tmpName := f.Name()
+	defer os.Remove(tmpName) // a no-op after the rename
 	zw := gzip.NewWriter(f)
 	tw := tar.NewWriter(zw)
 	n := 0
@@ -182,7 +180,7 @@ func writeBackupOpts(ctx context.Context, home, path string, o backupOptions) (i
 	if err != nil {
 		return 0, err
 	}
-	return n, os.Rename(path+".tmp", path)
+	return n, os.Rename(tmpName, path)
 }
 
 // snapshotDB writes a consistent, owner-only copy of a live database to dst.
