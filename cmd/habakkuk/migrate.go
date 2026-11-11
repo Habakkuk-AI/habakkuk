@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/habakkuk-ai/habakkuk/internal/migrate"
+	"github.com/habakkuk-ai/habakkuk/internal/migrate/cutover"
 )
 
 // `hk migrate` moves a setup from another agent or a coding tool into
@@ -37,6 +38,10 @@ From Claude Code or Codex it brings the instruction files, MCP servers,
 skills, slash commands (as skills) and memory files. Their keys and sign-ins
 are never copied. --project DIR adds one project's own instructions, MCP
 servers and skills.
+
+Once the import looks right, hk migrate finish stops the old agent, pauses
+its schedules and resumes the imported ones, and hk migrate rollback undoes
+that (see hk migrate finish -h).
 
 The imported text often names files in the old folder: scripts that schedules
 run, folders of notes and reports. The plan lists them. With --files copy your
@@ -66,6 +71,9 @@ func migrateCmd(ctx context.Context, home string, args []string) error {
 // runMigrate parses the flags and runs an import. userHome, when set,
 // replaces the user's home directory for finding the source.
 func runMigrate(ctx context.Context, home string, args []string, in io.Reader, out io.Writer, getenv func(string) string, userHome string) error {
+	if len(args) > 0 && (args[0] == "finish" || args[0] == "rollback") {
+		return runCutover(ctx, home, args[0], args[1:], in, out, getenv, userHome)
+	}
 	var fl migrateFlags
 	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
 	fs.SetOutput(out)
@@ -182,6 +190,7 @@ func (m *migration) run(ctx context.Context) error {
 		return err
 	}
 	plan.Write(m.out, m.fl.secrets)
+	m.cutoverSection(ctx, found)
 	if plan.ConfigErr != nil {
 		return errors.New("nothing was written; fix the problem above (or report it), then run hk migrate again")
 	}
@@ -446,7 +455,13 @@ func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
 	}
 	m.reportFiles(p, res)
 	if len(res.Paused) > 0 {
-		m.say("\nSchedules are imported paused. Check them with hk schedules list, then resume each one:")
+		if cutover.Runs(p.Found.From) {
+			m.say("\nSchedules are imported paused, so nothing runs twice. Check them with hk schedules list.")
+			m.say("When you're ready to switch, hk migrate finish --from %s stops %s, pauses its schedules and resumes these:",
+				p.Found.From, migrate.Label(p.Found.From))
+		} else {
+			m.say("\nSchedules are imported paused. Check them with hk schedules list, then resume each one:")
+		}
 		for _, k := range sortedNames(res.Paused) {
 			m.say("  hk schedules resume %s    # %s", res.Paused[k], k)
 		}
@@ -472,6 +487,9 @@ func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
 		m.say("  hk setup       pick a model and where to talk")
 	}
 	m.say("  hk doctor      check the config, keys and channels")
+	if cutover.Runs(p.Found.From) {
+		m.say("  hk migrate finish    stop %s, pause its schedules and resume the imported ones", migrate.Label(p.Found.From))
+	}
 	m.say("  hk serve       start the agents and connect the channels")
 	switch fp := p.Files; {
 	case fp == nil:
