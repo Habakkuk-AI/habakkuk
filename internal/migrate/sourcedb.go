@@ -34,14 +34,14 @@ func openSourceDB(path string) (db *sql.DB, closeFn func() error, err error) {
 	copy := filepath.Join(dir, filepath.Base(path))
 	for _, suffix := range []string{"", "-wal"} {
 		if err := copyFile(path+suffix, copy+suffix); err != nil {
-			os.RemoveAll(dir)
+			_ = os.RemoveAll(dir)
 			return nil, nil, err
 		}
 	}
 	q := url.Values{}
 	q.Add("_pragma", "busy_timeout(5000)")
 	if db, err = sql.Open("sqlite", "file:"+copy+"?"+q.Encode()); err != nil {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 		return nil, nil, err
 	}
 	db.SetMaxOpenConns(1)

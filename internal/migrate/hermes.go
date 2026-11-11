@@ -355,7 +355,7 @@ func readFacts(path string) ([]fact, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer closeDB()
+	defer func() { _ = closeDB() }()
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'facts'`).Scan(&n); err != nil {
 		return nil, err

@@ -170,7 +170,7 @@ func (m *migration) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer found.Close()
+	defer func() { _ = found.Close() }()
 	if o.Project != "" {
 		if !migrate.IsCodingTool(o.From) {
 			return errors.New("--project is for --from claude-code and --from codex")

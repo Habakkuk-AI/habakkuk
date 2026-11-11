@@ -75,8 +75,11 @@ func (r *codingReader) projectInstructions(path string) error {
 		return err
 	}
 	title := "Instructions for " + filepath.Base(r.o.Project) + " (" + filepath.Base(path) + ")"
-	body := "The instructions in " + tilde(path, r.o.userHome()) + ", for work in the project " +
-		tilde(r.o.Project, r.o.userHome()) + ":\n\n" + text
+	// Paths are written with forward slashes: a Windows path's
+	// backslashes run its folder names into one word, which the memory's
+	// secret check can take for a key.
+	body := "The instructions in " + filepath.ToSlash(tilde(path, r.o.userHome())) + ", for work in the project " +
+		filepath.ToSlash(tilde(r.o.Project, r.o.userHome())) + ":\n\n" + text
 	for _, n := range chunkNote(title, body, []string{"imported", "project", r.from}) {
 		n.Untrusted = true // it comes from a repository, which anyone may have written
 		r.agent.Notes = append(r.agent.Notes, n)
@@ -244,15 +247,10 @@ type noteMeta struct {
 	Description string `yaml:"description"`
 }
 
-// memoryFiles adds each Markdown file under root as a memory note. An
+// memoryFrom adds each Markdown file under root as a memory note. An
 // index file (MEMORY.md) that only links the others is left out; one that
-// holds the memory itself is split by its sections.
-func (r *codingReader) memoryFiles(root string, tags ...string) error {
-	return r.memoryFrom(root, false, tags...)
-}
-
-// memoryFrom is memoryFiles; with untrusted set the notes are saved as
-// untrusted (Claude Code's auto memory, written from project sessions).
+// holds the memory itself is split by its sections. With untrusted set the
+// notes are saved as untrusted (auto memory written from project sessions).
 func (r *codingReader) memoryFrom(root string, untrusted bool, tags ...string) error {
 	var files []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {

@@ -660,7 +660,7 @@ func readCronDB(path string) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer closeDB()
+	defer func() { _ = closeDB() }()
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'cron_jobs'`).Scan(&n); err != nil {
 		return nil, err

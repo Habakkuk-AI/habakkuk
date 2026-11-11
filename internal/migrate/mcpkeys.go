@@ -17,10 +17,11 @@ import (
 //
 //   - a runner and one package: npx, uvx or bunx, or pipx run or uv tool
 //     run, followed by one package name such as @scope/server@1.2 (a
-//     version is digits and dots, optionally followed by "-" and digits
-//     and dots or a tag (alpha, beta, rc, pre, dev, next) with an optional
-//     ".<number>", or latest); a runner with no package is not copied as
-//     it is;
+//     version is up to three numbers joined by dots, optionally followed
+//     by "-" and up to three numbers joined by dots or a tag (alpha, beta,
+//     rc, pre, dev, next) with an optional number, as in rc.1 or rc1, or
+//     latest; each number at most 9 digits); a runner with no package is
+//     not copied as it is;
 //   - nothing at all, for a program that is not a runner;
 //
 // with, anywhere, only these flags, which take no value: -y, --yes, -q,
@@ -28,7 +29,8 @@ import (
 // server one whose values only .env may keep.
 //
 // A plain path is absolute (or starts with "~/"), has no spaces, line
-// breaks, "@" or ":", and exists on this computer. A variable reference
+// breaks, "@" or ":" (but for a Windows drive's), and exists on this
+// computer. A variable reference
 // is an argument that is ${NAME} (or ${NAME:-default}; NAME in capitals,
 // digits and underscores, as variables are named), a flag name set to
 // one (--token=${NAME}), or a flag name followed by one. A flag name here
@@ -50,7 +52,7 @@ import (
 
 var (
 	reProgram  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	rePackage  = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|[0-9]+(\.[0-9]+)*(-([0-9]+(\.[0-9]+)*|(alpha|beta|rc|pre|dev|next)(\.[0-9]+)?))?))?$`)
+	rePackage  = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|[0-9]{1,9}(\.[0-9]{1,9}){0,2}(-([0-9]{1,9}(\.[0-9]{1,9}){0,2}|(alpha|beta|rc|pre|dev|next)(\.?[0-9]{1,9})?))?))?$`)
 	reRefOnly  = regexp.MustCompile(`^\$\{([A-Z_][A-Z0-9_]{0,63})(:-([^}]*))?\}$`)
 	reFlagRef  = regexp.MustCompile(`^((?:-[a-z]|--[a-z]+(?:-[a-z]+)*)=)\$\{([A-Z_][A-Z0-9_]{0,63})(:-([^}]*))?\}$`)
 	reHeader   = regexp.MustCompile(`^((Bearer|Basic|Token)\s+)?\$\{([A-Z_][A-Z0-9_]{0,63})(:-([^}]*))?\}$`)
@@ -64,7 +66,16 @@ var (
 
 // plainPath reports a plain path (see above).
 func (f *Found) plainPath(p string) bool {
-	if strings.ContainsAny(p, " \t\r\n@:") {
+	// On Windows an absolute path starts with a drive ("C:"); its colon is
+	// the only one allowed. A network path (\\host\share) is not plain.
+	rest := p
+	if vol := filepath.VolumeName(p); vol != "" {
+		if len(vol) != 2 || vol[1] != ':' {
+			return false
+		}
+		rest = p[2:]
+	}
+	if strings.ContainsAny(rest, " \t\r\n@:") {
 		return false
 	}
 	if rest, ok := strings.CutPrefix(p, "~/"); ok && f.userHome != "" {

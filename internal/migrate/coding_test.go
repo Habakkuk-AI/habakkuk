@@ -492,6 +492,15 @@ func TestArgKinds(t *testing.T) {
 		{"npx", []string{"-y", "pkg@latest"}, "pp"},
 		{"npx", []string{"-y", "pkg@next"}, "pk"},
 		{"npx", []string{"-y", "pkg@1.2.3-next"}, "pp"},
+		{"npx", []string{"-y", "pkg@1.2.3-rc1"}, "pp"},
+		{"npx", []string{"-y", "pkg@1.2.3-rc.1"}, "pp"},
+		// Each number in a version is at most 9 digits, and there are at
+		// most three: a long number is not a version.
+		{"npx", []string{"-y", "pkg@1.0.0-12345678901234567890123"}, "pk"},
+		{"npx", []string{"-y", "pkg@123456789012345678901234567890"}, "pk"},
+		{"npx", []string{"-y", "@scope/pkg@4111111111111111"}, "pk"},
+		{"npx", []string{"-y", "pkg@4111.1111.1111.1111"}, "pk"},
+		{"npx", []string{"-y", "pkg@123456789.1.2"}, "pp"},
 		{"npx", []string{"-y", "pkg", "m15secondsecretword"}, "ppk"},
 		{"npx", []string{"--registry-token", "3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c", "-y", "real-pkg"}, "kkpp"},
 		{"pipx", []string{"run", "--spec", "pipxsecretm4value", "pkg"}, "pkkp"},
@@ -826,7 +835,7 @@ func TestCodexProjectSkills(t *testing.T) {
 	if slices.Contains(skillNames(f.Agents[0]), "release-check") {
 		t.Error("an untrusted folder's skill came in")
 	}
-	cfg := readFile(t, filepath.Join(src, "config.toml")) + "\n[projects.\"" + project + "\"]\ntrust_level = \"trusted\"\n"
+	cfg := readFile(t, filepath.Join(src, "config.toml")) + "\n[projects.'" + project + "']\ntrust_level = \"trusted\"\n" // a literal string: a Windows path's backslashes stay as they are
 	if err := os.WriteFile(filepath.Join(src, "config.toml"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}

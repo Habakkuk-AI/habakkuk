@@ -450,7 +450,16 @@ func Read(o Options) (*Found, error) {
 	case o.History == HistorySkip:
 		f.leftover("conversation history", "left in "+dir+" (--history skip); run hk migrate again without it to bring it over")
 	default:
+		if f.dbs == nil {
+			f.dbs = map[string]*sourceDB{} // shared by the copies NewPlan makes
+		}
 		f.readHistory()
+		// Nothing is held open between the plan and the import: a
+		// conversation opens its database again when the import reads it,
+		// and Apply closes it at the end.
+		if err := f.Close(); err != nil {
+			f.skip("closing the source databases: %v", err)
+		}
 	}
 	f.finish()
 	return f, nil

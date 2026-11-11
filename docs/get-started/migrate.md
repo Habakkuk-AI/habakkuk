@@ -57,7 +57,7 @@ The imported sessions are history:
 - No new message is ever added to them. To pick up an old topic, start a new session and ask the agent about it.
 - Retention never prunes them. To remove one, use `hk sessions rm ID`.
 
-The plan shows how many conversations and messages each agent gets, and how many are already there. It counts them by reading them the way the import does, so the plan and the report agree. Running the import again adds only the ones that are new. A conversation that grew in the old agent after you imported it isn't updated. Pass `--history skip` to leave them all in the old folder.
+The plan shows how many conversations and messages each agent gets, and how many are already there. It counts them by reading them the way the import does, so the plan and the report agree. A conversation that can't be read is listed as skipped, with the reason, and the rest go on. Running the import again adds only the ones that are new. A conversation that grew in the old agent after you imported it isn't updated. Pass `--history skip` to leave them all in the old folder.
 
 ## From Claude Code or Codex
 
@@ -101,7 +101,7 @@ A key can hide anywhere in a server's setup: a short flag's value, a token in a 
 
 A remote server, one with a URL, is never copied as it is. A local server is copied as it is only when its command is a bare program name or a path, and its arguments, apart from paths and variables, are exactly one of these:
 
-- a runner and one package: `npx`, `uvx` or `bunx`, or `pipx run` or `uv tool run`, followed by one package name, such as `@scope/server` or `server@1.2.0` (a version is digits and dots, optionally followed by `-` and digits and dots or one of `alpha`, `beta`, `rc`, `pre`, `dev` and `next` with an optional `.` and number, or `latest`). A package name with more than three digits, or a long run of hex digits, isn't copied as it is either. A runner with no package after it isn't copied as it is;
+- a runner and one package: `npx`, `uvx` or `bunx`, or `pipx run` or `uv tool run`, followed by one package name, such as `@scope/server` or `server@1.2.0` (a version is up to three numbers joined by dots, optionally followed by `-` and up to three numbers joined by dots or one of `alpha`, `beta`, `rc`, `pre`, `dev` and `next` with an optional number, as in `rc.1` or `rc1`, or `latest`. Each number has at most 9 digits). A package name with more than three digits, or a long run of hex digits, isn't copied as it is either. A runner with no package after it isn't copied as it is;
 - nothing at all, for a program that isn't a runner.
 
 The only flags allowed, anywhere, are `-y`, `--yes`, `-q`, `--quiet` and `--stdio`, which take no value. Any other flag, and the word after it, means the server isn't copied as it is. The one exception is a flag whose value is a variable, such as `--token ${NOTION_TOKEN}` or `--token=${NOTION_TOKEN}`: it holds no value, so it stays as it is. The flag must be one dash and one letter (`-k`), or two dashes and words of lowercase letters joined by hyphens (`--api-key`), at most 32 characters, with nothing attached. A key made only of letters can still look like such a flag name, and one made mostly of letters like a package name: read the plan's MCP lines before you say yes.

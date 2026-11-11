@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -595,6 +597,48 @@ func TestHistoryApplySurvivesAPanic(t *testing.T) {
 	}
 	if res.Conversations != 4 {
 		t.Errorf("%d conversations imported; want the other 4", res.Conversations)
+	}
+}
+
+// No source database stays open between the plan and the import, or after
+// the import: on Windows an open one cannot be moved or deleted.
+func TestHistoryLeavesNoDatabaseOpen(t *testing.T) {
+	for _, from := range []string{Hermes, OpenClaw} {
+		src, home := fixture(t, from), t.TempDir()
+		p := mustPlan(t, from, src, home, false)
+		if len(p.Found.dbs) != 0 {
+			t.Errorf("%s: open after the plan: %v", from, slices.Collect(maps.Keys(p.Found.dbs)))
+		}
+		if _, err := p.Apply(context.Background(), false); err != nil {
+			t.Fatal(err)
+		}
+		if len(p.Found.dbs) != 0 {
+			t.Errorf("%s: open after the import: %v", from, slices.Collect(maps.Keys(p.Found.dbs)))
+		}
+	}
+}
+
+// A conversation that cannot be read when the plan counts it, a panic
+// included, is named as skipped with the reason; the others are counted.
+func TestHistoryCountSkipsUnreadable(t *testing.T) {
+	f := &Found{}
+	ok := &Conversation{Agent: "habakkuk", ID: "corner-bakery/1", load: func() ([]session.ImportedMessage, bool, error) {
+		return []session.ImportedMessage{{Role: llm.User, Text: "Two loaves, please."}}, false, nil
+	}}
+	odd := &Conversation{Agent: "habakkuk", ID: "corner-bakery/2", load: func() ([]session.ImportedMessage, bool, error) { panic("an odd message") }}
+	bad := &Conversation{Agent: "habakkuk", ID: "corner-bakery/3", load: func() ([]session.ImportedMessage, bool, error) {
+		return nil, false, errors.New("database disk image is malformed")
+	}}
+	f.History = []*Conversation{ok, odd, bad}
+	f.countHistory(0)
+	if len(f.History) != 1 || f.History[0] != ok || ok.Count != 1 {
+		t.Errorf("history = %+v", f.History)
+	}
+	skipped := strings.Join(f.Skipped, "\n")
+	for _, want := range []string{"corner-bakery/2 of agent habakkuk: could not be read: an odd message", "corner-bakery/3 of agent habakkuk: database disk image is malformed"} {
+		if !strings.Contains(skipped, want) {
+			t.Errorf("skipped = %q; want %q", f.Skipped, want)
+		}
 	}
 }
 

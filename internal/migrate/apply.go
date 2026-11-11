@@ -46,6 +46,9 @@ type Result struct {
 // When the plan copies files, they are copied first: the imported text
 // names the copies, so nothing else is written if the copy cannot finish.
 func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
+	// The conversations open their source databases as they are read;
+	// they are all closed once the import ends.
+	defer func() { _ = p.Found.Close() }()
 	if p.ConfigErr != nil {
 		return nil, p.ConfigErr
 	}

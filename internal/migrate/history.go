@@ -53,8 +53,10 @@ import (
 // Only the text of user and assistant messages comes over: tool calls,
 // tool results, reasoning and summaries stay behind. Each conversation
 // becomes a read-only session of the agent it belonged to, searchable with
-// session_search. The plan only counts messages; they are read once, when
-// the import writes them.
+// session_search. Each conversation is read twice: once to count its
+// messages for the plan, the way the import reads them so the numbers
+// agree, and again when the import writes them. One that cannot be read
+// is named in the plan as skipped.
 
 // History options.
 const (
@@ -77,8 +79,9 @@ type Conversation struct {
 	// Untrusted marks a conversation whose text came from senders nobody
 	// vets: a group chat, an inbox, a webhook.
 	Untrusted bool
-	// Count is how many user and assistant messages with text it holds, as
-	// counted for the plan without reading them.
+	// Count is how many user and assistant messages with text it holds:
+	// the plan reads the conversation the way the import does to count
+	// them.
 	Count int
 
 	// load reads the messages; untrusted is set when they carried context
@@ -323,6 +326,12 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 			ID: a.From + "/" + id, Title: title, Started: unixTime(started), Platform: src, Chat: chat, Thread: thread,
 			Untrusted: !slices.Contains(personSources, strings.ToLower(src)) || !slices.Contains(directChats, strings.ToLower(chatType)) || author != "",
 			load: func() ([]session.ImportedMessage, bool, error) {
+				// The database is closed once the read is done and opened
+				// again here: an import can come long after the plan.
+				db, err := f.roDB(path)
+				if err != nil {
+					return nil, false, err
+				}
 				seen := map[string]bool{}
 				// Turns a compaction carried into this session from the one it
 				// continues are imported with that one. Without message_uid
@@ -398,13 +407,37 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 		f.skip("the conversations in %s: %v", path, err)
 	}
 	rows.Close()
-	// The plan counts each conversation by reading it the way the import
-	// does, so the numbers agree.
+	f.countHistory(before)
+}
+
+// countHistory counts the messages of each conversation listed from index
+// before on by reading it the way the import does, so the plan's numbers
+// agree with what the import brings over. A conversation that cannot be
+// read, or that panics the reader, is taken off the list and named in the
+// plan as skipped, with the reason; the others go on.
+func (f *Found) countHistory(before int) {
+	kept := f.History[:before]
 	for _, c := range f.History[before:] {
-		if msgs, _, err := c.Load(); err == nil {
-			c.Count = len(msgs)
+		n, err := countConversation(c)
+		if err != nil {
+			f.skip("the conversation %s of agent %s: %v", c.ID, c.Agent, err)
+			continue
 		}
+		c.Count = n
+		kept = append(kept, c)
 	}
+	clear(f.History[len(kept):])
+	f.History = kept
+}
+
+func countConversation(c *Conversation) (n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			n, err = 0, fmt.Errorf("could not be read: %v", r)
+		}
+	}()
+	msgs, _, err := c.Load()
+	return len(msgs), err
 }
 
 // stripHermesReply takes out the quote Hermes Agent's gateway puts before a
@@ -566,13 +599,14 @@ func (f *Found) openClawHistory(a *Agent, dir string) {
 		add(id, e)
 	}
 	dbPath := filepath.Join(dir, "agent", "openclaw-agent.sqlite")
-	dbIDs := map[string]int{} // session id -> messages counted in the database
+	before := len(f.History)
+	inDatabase := map[string]bool{} // session ids with events in the database
 	var db *sql.DB
 	if exists(dbPath) {
 		var err error
 		if db, err = f.roDB(dbPath); err == nil {
 			err = ocDBSessions(db, func(id string, n int, e *ocEntry) {
-				dbIDs[id] = n
+				inDatabase[id] = true
 				if old, ok := entries[id]; ok {
 					if old.title == "" {
 						old.title = e.title
@@ -595,7 +629,7 @@ func (f *Found) openClawHistory(a *Agent, dir string) {
 	for _, id := range order {
 		e := entries[id]
 		sid := id
-		n, inDB := dbIDs[id]
+		inDB := inDatabase[id]
 		if e.fromFile == "" && !inDB {
 			continue
 		}
@@ -624,25 +658,22 @@ func (f *Found) openClawHistory(a *Agent, dir string) {
 			start = e.updated
 		}
 		file := e.fromFile
-		// Counted the way the import reads them.
-		if file != "" {
-			msgs, _, _ := readJSONLTranscript(file)
-			n = len(msgs)
-		} else if inDB {
-			msgs, _, _ := ocDBTranscript(db, sid)
-			n = len(msgs)
-		}
 		f.conversation(a, &Conversation{
 			ID: a.From + "/" + sid, Title: e.title, Started: unixTime(start), Platform: platform, Chat: chat, Thread: thread,
-			Untrusted: unvettedKey(e.key) || !slices.Contains(directChats, strings.ToLower(kind)), Count: n,
+			Untrusted: unvettedKey(e.key) || !slices.Contains(directChats, strings.ToLower(kind)),
 			load: func() ([]session.ImportedMessage, bool, error) {
 				if file != "" {
 					return readJSONLTranscript(file)
+				}
+				db, err := f.roDB(dbPath)
+				if err != nil {
+					return nil, false, err
 				}
 				return ocDBTranscript(db, sid)
 			},
 		})
 	}
+	f.countHistory(before)
 }
 
 // resetTime reads the time in a ".reset.<iso>" suffix, where the time's
@@ -1010,8 +1041,9 @@ var (
 var reChatLine = regexp.MustCompile(`^#\S+ \S.*: |^\[[^\]]{1,40}\] \S`)
 
 // planHistory decides which conversations are new: the ones the Habakkuk
-// home does not hold yet. It reads transcripts.db without changing it,
-// and counts messages without reading them.
+// home does not hold yet. It reads transcripts.db without changing it.
+// The counts come from reading each conversation when the source was read
+// (countHistory).
 func (p *Plan) planHistory() error {
 	f := p.Found
 	if p.opts.History == HistorySkip || len(f.History) == 0 {
