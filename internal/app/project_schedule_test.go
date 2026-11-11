@@ -34,7 +34,10 @@ func TestScheduleFromAnUntrustedProjectIsTainted(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.Runner.Agents["habakkuk"].Mode = tools.ModeFull
-	a.Runner.Models = scheduleModel{}
+	// One model for the whole test (swapping it would race the title
+	// writer): it makes the schedule when asked to, and in the run it
+	// runs the command.
+	a.Runner.Models = scheduleThenEcho{}
 	ctx := context.Background()
 
 	sess, err := a.Runner.NewSession(ctx, "habakkuk")
@@ -63,7 +66,6 @@ func TestScheduleFromAnUntrustedProjectIsTainted(t *testing.T) {
 	}
 
 	os.Remove(agents)
-	a.Runner.Models = echoModel{}
 	runID, err := a.Scheduler.RunNow(ctx, sc.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -137,4 +139,17 @@ func TestCardFromAnUntrustedProjectIsTainted(t *testing.T) {
 	if !cards[0].Tainted {
 		t.Fatal("a card made in a session with an untrusted AGENTS.md is clean")
 	}
+}
+
+// scheduleThenEcho makes a schedule in a turn that asks for one, and runs
+// `echo covered` in any other.
+type scheduleThenEcho struct{}
+
+func (scheduleThenEcho) Send(ctx context.Context, to []llm.Target, req llm.Request, ev func(llm.Event)) (*llm.Response, error) {
+	for _, m := range req.Messages {
+		if m.Role == llm.User && strings.Contains(m.Text(), "make a schedule") {
+			return scheduleModel{}.Send(ctx, to, req, ev)
+		}
+	}
+	return echoModel{}.Send(ctx, to, req, ev)
 }
