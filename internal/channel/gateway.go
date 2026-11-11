@@ -70,8 +70,9 @@ type Gateway struct {
 	Personas state.Personalities
 	// ProgressAfter is how long a turn runs before its progress draft is
 	// posted (default 8s); ProgressEvery is the least time between edits
-	// (default 3s).
-	ProgressAfter, ProgressEvery time.Duration
+	// (default 3s). StreamEvery is the least time between edits of a reply
+	// streamed while it is written (default 1.2s).
+	ProgressAfter, ProgressEvery, StreamEvery time.Duration
 	// Commands are extra slash commands ("/usage", "/model"), each given
 	// the conversation's session and the text after the command. The reply
 	// is sent back to the chat.
@@ -730,11 +731,11 @@ func (g *Gateway) HandleDeliver(ctx context.Context, j *jobs.Job, owner string) 
 	if a == nil {
 		return "", jobs.Permanent{Err: fmt.Errorf("%w %q", errNoAdapter, p.To.Account)}
 	}
-	g.finishDraft(ctx, p.Draft, a, p.To)
-	if p.File != nil {
-		return g.deliverFile(ctx, j, owner, a, p)
-	}
-	if strings.TrimSpace(p.Text) == "" {
+	if p.File != nil || strings.TrimSpace(p.Text) == "" {
+		g.finishDraft(ctx, p.Draft, a, p.To)
+		if p.File != nil {
+			return g.deliverFile(ctx, j, owner, a, p)
+		}
 		return "removed the progress draft", nil
 	}
 	chunks := Split(p.Text, chunkLimit(a))
@@ -742,6 +743,10 @@ func (g *Gateway) HandleDeliver(ctx context.Context, j *jobs.Job, owner string) 
 	if err != nil {
 		return "", err
 	}
+	if sent == 0 && g.adoptDraft(ctx, j.ID, p.Draft, a, p.To, chunks[0]) {
+		sent = 1
+	}
+	g.finishDraft(ctx, p.Draft, a, p.To)
 	for i := sent; i < len(chunks); i++ {
 		if err := g.Queue.Owns(ctx, j.ID, owner); err != nil {
 			return "", err

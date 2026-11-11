@@ -107,6 +107,7 @@ Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded
 | `api_url` | Override the platform API base URL; Signal: the signal-cli daemon |
 | `voice_replies`, `voice_text` | Spoken replies: `off`, `mirror` or `always`, and whether the text is sent too |
 | `progress` | What a chat shows while the agent works: `plain` (default, one short line), `detailed` (a line per tool step; `draft` is its old name) or `off`. Changes apply without a restart ([settings](../channels/settings.md#what-a-chat-shows-while-the-agent-works)) |
+| `stream` | Show the reply while it's written, in one message that becomes the reply (default `true`; Telegram and Slack). Changes apply without a restart ([settings](../channels/settings.md#replies-as-theyre-written)) |
 | `approvals_detail` | What an approval request shows: `summary` (default, plain words) or `full` (also the exact call). Changes apply without a restart ([settings](../channels/settings.md#approval-requests-in-plain-words)) |
 | `reactions` | React to the user's message when a turn starts and ends |
 | `language` | The language of Habakkuk's own messages on this channel |
