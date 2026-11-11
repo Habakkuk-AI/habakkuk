@@ -162,3 +162,25 @@ func TestExecRulesOnlyUnderBashShOrDash(t *testing.T) {
 		}
 	}
 }
+
+// Quoted or escaped ~ and = after any number of empty quotes, or as a word
+// of their own, are refused; ~ or = later in a word are not expansions.
+func TestQuotedTildeAndEqualsAfterEmptyQuotes(t *testing.T) {
+	for _, c := range []string{
+		`cat ''"~/x"`, `cat ""'~/x'`, `cat ''\~/x`, `cat ""\~/x`, `cat ''~/x`, `cat ""~/x`,
+		`cat ''''"~"`, `cat """"'~'`, `cat '''~'`, `cat """~"`,
+		`cat ''=ls`, `cat ""=ls`, `cat ''"=ls"`, `cat ""'=ls'`, `cat ''\=ls`, `cat ""\=ls`,
+		`cat '~/x'`, `cat "~/x"`, `cat \~/x`, `cat '=ls'`, `cat "=ls"`, `cat \=ls`,
+		`""=ls`, `''"~/bin/ls"`, `"~/bin/ls"`, `\~/bin/ls`,
+		`cat a ''"~"`, `cat '' "~"`,
+	} {
+		if w, ok := shellWords(c); ok {
+			t.Errorf("%s splits as %q", c, w)
+		}
+	}
+	for _, c := range []string{`cat ~/x`, `cat a'~'`, `cat "a=b"`, `cat a\=b`, `cat x'='`} {
+		if _, ok := shellWords(c); !ok {
+			t.Errorf("%s refused", c)
+		}
+	}
+}

@@ -47,7 +47,12 @@ const psEpilogue = "\n$__habakkukOK = $?; if (-not $__habakkukOK) { if ($LASTEXI
 const maxEncoded = 30000
 
 func shellFor(goos, pref, script string, wantBash bool, look func(string) (string, error)) shellSpec {
-	kind := strings.ToLower(strings.TrimSuffix(filepath.Base(pref), filepath.Ext(pref)))
+	// The program's own name: only Windows drops an extension (.exe), so
+	// bash.sh elsewhere is not "bash".
+	kind := strings.ToLower(filepath.Base(pref))
+	if goos == "windows" {
+		kind = strings.TrimSuffix(kind, strings.ToLower(filepath.Ext(pref)))
+	}
 	path := pref
 	if pref == "" || !strings.ContainsAny(pref, `/\`) {
 		path = ""

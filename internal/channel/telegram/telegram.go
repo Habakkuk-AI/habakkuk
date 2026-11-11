@@ -144,6 +144,13 @@ type message struct {
 	ForwardDate   int64           `json:"forward_date"`
 	// ViaBot: the message was written by an inline bot, not typed.
 	ViaBot *user `json:"via_bot"`
+	// IsFromOffline: sent by an implicit action (a Business away or
+	// greeting message, a scheduled message), not typed just now.
+	IsFromOffline bool `json:"is_from_offline"`
+	// ExternalReply: a reply to a message in another chat (the quoted part
+	// is in Quote); SenderChat: sent on behalf of a chat.
+	ExternalReply json.RawMessage `json:"external_reply"`
+	SenderChat    json.RawMessage `json:"sender_chat"`
 	// Quote is the part of the replied-to message the user picked, if any.
 	Quote *struct {
 		Text string `json:"text"`
@@ -254,7 +261,9 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 	m.Forwarded = len(msg.ForwardOrigin) > 0 || msg.ForwardFrom != nil || msg.ForwardDate != 0
 	// Plain text the sender typed: Telegram marks forwards, quotes and
 	// inline bots, so the absence of each means something.
-	m.Plain = msg.Text != "" && len(atts) == 0 && m.Quote == nil && !m.Forwarded && msg.ViaBot == nil
+	m.Plain = msg.Text != "" && len(atts) == 0 && m.Quote == nil && !m.Forwarded && msg.ViaBot == nil &&
+		!msg.IsFromOffline && len(msg.ExternalReply) == 0 && msg.Quote == nil && len(msg.SenderChat) == 0 &&
+		(msg.ReplyTo == nil || (msg.IsTopicMessage && msg.ReplyTo.MessageID == msg.MessageThreadID)) // a reply to anything (a poll, say) is not plain
 	mention := "@" + a.username
 	if a.username != "" && strings.Contains(strings.ToLower(text), strings.ToLower(mention)) {
 		m.Mentioned = true

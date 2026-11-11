@@ -89,7 +89,7 @@ A command isn't simple, and gets no **Always allow**, if it has an unquoted `$`,
 
 - the agent runs commands in a Docker or SSH sandbox, whose programs this computer can't pin;
 - Habakkuk runs on Windows, where commands run in PowerShell;
-- `HABAKKUK_SHELL` names another shell: zsh (it expands a leading `=`), fish, PowerShell, or a path to any other program.
+- `HABAKKUK_SHELL` names another shell: zsh (it expands a leading `=`), PowerShell, or a path to fish or any other program. A bare name Habakkuk doesn't know, such as `fish`, is ignored and bash runs.
 
 File rules are unaffected.
 
@@ -117,7 +117,7 @@ None of these are typed, even when you started them:
 - `/skill`, plugin commands and `hk run -skill`, which carry a file's text, and `hk run` itself;
 - `hk send`, a retry, `/queue` and `/goal` follow-ups;
 - Live mode, voice notes and dashboard recordings (wherever they're transcribed), and `hk talk`, since speech could be anyone's;
-- a message that quotes another message, a forwarded message, a Telegram message sent through an inline bot, a WhatsApp template button's text, and a message with an attachment;
+- a message that quotes another message (a reply across chats included), a forwarded message, a Telegram message sent through an inline bot, on behalf of a chat, or by Telegram Business while you're away (away, greeting and scheduled messages), a WhatsApp template button's text or ad referral, and a message with an attachment;
 - `hk chat` reading from a pipe rather than a terminal.
 
 A typed turn also needs all of these:
@@ -141,7 +141,7 @@ Rules never answer for anything else, and those calls ask a person as before:
 Your message gets no rules when anything but your own words entered the conversation since your previous typed message. That covers:
 
 - in your previous message's own turn: a tool that read outside content, or chat notes that came in with it;
-- after it: any turn you didn't type (a finished process, meeting notes, a sub-agent's result, a schedule's run, an A2A task, a `/goal` follow-up, a retry), and any chat note.
+- after it: any turn you didn't type (a finished process, meeting notes, a sub-agent's result, a schedule's run, an A2A task, a `/goal` follow-up, a retry), any chat note, and a Live call's transcript, which the dashboard writes into the conversation when the call ends.
 
 Once a typed message of yours has gone through with nothing like that in or after it, the next one gets its rules back.
 
