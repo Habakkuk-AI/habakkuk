@@ -8,9 +8,11 @@ on:
 permissions:
   contents: read
 
+# Jobs run on Blacksmith's runners (blacksmith.sh), which take the same
+# steps as GitHub's own images. Its cache applies to actions/setup-go.
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -35,7 +37,7 @@ jobs:
   # (sh scripts, permission bits, process-group signals) skip themselves
   # with testutil.UnixOnly; `git grep -n testutil.UnixOnly` lists them.
   windows:
-    runs-on: windows-latest
+    runs-on: blacksmith-4vcpu-windows-2025
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
@@ -56,7 +58,7 @@ jobs:
 
   # Habakkuk Desktop is its own module (CGO, a webview); ./... above skips it.
   desktop:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
