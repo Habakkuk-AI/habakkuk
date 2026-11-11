@@ -116,3 +116,75 @@ func TestEditorRunnerKeepsTheBaseRunnersSettings(t *testing.T) {
 		t.Fatal("the editor's runner has no Env or agents")
 	}
 }
+
+// editorWraps are the function fields the editor's runner may wrap rather
+// than copy, as long as the wrapper still calls the base runner's own.
+// None may be replaced outright.
+var editorWraps = map[string]bool{
+	"Env": true, // a.env calls the base Env, then points it at the editor's folder
+}
+
+// A function field copied as a different function (a stub, a default, a
+// wrapper that never calls the base) would pass the not-zero check above.
+// So every function field of the base runner is a sentinel that records
+// its call, and each one on the editor's runner must reach it.
+func TestEditorRunnerCallsTheBaseRunnersFunctions(t *testing.T) {
+	base := &agent.Runner{}
+	bv := reflect.ValueOf(base).Elem()
+	rt := bv.Type()
+	called := map[string]bool{}
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		if f.Type.Kind() != reflect.Func {
+			bv.Field(i).Set(nonZero(t, f.Name, f.Type))
+			continue
+		}
+		name, ft := f.Name, f.Type
+		bv.Field(i).Set(reflect.MakeFunc(ft, func([]reflect.Value) []reflect.Value {
+			called[name] = true
+			out := make([]reflect.Value, ft.NumOut())
+			for j := range out {
+				out[j] = reflect.Zero(ft.Out(j))
+			}
+			return out
+		}))
+	}
+	a, err := New(base, tools.NewRegistry(), "habakkuk", "test", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := reflect.ValueOf(a.runner).Elem()
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		if !f.IsExported() || f.Type.Kind() != reflect.Func {
+			continue
+		}
+		fn := ev.Field(i)
+		if fn.IsNil() {
+			t.Errorf("agent.Runner.%s is not set on the editor's runner", f.Name)
+			continue
+		}
+		args := make([]reflect.Value, f.Type.NumIn())
+		for j := range args {
+			args[j] = reflect.Zero(f.Type.In(j))
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("calling the editor's %s panicked: %v", f.Name, r)
+				}
+			}()
+			fn.Call(args)
+		}()
+		if !called[f.Name] {
+			if editorWraps[f.Name] {
+				t.Errorf("the editor's %s is listed as a wrapper but does not call the base runner's", f.Name)
+			} else {
+				t.Errorf("agent.Runner.%s on the editor's runner is not the base runner's function (copy it in acp.New, or list it in editorWraps with a reason)", f.Name)
+			}
+		}
+	}
+}
