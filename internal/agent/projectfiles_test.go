@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -260,7 +259,7 @@ func TestProjectFilesCapsAndOddFiles(t *testing.T) {
 	write(t, filepath.Join(repo, "AGENTS.md"), strings.Repeat("a", maxProjectFile+500))
 	write(t, filepath.Join(repo, "CLAUDE.md"), strings.Repeat("b", maxProjectFile))
 	if runtime.GOOS != "windows" {
-		if err := syscall.Mkfifo(filepath.Join(repo, ".cursorrules"), 0o644); err != nil {
+		if err := mkfifo(filepath.Join(repo, ".cursorrules")); err != nil {
 			t.Fatal(err)
 		}
 	}

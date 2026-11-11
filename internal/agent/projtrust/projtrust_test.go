@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -159,7 +158,7 @@ func TestReadRegularRefusesFIFOsAndLinks(t *testing.T) {
 	}
 	dir := t.TempDir()
 	fifo := filepath.Join(dir, "AGENTS.md")
-	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+	if err := mkfifo(fifo); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
