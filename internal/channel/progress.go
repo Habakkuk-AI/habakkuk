@@ -339,9 +339,11 @@ func (p *progress) flush(ctx context.Context, markdown string) {
 	p.shown, p.showsAnswer = text, false
 }
 
-// flushAnswer shows the reply written so far. Where progress drafts are
-// silent, the reply gets a message of its own that notifies, and the
-// silent draft goes; elsewhere the draft itself becomes the reply.
+// flushAnswer shows the reply written so far. The reply always starts as a
+// new message: a progress draft already in the chat is removed first, so
+// the reply lands below anything posted since (an approval prompt, say) and
+// notifies where posts notify. Where progress drafts are silent, the reply
+// is posted with PostLoud so it notifies there too.
 func (p *progress) flushAnswer(ctx context.Context, answer string) {
 	text := render(p.a, streamPreview(answer, chunkLimit(p.a)))
 	if text == p.shown {
@@ -350,7 +352,7 @@ func (p *progress) flushAnswer(ctx context.Context, answer string) {
 	cctx, cancel := platformCtx(ctx)
 	defer cancel()
 	p.lastFlush = p.g.now()
-	if p.id != "" && !p.showsAnswer && p.loud != nil {
+	if p.id != "" && !p.showsAnswer {
 		if err := p.ed.Delete(cctx, p.to, p.id); err != nil {
 			p.g.Log.Debug("remove progress draft failed", "channel", p.to.Account, "err", err)
 			return

@@ -90,7 +90,7 @@ Editing a message only works on Telegram and Slack. On every other platform, `pl
 
 On Telegram and Slack, you see the reply while the agent writes it. It arrives as one message that grows every second or so, with a `▍` at the end while there's more to come. When the agent finishes, that same message becomes the reply. You don't get a second copy.
 
-- **You're notified once,** when the reply starts. On Telegram the progress line is silent, so the reply gets a message of its own that quotes your question.
+- **You're notified once,** when the reply starts. If a progress line was showing, the reply gets a new message below it, so it's never hidden above an approval request. On Telegram the progress line is silent, so the reply's message also quotes your question.
 - **Short lines before a tool don't show.** Models often write something like "Let me check" before they use a tool. That isn't the reply, so Habakkuk waits until the text is long enough to read, or has been coming for a moment. If the agent goes on to use a tool anyway, the message goes back to the progress line, and the finished reply arrives as a new message.
 - **Long replies** stream into the first message until it's full. The rest follows as more messages when the reply is done.
 - **Nothing changes after a crash.** If Habakkuk stops mid-reply, the next start finishes the same message. The reply is still sent exactly once.
