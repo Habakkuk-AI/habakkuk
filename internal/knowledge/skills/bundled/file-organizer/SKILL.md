@@ -18,7 +18,7 @@ Moving files is easy to get wrong and tedious to undo. Plan first, show the plan
 Show a plan before changing anything:
 
 - The folder structure, at most two levels deep. Group by what the user will look for: project, year, or kind of document. Choose one scheme, not a mix.
-- The naming pattern, for example `2026-03-14 invoice corner-bakery.pdf`: date first so files sort, lowercase, hyphens for spaces.
+- The naming pattern, for example `2026-03-14 invoice plumber.pdf`: date first so files sort, lowercase, hyphens for spaces.
 - A table of what moves where. For a large folder, show the rules and ten examples.
 - What you would leave alone, and why.
 - Likely duplicates and large files, listed for the user to decide. Never delete on your own.

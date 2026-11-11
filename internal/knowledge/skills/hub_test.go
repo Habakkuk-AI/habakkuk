@@ -38,6 +38,20 @@ func tarball(t *testing.T, files map[string]string) []byte {
 
 const commit = "abc1234abc1234abc1234abc1234abc1234abc12"
 
+// treeHashOf is the tree hash of a package holding files.
+func treeHashOf(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, body := range files {
+		write(t, filepath.Join(dir, filepath.FromSlash(name)), body)
+	}
+	sum, err := hub.TreeHash(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sum
+}
+
 func TestHubInstallFromGitHubAndInvoke(t *testing.T) {
 	files := map[string]string{
 		"SKILL.md":         skillMD("pdf-forms", "Fill PDF forms.", "1. Read the form.\n2. Fill it."),
@@ -51,7 +65,8 @@ func TestHubInstallFromGitHubAndInvoke(t *testing.T) {
 		case "/repos/acme/tools/tarball/" + commit:
 			w.Write(tarball(t, files))
 		case "/index.json":
-			json.NewEncoder(w).Encode(hub.Index{Version: 1, Skills: []hub.IndexEntry{{Name: "pdf-forms", Description: "Fill PDF forms", Source: "github:acme/tools"}}})
+			// A registry entry names a full commit and the hash of its files.
+			json.NewEncoder(w).Encode(hub.Index{Version: 1, Skills: []hub.IndexEntry{{Name: "pdf-forms", Description: "Fill PDF forms", Source: "github:acme/tools@" + commit, SHA256: treeHashOf(t, files)}}})
 		default:
 			http.NotFound(w, r)
 		}

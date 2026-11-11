@@ -119,6 +119,15 @@ func (l *Library) check(s Skill, off map[string]string) Entry {
 	return e
 }
 
+// NoCommand says, for a skill whose name is already a command, why
+// /NAME will not run it and what does; "" for any other name.
+func (l *Library) NoCommand(name string) string {
+	if l.CommandTaken == nil || !l.CommandTaken(name) {
+		return ""
+	}
+	return fmt.Sprintf("/%s is one of Habakkuk's own commands, so this skill has no command of its own: run it with /skill %s, or give it another name", name, name)
+}
+
 // State kept by `hk skills disable` and `enable`, beside the lock file.
 const stateFile = ".state.json"
 

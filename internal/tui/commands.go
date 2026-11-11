@@ -43,6 +43,17 @@ var commands = []command{
 	{name: "/quit", aliases: []string{"/exit"}, help: "leave (a running turn finishes on the next start)"},
 }
 
+// CommandNames are the slash commands the terminal UI runs itself, with
+// their aliases.
+func CommandNames() []string {
+	var out []string
+	for _, c := range commands {
+		out = append(out, c.name)
+		out = append(out, c.aliases...)
+	}
+	return out
+}
+
 func lookupCommand(name string) (command, bool) {
 	name = strings.ToLower(name)
 	for _, c := range commands {

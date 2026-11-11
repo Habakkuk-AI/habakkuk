@@ -177,6 +177,80 @@ func TestSkillsAsCommandsAndBundledSkills(t *testing.T) {
 	}
 }
 
+// A skill named like a command never becomes that command: not in a chat
+// app, where the gateway knows its own commands, and not in hk chat or the
+// terminal UI, which ask the app. It still runs with /skill NAME, and the
+// places that create or list skills say so.
+func TestSkillsNeverTakeACommandName(t *testing.T) {
+	home := t.TempDir()
+	for _, name := range []string{"stop", "remember", "undo-memory", "usage", "clear", "standup", "report"} {
+		dir := filepath.Join(home, "agents", "habakkuk", "skills", name)
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+name+"\ndescription: A skill named "+name+".\n---\n\nSteps of "+name+".\n"), 0o644)
+	}
+	// An enabled plugin with a command named standup.
+	plugin := filepath.Join(home, "plugins", "notes")
+	os.MkdirAll(plugin, 0o755)
+	os.WriteFile(filepath.Join(plugin, "habakkuk-plugin.yaml"), []byte("name: notes\ncommands:\n  standup: {prompt: \"Standup for {{args}}\"}\n"), 0o644)
+	os.WriteFile(filepath.Join(home, "plugins", ".lock.json"), []byte(`{"version":1,"packages":{"notes":{"source":"x","sha256":"y","enabled":true,"trusted":true}}}`), 0o600)
+
+	a, _, _ := openTestAppIn(t, home, "")
+	ctx := context.Background()
+	sess, err := a.Runner.NewSession(ctx, "habakkuk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The gateway's own (/stop, /remember, /undo-memory with an underscore
+	// for the hyphen), the app's (/usage), the terminal's (/clear) and a
+	// plugin's (/standup).
+	for _, name := range []string{"/stop", "/remember", "/REMEMBER", "/undo-memory", "/undo_memory", "/usage", "/clear", "/standup"} {
+		if _, ok := a.SkillCommand("habakkuk", name); ok {
+			t.Errorf("the skill behind %s took a command's name", name)
+		}
+	}
+	// hk chat and the terminal UI ask ChatCommand: only real commands come back for those names.
+	for _, name := range []string{"/stop", "/remember", "/undo_memory", "/clear"} {
+		if _, ok := a.ChatCommand("habakkuk", name); ok {
+			t.Errorf("ChatCommand answered %s with a skill", name)
+		}
+	}
+	if cmd, ok := a.ChatCommand("habakkuk", "/standup"); !ok {
+		t.Error("the plugin's /standup is gone")
+	} else if text, _ := cmd.Prompt(ctx, sess.ID, "Monday"); !strings.Contains(text, "Standup for Monday") {
+		t.Errorf("/standup ran the skill, not the plugin's command: %s", text)
+	}
+	// A skill with a free name is still a command, and the others run with /skill.
+	if _, ok := a.SkillCommand("habakkuk", "/report"); !ok {
+		t.Error("/report is not a command")
+	}
+	text, err := a.ChatCommands()["/skill"].Prompt(ctx, sess.ID, "stop now")
+	if err != nil || !strings.Contains(text, "Steps of stop.") {
+		t.Fatalf("/skill stop: %v\n%s", err, text)
+	}
+	// /skills says which ones need /skill, and the library knows for skill_save and hk skills.
+	list := a.ChatCommands()["/skills"].Run(ctx, sess.ID, "")
+	if !strings.Contains(list, "use /skill <name>") || !strings.Contains(list, "remember") || !strings.Contains(list, "stop") {
+		t.Fatalf("/skills does not say which names are commands:\n%s", list)
+	}
+	if why := a.Skills.NoCommand("remember"); !strings.Contains(why, "/skill remember") {
+		t.Fatalf("NoCommand: %q", why)
+	}
+	if why := a.Skills.NoCommand("report"); why != "" {
+		t.Fatalf("NoCommand for a free name: %q", why)
+	}
+	// The fixed list of the app's own commands matches what ChatCommands builds.
+	for name := range a.ChatCommands() {
+		if name != "/standup" && !slices.Contains(appCommands, name) {
+			t.Errorf("%s is a chat command but not in appCommands", name)
+		}
+	}
+	for _, name := range appCommands {
+		if _, ok := a.ChatCommands()[name]; !ok {
+			t.Errorf("%s is in appCommands but not a chat command", name)
+		}
+	}
+}
+
 func TestCuratorRunsFromMaintain(t *testing.T) {
 	home := t.TempDir()
 	skill := filepath.Join(home, "agents", "habakkuk", "skills", "stale")

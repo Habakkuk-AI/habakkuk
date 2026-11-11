@@ -190,8 +190,9 @@ workers:`, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The public directory comes first, then the configured registries.
-	if regs := cfg.SkillRegistries(); len(regs) != 2 || regs[0].Name != "default" || regs[0].URL != DefaultRegistryURL || regs[1].Name != "team" {
+	// The owner's registries come first, then the public directory, so a
+	// name both list is taken from the owner's.
+	if regs := cfg.SkillRegistries(); len(regs) != 2 || regs[0].Name != "team" || regs[1].Name != "default" || regs[1].URL != DefaultRegistryURL {
 		t.Fatalf("registries %+v", regs)
 	}
 	if !registryURL(DefaultRegistryURL) {

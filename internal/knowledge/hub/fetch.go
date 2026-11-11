@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ type Fetcher struct {
 	GitHubAPI string        // default DefaultGitHubAPI
 	Token     func() string // optional GitHub token, to lift the anonymous rate limit
 	// Registries are the indexes a bare name or registry: source is looked
-	// up in, in order.
+	// up in, in order: the first one that lists the name is used.
 	Registries []Registry
 }
 
@@ -38,6 +39,7 @@ type Fetched struct {
 	Version  string // a commit, a registry version, or the sha256 of a download
 	Origin   Source // the concrete source (a registry name resolved)
 	Registry string // the registry that named it
+	Name     string // the name the registry listed it under
 	Expect   string // the TreeHash the registry promised, or ""
 }
 
@@ -65,18 +67,15 @@ func (f *Fetcher) Fetch(ctx context.Context, src Source, work, single, kind stri
 		if err != nil {
 			return nil, err
 		}
-		inner, err := ParseSource(e.Source)
+		inner, err := entrySource(reg, e)
 		if err != nil {
-			return nil, fmt.Errorf("registry %s, %s: %w", reg, src.Name, err)
-		}
-		if inner.Kind == KindRegistry {
-			return nil, fmt.Errorf("registry %s, %s: source %q points at another registry entry", reg, src.Name, e.Source)
+			return nil, err
 		}
 		got, err := f.Fetch(ctx, inner, work, single, kind)
 		if err != nil {
 			return nil, err
 		}
-		got.Registry, got.Expect = reg, strings.ToLower(e.SHA256)
+		got.Registry, got.Name, got.Expect = reg.Name, e.Name, strings.ToLower(e.SHA256)
 		if e.Version != "" && inner.Kind != KindGitHub {
 			got.Version = e.Version
 		}
@@ -226,8 +225,9 @@ type Registry struct {
 //	 "skills":  [{"name", "description", "source", "sha256", "version", "tags"}],
 //	 "plugins": [...same fields...]}
 //
-// source is any other source form (github:..., an https URL); sha256, when
-// set, is the TreeHash the installed files must have.
+// source is a GitHub repository or folder at a full commit, or an https
+// URL; sha256 is the TreeHash the installed files must have. Both are
+// required (entrySource).
 type Index struct {
 	Version int          `json:"version"`
 	Skills  []IndexEntry `json:"skills"`
@@ -243,6 +243,57 @@ type IndexEntry struct {
 	Version     string   `json:"version,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	Registry    string   `json:"-"` // which registry listed it
+}
+
+var reSHA256 = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+
+// entrySource checks what a registry entry points at and returns it. An
+// index is someone else's text, so an entry is held to more than a source
+// the user types:
+//
+//   - it carries the tree hash of its files (sha256), so what is installed
+//     is what the registry listed;
+//   - its source is a GitHub repository or folder at a full commit, or an
+//     https URL. A branch or a tag can move, a local path would copy the
+//     user's own files, and another registry name would hide where the
+//     files come from, so none of those is accepted;
+//   - a plain http URL, which ParseSource allows for localhost, is accepted
+//     only from a registry that is itself served from this machine.
+func entrySource(reg Registry, e IndexEntry) (Source, error) {
+	bad := func(format string, args ...any) (Source, error) {
+		return Source{}, fmt.Errorf("registry %s, %s: %s; not installed", reg.Name, e.Name, fmt.Sprintf(format, args...))
+	}
+	if !reSHA256.MatchString(e.SHA256) {
+		return bad("the entry has no sha256 (the tree hash of its files)")
+	}
+	raw := strings.TrimSpace(e.Source)
+	if !strings.HasPrefix(raw, "github:") && !strings.HasPrefix(raw, "https://") && !strings.HasPrefix(raw, "http://") {
+		return bad("source %q must be github:owner/repo[/path]@<commit> or an https URL", shorten(raw, 120))
+	}
+	src, err := ParseSource(raw)
+	if err != nil {
+		return bad("%v", err)
+	}
+	switch src.Kind {
+	case KindGitHub:
+		if !reSHA.MatchString(src.Ref) {
+			return bad("source %q must name a full 40-character commit, not a branch or a tag", shorten(raw, 120))
+		}
+	case KindURL:
+		u, _ := url.Parse(src.URL)
+		ru, _ := url.Parse(reg.URL)
+		if u == nil || (u.Scheme != "https" && (ru == nil || !loopbackHost(ru.Hostname()))) {
+			return bad("source %q must be an https URL", shorten(raw, 120))
+		}
+	default:
+		return bad("source %q must be github:owner/repo[/path]@<commit> or an https URL", shorten(raw, 120))
+	}
+	return src, nil
+}
+
+// HasRegistry reports whether a registry of that name is configured.
+func (f *Fetcher) HasRegistry(name string) bool {
+	return slices.ContainsFunc(f.Registries, func(r Registry) bool { return r.Name == name })
 }
 
 // Index downloads one registry's index.
@@ -275,10 +326,10 @@ func (idx *Index) list(kind string) []IndexEntry {
 }
 
 // Lookup finds name in the registries (only the one named registry, when
-// set), in order.
-func (f *Fetcher) Lookup(ctx context.Context, kind, registry, name string) (IndexEntry, string, error) {
+// set), in order, and returns the entry with the registry that lists it.
+func (f *Fetcher) Lookup(ctx context.Context, kind, registry, name string) (IndexEntry, Registry, error) {
 	if len(f.Registries) == 0 {
-		return IndexEntry{}, "", fmt.Errorf("%q looks like a registry name, but no registries are in use (skills.default_registry is \"off\" and skills.registries is empty in config.yaml); give a github:, https or local source instead", name)
+		return IndexEntry{}, Registry{}, fmt.Errorf("%q looks like a registry name, but no registries are in use (skills.default_registry is \"off\" and skills.registries is empty in config.yaml); give a github:, https or local source instead", name)
 	}
 	var errs []error
 	found := false
@@ -294,15 +345,19 @@ func (f *Fetcher) Lookup(ctx context.Context, kind, registry, name string) (Inde
 		}
 		for _, e := range idx.list(kind) {
 			if e.Name == name {
-				return e, r.Name, nil
+				return e, r, nil
 			}
 		}
 	}
 	if !found {
-		return IndexEntry{}, "", fmt.Errorf("no registry named %q is configured", registry)
+		return IndexEntry{}, Registry{}, fmt.Errorf("no registry named %q is configured", registry)
 	}
-	errs = append(errs, fmt.Errorf("no %s named %q in the registries", strings.TrimSuffix(kind, "s"), name))
-	return IndexEntry{}, "", errors.Join(errs...)
+	where := "the registries"
+	if registry != "" {
+		where = "registry " + registry
+	}
+	errs = append(errs, fmt.Errorf("no %s named %q in %s", strings.TrimSuffix(kind, "s"), name, where))
+	return IndexEntry{}, Registry{}, errors.Join(errs...)
 }
 
 // Search returns the entries of kind whose name, description or tags

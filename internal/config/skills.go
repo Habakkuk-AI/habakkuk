@@ -19,12 +19,13 @@ type Skills struct {
 	// Nothing is removed. `hk skills disable NAME` does the same without
 	// editing this file.
 	Disabled []string `yaml:"disabled"`
-	// DefaultRegistry is the index URL searched first, named "default".
-	// Empty means DefaultRegistryURL (the public directory); "off" turns
-	// it off.
+	// DefaultRegistry is the index URL of the registry named "default",
+	// searched after Registries. Empty means DefaultRegistryURL (the
+	// public directory); "off" turns it off.
 	DefaultRegistry string `yaml:"default_registry"`
-	// Registries are more indexes, searched in order after the default.
-	// Plugins are looked up in the same indexes.
+	// Registries are your own indexes, searched in order before the
+	// default, so a name both list comes from yours. Plugins are looked up
+	// in the same indexes.
 	Registries []*SkillRegistry `yaml:"registries"`
 	// Curate is how often the curator reviews agent-written skills:
 	// off (default), daily, weekly or monthly.
@@ -68,23 +69,25 @@ var (
 	reSkillName    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 )
 
-// SkillRegistries is the default registry (when there is one) followed by
-// the configured ones.
+// SkillRegistries is the configured registries followed by the default one
+// (when there is one). The order is the order a bare name is looked up in:
+// a registry the owner added wins over the public directory, so a package
+// there can never be shadowed by a public one of the same name.
 func (c *Config) SkillRegistries() []SkillRegistry {
 	var out []SkillRegistry
-	def := DefaultRegistryURL
-	if c.Skills != nil && c.Skills.DefaultRegistry != "" {
-		def = c.Skills.DefaultRegistry
-	}
-	if def != "" && def != "off" {
-		out = append(out, SkillRegistry{Name: "default", URL: def})
-	}
 	if c.Skills != nil {
 		for _, r := range c.Skills.Registries {
 			if r != nil {
 				out = append(out, *r)
 			}
 		}
+	}
+	def := DefaultRegistryURL
+	if c.Skills != nil && c.Skills.DefaultRegistry != "" {
+		def = c.Skills.DefaultRegistry
+	}
+	if def != "" && def != "off" {
+		out = append(out, SkillRegistry{Name: "default", URL: def})
 	}
 	return out
 }

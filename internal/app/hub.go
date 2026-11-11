@@ -45,7 +45,36 @@ func SkillLibrary(cfg *config.Config) *skills.Library {
 	l.Env = func(name string) bool {
 		return os.Getenv(name) != "" || loadDotEnv(filepath.Join(cfg.Home, ".env"))[name] != ""
 	}
+	l.CommandTaken = func(name string) bool { return CommandTaken(cfg, name) }
 	return l
+}
+
+// appCommands are the chat commands ChatCommands always has; enabled
+// plugins add theirs. terminalCommands are the ones only `hk chat` and the
+// terminal UI have.
+var (
+	appCommands      = []string{"/usage", "/model", "/budget", "/retro", "/skills", "/skill", "/learn"}
+	terminalCommands = []string{"/clear", "/sessions", "/quit", "/exit"}
+)
+
+// CommandTaken reports whether "/name" is a command already: one of the
+// gateway's, the app's, the terminal's or an enabled plugin's. A skill
+// with such a name has no slash command of its own on any interface (it
+// still runs with /skill NAME), so a skill can never stand in for /stop
+// or /remember.
+func CommandTaken(cfg *config.Config, name string) bool {
+	cmd := "/" + name
+	if channel.Reserved(cmd) || slices.Contains(appCommands, cmd) || slices.Contains(terminalCommands, cmd) {
+		return true
+	}
+	for _, p := range cfg.Plugins {
+		if p.Manifest != nil {
+			if _, ok := p.Manifest.Commands[name]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // agentOf is the agent a session belongs to.
@@ -71,11 +100,14 @@ func (a *App) SkillPrompt(agentName, name, request string) (string, error) {
 // SkillCommand makes "/<skill-name> [request]" a command of its own: when
 // name (with the slash) is a skill the agent can use, the command it returns
 // runs that skill as /skill NAME would. An underscore stands for a hyphen,
-// for chat apps whose command names cannot hold one. Callers try every
-// other command first, so a skill never takes a command's place.
+// for chat apps whose command names cannot hold one. A skill whose name,
+// once normalised, is a command's (CommandTaken) is never one: callers try
+// their own commands first, but not every caller knows every command, and
+// the answer has to be the same in a chat app, in hk chat and in the
+// terminal UI.
 func (a *App) SkillCommand(agentName, name string) (channel.AppCommand, bool) {
 	skill := strings.ReplaceAll(strings.TrimPrefix(strings.ToLower(name), "/"), "_", "-")
-	if a.Skills == nil || !strings.HasPrefix(name, "/") || skills.ValidName(skill) != nil {
+	if a.Skills == nil || !strings.HasPrefix(name, "/") || skills.ValidName(skill) != nil || CommandTaken(a.Cfg, skill) {
 		return channel.AppCommand{}, false
 	}
 	s, err := a.Skills.Get(agentName, skill)
@@ -211,6 +243,15 @@ func (a *App) listSkills(ctx context.Context, session, _ string) string {
 		fmt.Fprintf(&b, "\n- %s%s: %s", s.Name, origin, s.Description)
 	}
 	b.WriteString("\n\nRun one with /<name> [request], or /skill <name> [request].")
+	var taken []string
+	for _, s := range list {
+		if CommandTaken(a.Cfg, s.Name) {
+			taken = append(taken, s.Name)
+		}
+	}
+	if len(taken) > 0 {
+		fmt.Fprintf(&b, "\n%s: the name is a command of mine, so use /skill <name> for %s.", strings.Join(taken, ", "), map[bool]string{true: "it", false: "those"}[len(taken) == 1])
+	}
 	return b.String()
 }
 
