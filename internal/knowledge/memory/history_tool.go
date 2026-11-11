@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/habakkuk-ai/habakkuk/internal/core/frontmatter"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/hub"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory/history"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -99,12 +100,29 @@ func (t historyTool) Run(ctx context.Context, env *tools.Env, input json.RawMess
 }
 
 // untrustedFile reports a change to a file whose content came from
-// outside: a note marked untrusted, or a skill held or not approved.
+// outside: a note marked untrusted in either version the change recorded
+// (the trust is in each version's frontmatter, so a note forgotten or
+// rewritten since still counts), or a skill held or not approved.
 func (t historyTool) untrustedFile(ctx context.Context, agent string, c history.Change) bool {
 	switch c.Kind {
 	case history.KindNote:
-		m, err := t.s.Read(ctx, agent, c.Name)
-		return err == nil && m.Untrusted()
+		for _, hash := range []string{c.Old, c.New} {
+			if hash == "" {
+				continue
+			}
+			data, err := t.s.hist.Content(ctx, hash)
+			if err != nil {
+				return true // unknown: treat it as outside text
+			}
+			var meta struct {
+				Trust string `yaml:"trust"`
+			}
+			_, _ = frontmatter.Parse(data, &meta)
+			if meta.Trust == TrustUntrusted {
+				return true
+			}
+		}
+		return false
 	case history.KindSkill:
 		lock, err := hub.ReadLock(filepath.Join(t.s.home, "agents", agent, "skills", hub.LockName))
 		if err != nil {

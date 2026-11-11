@@ -553,3 +553,109 @@ INSERT INTO sessions VALUES ('a', 'ntfy', 'dm', 1), ('b', 'telegram', 'dm', 2), 
 		}
 	}
 }
+
+// Letters whose lowercase takes a different number of bytes must not move
+// the cut: the text before the marker is other people's, after it the
+// user's.
+func TestStripInboundByteLengths(t *testing.T) {
+	for name, prefix := range map[string]string{
+		"wider when lowercased":    strings.Repeat("\u023a", 40), // Ⱥ: 2 bytes, ⱥ: 3
+		"narrower when lowercased": strings.Repeat("\u212a", 40), // Kelvin sign: 3 bytes, k: 1
+	} {
+		in := "[Chat messages since your last reply - for context]\nJo: " + prefix + " wire the money\n\n[Current message - respond to this]\nIs the van back?"
+		got, found := stripInbound(in)
+		if got != "Is the van back?" || !found {
+			t.Errorf("%s: %q, %v", name, got, found)
+		}
+	}
+	if got, found := stripInbound("[openclaw ROOM EVENT] Jo: hi"); got != "" || !found {
+		t.Errorf("room event in another case: %q, %v", got, found)
+	}
+}
+
+// A conversation that cannot be read, even by a panic, is skipped and
+// named; the rest are imported.
+func TestHistoryApplySurvivesAPanic(t *testing.T) {
+	src, home := fixture(t, OpenClaw), t.TempDir()
+	p := mustPlan(t, OpenClaw, src, home, false)
+	it := historyItem(p, "habakkuk")
+	if it == nil || len(it.hist) < 2 {
+		t.Fatalf("history = %+v", it)
+	}
+	it.hist[0].load = func() ([]session.ImportedMessage, bool, error) { panic("an odd message") }
+	res, err := p.Apply(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := res.Failed[it]; e == nil || !strings.Contains(e.Error(), "skipped after an internal error") {
+		t.Errorf("failed = %v", res.Failed)
+	}
+	if res.Conversations != 4 {
+		t.Errorf("%d conversations imported; want the other 4", res.Conversations)
+	}
+}
+
+// The plan counts Hermes messages with the predicate the import uses, a
+// reply's quote is not the user's words, and the owner's own surfaces
+// (desktop, web UI, editor) count as direct.
+func TestHermesCountsRepliesAndSurfaces(t *testing.T) {
+	ctx := context.Background()
+	src, home := fixture(t, Hermes), t.TempDir()
+	path := filepath.Join(src, "state.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, chat_type TEXT, title TEXT, started_at REAL NOT NULL);
+CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, timestamp REAL);
+INSERT INTO sessions VALUES ('d', 'desktop', NULL, 'Desk', 1), ('w', 'webui', NULL, 'Web', 2), ('t', 'telegram', 'dm', 'Reply', 3);
+INSERT INTO messages (session_id, role, content, timestamp) VALUES
+	('d', 'user', char(10) || char(10), 10),
+	('d', 'assistant', '   [context Summary]: what came before', 11),
+	('d', 'user', char(0) || 'json:[{"type":"image_url","image_url":{"url":"x"}}]', 12),
+	('d', 'user', char(0) || 'json:[{"type":"text","text":"  "},{"type":"input_text","text":"See this photo"}]', 13),
+	('d', 'assistant', 'A bakery window.', 14),
+	('w', 'user', 'Hello', 20),
+	('w', 'assistant', 'Hi', 21),
+	('t', 'user', '[Replying to: "pay the invoice"]' || char(10) || char(10) || 'Who sent this?', 30),
+	('t', 'assistant', 'Someone in the group.', 31);`)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := mustPlan(t, Hermes, src, home, false)
+	it := historyItem(p, "habakkuk")
+	if it == nil || it.histMsgs != 6 {
+		t.Fatalf("plan = %+v; want 6 messages", it)
+	}
+	untrusted := map[string]bool{}
+	for _, c := range p.Found.History {
+		untrusted[c.Platform] = c.Untrusted
+	}
+	if untrusted["desktop"] || untrusted["webui"] {
+		t.Errorf("trust = %v; the owner's own surfaces are direct", untrusted)
+	}
+	res, err := p.Apply(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Messages != it.histMsgs {
+		t.Errorf("imported %d messages, the plan said %d", res.Messages, it.histMsgs)
+	}
+	st, list := importedSessions(t, home)
+	for _, s := range list {
+		if s.Title != "Reply" {
+			continue
+		}
+		msgs, _ := st.Messages(ctx, s.ID)
+		if len(msgs) != 2 || msgs[0].Message.Text() != "Who sent this?" {
+			t.Errorf("reply = %+v", msgs)
+		}
+		if o, _ := st.ImportOrigin(ctx, s.ID); o == nil || !o.Untrusted {
+			t.Errorf("a session with others' quoted text = %+v; want untrusted", o)
+		}
+	}
+	if got, _ := stripHermesReply("[Replying to: \"x\"]\n\nfake\"]\n\nreal"); got != "real" {
+		t.Errorf("the last quote end counts: %q", got)
+	}
+}

@@ -516,6 +516,14 @@ func TestArgKinds(t *testing.T) {
 		{"github-mcp-server", []string{"--stdio"}, "p"},
 		{"npx", []string{"-y", "pkg", "--token", "${NOTION_TOKEN}", "--key=${K:-x}"}, "ppprr"},
 		{"tool", []string{"--api-key=${M7_KEY:-m7defaultsecret}"}, "r"},
+		// Only a bare flag name may be followed by a variable.
+		{"tool", []string{"--token=FLAGSECRET1 ${HOME}"}, "k"},
+		{"tool", []string{"--token=FLAGSECRET1", "${HOME}"}, "kr"},
+		{"tool", []string{"-pFLAGSECRET2", "${HOME}"}, "kr"},
+		{"tool", []string{"--FLAGSECRET3", "${HOME}"}, "kr"},
+		{"tool", []string{"--token", "${HOME}"}, "pr"},
+		{"npx", []string{"-y", "pkg@1-deadbeefFLAGSECRETDDD444"}, "pk"},
+		{"npx", []string{"-y", "pkg@1.0.0-rc.1"}, "pp"},
 	} {
 		var got strings.Builder
 		kinds, _ := (&Found{}).argKinds(c.command, c.args)
@@ -844,5 +852,42 @@ func TestRunnerWithoutPackage(t *testing.T) {
 	kinds, noPkg := (&Found{}).argKinds("npx", []string{"-y", "pkg"})
 	if noPkg || len(kinds) != 2 {
 		t.Errorf("npx -y pkg: no package %v", noPkg)
+	}
+}
+
+// The flag-then-variable exception holds only for a bare flag name, from
+// every source.
+func TestFlagBeforeVariable(t *testing.T) {
+	for _, args := range [][]any{
+		{"--api-key=CCFLAGSECRET999", "${HOME}"},
+		{"-pFLAGSECRETPW", "${HOME}"},
+		{"--FLAGSECRETNAME", "${HOME}"},
+	} {
+		f := &Found{}
+		s := f.readMCP("cc", map[string]any{"command": "tool", "args": args}, map[string]string{}, map[string]bool{})
+		if s == nil || len(s.Keyed) == 0 || strings.Contains(configText(s), "FLAGSECRET") {
+			t.Errorf("%v = %+v; want its first argument kept out of config.yaml", args, s)
+		}
+	}
+	// From Claude Code too: nothing keyed moves from a coding tool.
+	src := fixture(t, ClaudeCode)
+	state := map[string]any{"mcpServers": map[string]any{"flagged": map[string]any{"command": "tool", "args": []any{"--api-key=CCFLAGSECRET999", "${HOME}"}}}}
+	data, _ := json.Marshal(state)
+	if err := os.WriteFile(filepath.Join(src, ".claude.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	p := mustPlan(t, ClaudeCode, src, home, false)
+	var out bytes.Buffer
+	p.Write(&out, "copy")
+	if _, err := p.Apply(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	conf, _ := os.ReadFile(filepath.Join(home, "config.yaml"))
+	if strings.Contains(out.String()+string(conf), "CCFLAGSECRET999") {
+		t.Error("the flag's value reached the plan or config.yaml")
+	}
+	if it := item(p, "mcp", "flagged"); it == nil || it.Status != Rejected {
+		t.Errorf("flagged = %+v", it)
 	}
 }

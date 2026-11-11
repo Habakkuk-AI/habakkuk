@@ -17,9 +17,9 @@ import (
 //
 //   - a runner and one package: npx, uvx or bunx, or pipx run or uv tool
 //     run, followed by one package name such as @scope/server@1.2 (a
-//     version is digits and dots with an optional "-" pre-release of
-//     letters, digits and dots, or latest); a runner with no package is not
-//     copied as it is;
+//     version is digits and dots with an optional "-" pre-release of at
+//     most 12 letters, digits and dots, or latest); a runner with no
+//     package is not copied as it is;
 //   - nothing at all, for a program that is not a runner;
 //
 // with, anywhere, only these flags, which take no value: -y, --yes, -q,
@@ -28,8 +28,9 @@ import (
 //
 // A plain path is absolute (or starts with "~/"), has no spaces, line
 // breaks, "@" or ":", and exists on this computer. A variable reference
-// is an argument that is ${NAME} (or ${NAME:-default}), a flag set to one
-// (--token=${NAME}), or any flag followed by one: it holds no value, so
+// is an argument that is ${NAME} (or ${NAME:-default}), a flag name set to
+// one (--token=${NAME}), or a bare flag name (lowercase, nothing attached)
+// followed by one: it holds no value, so
 // config.yaml keeps ${NAME}, and the variable's value moves the way keys do
 // (the default when the source has none).
 //
@@ -44,11 +45,12 @@ import (
 
 var (
 	reProgram    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	rePackage    = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|[0-9]+(\.[0-9]+)*(-[A-Za-z0-9.]+)?))?$`)
+	rePackage    = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.]{1,12})?))?$`)
 	reRefOnly    = regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
-	reFlagRef    = regexp.MustCompile(`^(--?[A-Za-z][A-Za-z0-9_-]*=)\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
+	reFlagRef    = regexp.MustCompile(`^(--?[a-z][a-z0-9-]*=)\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
 	reHeader     = regexp.MustCompile(`^((Bearer|Basic|Token)\s+)?\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
 	plainFlags   = []string{"-y", "--yes", "-q", "--quiet", "--stdio"}
+	reFlagName   = regexp.MustCompile(`^--?[a-z][a-z0-9-]*$`)
 	pkgRunners   = []string{"npx", "uvx", "bunx"}
 	runnerSubcmd = map[string][]string{"pipx": {"run"}, "uv": {"tool", "run"}}
 )
@@ -91,8 +93,9 @@ func (f *Found) argKinds(command string, args []string) (kinds []int, noPackage 
 		case slices.Contains(plainFlags, a):
 			out[i] = argPlain
 		case strings.HasPrefix(a, "-"):
-			// Any other flag: plain only when a variable follows it.
-			if i+1 < len(args) && reRefOnly.MatchString(args[i+1]) {
+			// Any other flag: plain only when it is a bare flag name with
+			// nothing attached and a variable follows it.
+			if reFlagName.MatchString(a) && i+1 < len(args) && reRefOnly.MatchString(args[i+1]) {
 				out[i], out[i+1] = argPlain, argRef
 				i++
 				continue

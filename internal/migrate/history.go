@@ -2,7 +2,6 @@ package migrate
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -215,8 +214,8 @@ var (
 	// personSources are the Hermes Agent platforms where a person talks to
 	// the agent directly: its terminal and the chat apps with a sender
 	// allowlist. A session from any other platform is untrusted.
-	personSources = []string{"cli", "local", "tui", "telegram", "discord", "whatsapp", "whatsapp_cloud", "slack", "signal",
-		"matrix", "sms", "bluebubbles", "mattermost"}
+	personSources = []string{"cli", "local", "tui", "desktop", "webui", "acp", "telegram", "discord", "whatsapp", "whatsapp_cloud",
+		"slack", "signal", "matrix", "sms", "bluebubbles", "mattermost"}
 )
 
 // hermesHistory lists the sessions in one home's state.db, with how many
@@ -288,7 +287,8 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 	if byContentSQL {
 		countKey = "role || char(0) || content || char(0) || CAST(" + col(mc, "timestamp", "0") + " AS TEXT)"
 	}
-	countWhere := shown + ` AND content NOT LIKE '[CONTEXT COMPACTION%' AND content NOT LIKE '[CONTEXT SUMMARY]%'`
+	countWhere := shown + ` AND ` + hasTextSQL + ` AND upper(ltrim(content, ` + wsSQL + `)) NOT LIKE '[CONTEXT COMPACTION%'
+		AND upper(ltrim(content, ` + wsSQL + `)) NOT LIKE '[CONTEXT SUMMARY]%'`
 	countSQL := `SELECT session_id, count(DISTINCT ` + countKey + `) FROM messages m WHERE ` + countWhere + ` GROUP BY session_id`
 	if sc["parent_session_id"] {
 		match := "p.message_uid = m.message_uid"
@@ -407,6 +407,7 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 				}
 				defer rows.Close()
 				var out []session.ImportedMessage
+				other := false
 				for rows.Next() {
 					var role, content, k, u string
 					var at float64
@@ -420,20 +421,43 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 						continue // a copy of a row already read
 					}
 					seen[k], seen["u"+u] = true, u != ""
-					if text := hermesText(content); text != "" && !summaryText(text) {
+					text := hermesText(content)
+					if role == "user" {
+						var quoted bool
+						if text, quoted = stripHermesReply(text); quoted {
+							other = true
+						}
+					}
+					if text != "" && !summaryText(text) {
 						if author != "" && role == "user" {
 							text = "[Written by " + author + ", not by a person] " + text
 						}
 						out = append(out, session.ImportedMessage{Role: llm.Role(role), Text: text, At: unixTime(at)})
 					}
 				}
-				return out, false, rows.Err()
+				return out, other, rows.Err()
 			},
 		})
 	}
 	if err := rows.Err(); err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 	}
+}
+
+// stripHermesReply takes out the quote Hermes Agent's gateway puts before a
+// reply: [Replying to: "<quoted message>"], or [Replying to your previous
+// message: "..."], then a blank line. The quote is not escaped, so the
+// last '"]' followed by a blank line ends it: a quote cannot fake the
+// boundary to pass its own text off as the user's.
+func stripHermesReply(text string) (string, bool) {
+	if !strings.HasPrefix(text, "[Replying to") {
+		return text, false
+	}
+	i := strings.LastIndex(text, "\"]\n\n")
+	if i < 0 {
+		return "", true // no end found for certain: none of it is the user's
+	}
+	return strings.TrimSpace(text[i+len("\"]\n\n"):]), true
 }
 
 // contentKey names a message by its role, text and time: what a
@@ -444,8 +468,27 @@ func contentKey(role, content string, at float64) string {
 
 // summaryText reports a compaction summary written as a user message.
 func summaryText(text string) bool {
-	return strings.HasPrefix(text, "[CONTEXT COMPACTION") || strings.HasPrefix(text, "[CONTEXT SUMMARY]")
+	t := strings.ToUpper(strings.TrimSpace(text))
+	return strings.HasPrefix(t, "[CONTEXT COMPACTION") || strings.HasPrefix(t, "[CONTEXT SUMMARY]")
 }
+
+// The plan counts Hermes messages in SQL with the predicate the import
+// applies in Go (hermesText): text that is not blank, or structured content
+// ("\x00json:" then JSON) with a part that holds text.
+const (
+	wsSQL      = `' ' || char(9) || char(10) || char(13)`
+	jsonSQL    = `CAST(substr(CAST(content AS BLOB), 7) AS TEXT)` // after the "\x00json:" prefix (text functions stop at the NUL)
+	hasTextSQL = `(CASE WHEN substr(CAST(content AS BLOB), 1, 6) = X'006A736F6E3A' AND json_valid(` + jsonSQL + `) THEN
+		CASE json_type(` + jsonSQL + `)
+			WHEN 'text' THEN trim(json_extract(` + jsonSQL + `, '$'), ` + wsSQL + `) != ''
+			WHEN 'array' THEN EXISTS (SELECT 1 FROM json_each(` + jsonSQL + `) j WHERE
+				(j.type = 'text' AND trim(j.value, ` + wsSQL + `) != '') OR
+				(j.type = 'object' AND COALESCE(json_extract(j.value, '$.type'), '') IN ('text', 'input_text', 'output_text', '')
+					AND trim(COALESCE(json_extract(j.value, '$.text'), ''), ` + wsSQL + `) != ''))
+			WHEN 'object' THEN trim(COALESCE(json_extract(` + jsonSQL + `, '$.text'), ''), ` + wsSQL + `) != ''
+			ELSE 0 END
+		ELSE trim(content, ` + wsSQL + `) != '' END)`
+)
 
 // hermesText is the text of a stored message: plain, or the text parts of
 // structured content.
@@ -632,8 +675,13 @@ func (f *Found) openClawHistory(a *Agent, dir string) {
 			start = e.updated
 		}
 		file := e.fromFile
+		// Counted the way the import reads them.
 		if file != "" {
-			n = countJSONLMessages(file)
+			msgs, _, _ := readJSONLTranscript(file)
+			n = len(msgs)
+		} else if inDB {
+			msgs, _, _ := ocDBTranscript(db, sid)
+			n = len(msgs)
 		}
 		f.conversation(a, &Conversation{
 			ID: a.From + "/" + sid, Title: e.title, Started: unixTime(start), Platform: platform, Chat: chat, Thread: thread,
@@ -827,31 +875,6 @@ func ocDBTranscript(db *sql.DB, id string) ([]session.ImportedMessage, bool, err
 	return out, untrusted, rows.Err()
 }
 
-// countJSONLMessages counts the lines of a transcript file that hold a user
-// or assistant message with text, without decoding them: a count for the
-// plan.
-func countJSONLMessages(path string) int {
-	fh, err := os.Open(path)
-	if err != nil {
-		return 0
-	}
-	defer fh.Close()
-	n := 0
-	sc := bufio.NewScanner(fh)
-	sc.Buffer(make([]byte, 64<<10), 64<<20)
-	for sc.Scan() {
-		l := sc.Bytes()
-		role := bytes.Contains(l, []byte(`"role":"user"`)) || bytes.Contains(l, []byte(`"role":"assistant"`)) ||
-			bytes.Contains(l, []byte(`"role": "user"`)) || bytes.Contains(l, []byte(`"role": "assistant"`))
-		text := bytes.Contains(l, []byte(`"type":"text"`)) || bytes.Contains(l, []byte(`"type": "text"`)) ||
-			bytes.Contains(l, []byte(`"content":"`)) || bytes.Contains(l, []byte(`"content": "`))
-		if role && text {
-			n++
-		}
-	}
-	return n
-}
-
 // readJSONLTranscript reads a transcript file of JSON events.
 func readJSONLTranscript(path string) ([]session.ImportedMessage, bool, error) {
 	fh, err := os.Open(path)
@@ -961,7 +984,7 @@ func isLabel(line string) bool {
 // reports whether it found any.
 func stripInbound(text string) (string, bool) {
 	t := strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
-	if strings.HasPrefix(t, "[OpenClaw room event]") {
+	if reRoomEvent.MatchString(t) {
 		return "", true // activity the agent watched, not a message to it
 	}
 	stamp := reStamp.FindString(t)
@@ -970,13 +993,14 @@ func stripInbound(text string) (string, bool) {
 	// marker, then the message itself under another. The last current
 	// marker counts, so one forged inside the history cannot pass others'
 	// lines off as the user's.
-	low := strings.ToLower(t)
-	if i := strings.LastIndex(low, strings.ToLower(currentMarker)); i >= 0 {
-		return strings.TrimSpace(t[i+len(currentMarker):]), true
+	// Found in t itself: lowercasing can change a text's length in bytes.
+	if m := reCurrentMarker.FindAllStringIndex(t, -1); len(m) > 0 {
+		return strings.TrimSpace(t[m[len(m)-1][1]:]), true
 	}
-	if strings.Contains(low, strings.ToLower(historyMarker)) {
+	if reHistoryMarker.MatchString(t) {
 		return "", true // the history with no marked message after it
 	}
+	low := strings.ToLower(t)
 	if !strings.ContainsRune(t, '⟦') && !strings.Contains(low, "untrusted") && !strings.Contains(low, "current message") &&
 		!strings.Contains(low, "conversation context") && !strings.Contains(low, "chat history") && !strings.Contains(low, "chat messages") {
 		return text, false
@@ -1027,10 +1051,11 @@ func stripInbound(text string) (string, bool) {
 	return strings.TrimSpace(strings.Join(rest, "\n\n")), found
 }
 
-// The older envelope's markers.
-const (
-	historyMarker = "[Chat messages since your last reply - for context]"
-	currentMarker = "[Current message - respond to this]"
+// The older envelope's markers, and a room event, in any case.
+var (
+	reHistoryMarker = regexp.MustCompile(`(?i)\[chat messages since your last reply - for context\]`)
+	reCurrentMarker = regexp.MustCompile(`(?i)\[current message - respond to this\]`)
+	reRoomEvent     = regexp.MustCompile(`(?i)^\[openclaw room event\]`)
 )
 
 // reChatLine is a chat window entry: "#<id> <time> <sender>: <body>", or
@@ -1127,33 +1152,14 @@ func (p *Plan) applyHistory(ctx context.Context, res *Result) error {
 		n := 0
 		var errs []error
 		for _, c := range it.hist {
-			msgs, other, err := c.Load()
+			added, count, err := importOne(ctx, st, p.Found.From, c)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", c.ID, err))
 				continue
 			}
-			if len(msgs) == 0 {
-				continue
-			}
-			title := c.Title
-			if title == "" {
-				for _, m := range msgs {
-					if m.Role == llm.User {
-						title = titleOf(m.Text)
-						break
-					}
-				}
-			}
-			_, added, err := st.Import(ctx, session.Import{Source: p.Found.From, SourceID: c.ID, Agent: c.Agent, Title: title,
-				Started: c.Started, Account: c.Account, Conversation: c.Chat, Thread: c.Thread, Untrusted: c.Untrusted || other,
-				Messages: msgs})
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
 			if added {
 				n++
-				res.Messages += len(msgs)
+				res.Messages += count
 			}
 		}
 		res.Conversations += n
@@ -1165,4 +1171,33 @@ func (p *Plan) applyHistory(ctx context.Context, res *Result) error {
 		}
 	}
 	return nil
+}
+
+// importOne reads one conversation and stores it. Whatever goes wrong with
+// one conversation, a panic included, skips that one and lets the rest go
+// on: an odd message in an old transcript must not stop the import, or
+// every run after it.
+func importOne(ctx context.Context, st *session.Store, from string, c *Conversation) (added bool, count int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			added, count, err = false, 0, fmt.Errorf("skipped after an internal error: %v", r)
+		}
+	}()
+	msgs, other, err := c.Load()
+	if err != nil || len(msgs) == 0 {
+		return false, 0, err
+	}
+	title := c.Title
+	if title == "" {
+		for _, m := range msgs {
+			if m.Role == llm.User {
+				title = titleOf(m.Text)
+				break
+			}
+		}
+	}
+	_, added, err = st.Import(ctx, session.Import{Source: from, SourceID: c.ID, Agent: c.Agent, Title: title,
+		Started: c.Started, Account: c.Account, Conversation: c.Chat, Thread: c.Thread, Untrusted: c.Untrusted || other,
+		Messages: msgs})
+	return added, len(msgs), err
 }
