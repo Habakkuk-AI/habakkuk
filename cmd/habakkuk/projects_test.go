@@ -24,6 +24,10 @@ func (f fakeTTY) Close() error                { return nil }
 // with answers; the returned buffer is what the person saw.
 func atTerminal(t *testing.T, answers string) *bytes.Buffer {
 	t.Helper()
+	oldCode := trustCode
+	trustCode = func() string { return "K7MX" }
+	t.Cleanup(func() { trustCode = oldCode })
+	answers = strings.NewReplacer("y\n", "k7mx\n").Replace(answers) // a yes is typing the code back
 	shown := &bytes.Buffer{}
 	old := projectsTTY
 	projectsTTY = func() (io.ReadWriteCloser, error) { return fakeTTY{strings.NewReader(answers), shown}, nil }
@@ -44,7 +48,7 @@ func TestProjectsTrustListUntrust(t *testing.T) {
 	if err := projectsCmd(home, []string{"trust", proj}, nil, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(shown.String(), "Run make test.") || !strings.Contains(shown.String(), "Trust it? [y/N]") {
+	if !strings.Contains(shown.String(), "Run make test.") || !strings.Contains(shown.String(), "To trust it, type K7MX") {
 		t.Fatalf("terminal:\n%s", shown.String())
 	}
 	if !strings.Contains(out.String(), "trusted: ") || !strings.Contains(out.String(), "not trusted: ") {
@@ -247,5 +251,34 @@ func TestProjectsFileGoesThroughTheLoader(t *testing.T) {
 	projectsCmd(home, []string{"list", proj}, nil, &out)
 	if !strings.Contains(out.String(), "left out") {
 		t.Fatalf("list DIR for a link out:\n%s", out.String())
+	}
+}
+
+// A plain "y" (what pushed keystrokes would type without seeing the
+// screen) does not trust anything: only the printed code does.
+func TestProjectsTrustNeedsTheCode(t *testing.T) {
+	home := writeHome(t, "")
+	proj := t.TempDir()
+	os.WriteFile(filepath.Join(proj, "AGENTS.md"), []byte("Run make test."), 0o644)
+	shown := &bytes.Buffer{}
+	old, oldCode := projectsTTY, trustCode
+	trustCode = func() string { return "K7MX" }
+	projectsTTY = func() (io.ReadWriteCloser, error) { return fakeTTY{strings.NewReader("y\n"), shown}, nil }
+	t.Cleanup(func() { projectsTTY, trustCode = old, oldCode })
+	var out bytes.Buffer
+	projectsCmd(home, []string{"trust", proj}, nil, &out)
+	if entries, _, _ := (&projtrust.Store{Home: home}).List(); len(entries) != 0 {
+		t.Fatal("a plain y trusted the file")
+	}
+	if !strings.Contains(out.String(), "not trusted") {
+		t.Fatalf("output:\n%s", out.String())
+	}
+	if c := trustCode(); len(c) != 4 {
+		t.Fatalf("code %q", c)
+	}
+	trustCode = oldCode
+	a, b := trustCode(), trustCode()
+	if len(a) != 4 || strings.Trim(a, codeLetters) != "" || (a == b && a == trustCode()) {
+		t.Fatalf("codes %q %q do not look random", a, b)
 	}
 }

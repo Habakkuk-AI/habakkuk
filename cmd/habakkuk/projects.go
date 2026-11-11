@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -224,9 +225,13 @@ func projectsTrust(home string, st *projtrust.Store, path string, allowControl b
 				f.Path, len(hidden), strings.Join(hidden, ", "))
 			continue
 		}
-		fmt.Fprint(tty, "Agents will follow exactly the text between the --- lines as instructions. Trust it? [y/N] ")
+		// A code printed here and typed back: a process that pushes
+		// keystrokes into the terminal cannot see what was printed, so it
+		// cannot answer for the owner the way it could answer "y".
+		code := trustCode()
+		fmt.Fprintf(tty, "Agents will follow exactly the text between the --- lines as instructions.\nTo trust it, type %s and press Enter (anything else leaves it untrusted): ", code)
 		line, _ := answers.ReadString('\n')
-		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+		if !strings.EqualFold(strings.TrimSpace(line), code) {
 			fmt.Fprintf(out, "not trusted: %s\n", f.Path)
 			continue
 		}
@@ -361,4 +366,20 @@ func projectsListAt(home string, st *projtrust.Store, agentName, path string, ou
 		fmt.Fprintf(out, "%s\n  %s\n", visibleText(f.Path), status)
 	}
 	return nil
+}
+
+// codeLetters avoid look-alikes (no 0/O, 1/I/L, 2/Z, 5/S, 8/B).
+const codeLetters = "ACDEFGHJKMNPQRTUVWXY34679"
+
+// trustCode is the code the owner types to confirm; tests replace it.
+var trustCode = func() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err) // crypto/rand does not fail on supported systems
+	}
+	out := make([]byte, len(b))
+	for i, v := range b {
+		out[i] = codeLetters[int(v)%len(codeLetters)]
+	}
+	return string(out)
 }
