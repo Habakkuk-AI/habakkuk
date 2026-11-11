@@ -106,6 +106,34 @@ type ApprovalRequest struct {
 	// Cause says why a human is asked, for approvers that explain it in
 	// their own words (a chat prompt); "" is the permission mode.
 	Cause Cause
+	// Agent is the agent that makes the call.
+	Agent string
+	// Rule is what "Always allow" would save for this call (allow.go);
+	// nil when the call cannot get one, and then only allow once or deny
+	// is offered.
+	Rule *Rule
+}
+
+// Decision is a person's answer to an approval request.
+type Decision int
+
+const (
+	DecisionDeny   Decision = iota
+	DecisionOnce            // allow this call
+	DecisionAlways          // allow it, and save req.Rule for the agent
+)
+
+// Decider is implemented by approvers that offer "Always allow" as well
+// as allow once and deny (chats). Approvers that do not are asked with
+// Approve, and a yes allows the call once.
+type Decider interface {
+	Decide(ctx context.Context, req ApprovalRequest) (Answer, error)
+}
+
+// Answer is a person's decision and who gave it ("7 (Sam)").
+type Answer struct {
+	Decision Decision
+	By       string
 }
 
 // Cause is why a call needs a human's approval.
@@ -188,7 +216,25 @@ type Env struct {
 	// where it came from (policy.go); nil is a turn started on this
 	// machine.
 	Policy *Policy
+	// Rules are the agent's approval rules ("always allow", allow.go);
+	// nil means none, and "Always allow" is not offered.
+	Rules RuleSet
+	// RulesOff: approval rules never answer for this kind of turn: it is
+	// not a message the owner typed just now, one to one or on this
+	// machine, or it is tainted (agent.limitRules).
+	RulesOff bool
+	// RulesPaused: outside content entered this turn another way than a
+	// tool (a chat note from a tainted turn, a paused parent), so rules
+	// wait for the owner's next message, and work this turn sets up is
+	// marked tainted.
+	RulesPaused bool
 }
+
+// Untrusted reports whether outside content may be steering this turn: it
+// is tainted, or an earlier turn of its session was and nobody has sent a
+// fresh message since. Work it sets up for later (a schedule, a board
+// card) carries the taint into those runs.
+func (e *Env) Untrusted() bool { return e.Taint.Marked() || e.RulesPaused }
 
 // Files reads and writes text files through a client. Paths are absolute.
 type Files interface {
@@ -378,12 +424,17 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 	if ct, ok := t.(ConfirmTool); ok {
 		confirm = ct.Confirm(ctx, env, call.Input)
 	}
+	if confirm == "" {
+		// The agent's instruction files and saved rules: a person decides,
+		// in every mode (allow.go).
+		confirm = guardedWrite(env, t, call)
+	}
 	if cp := r.capability(ctx, env, t, call); cp != "" {
 		// A note written to one of the agent's trusted folders is not held
 		// for approval because the turn came from a chat or read outside
 		// content (trusted.go); the mode still decides.
 		trusted := false
-		if cp == CapWrite {
+		if cp == CapWrite && confirm == "" {
 			var err error
 			if trusted, err = trustedWrite(env, t, call); err != nil {
 				return "", err
@@ -394,7 +445,7 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 			case ModeWorkspace, ModeFull:
 				return "", nil
 			}
-		} else if note, handled, err := gate(ctx, env, cp, risk, call, confirm); handled {
+		} else if note, handled, err := gate(ctx, env, t, cp, risk, call, confirm); handled {
 			return note, err
 		}
 	}
@@ -431,7 +482,11 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 			}
 		}
 	}
-	return Ask(ctx, env, ApprovalRequest{Tool: call.ToolName, Summary: summarize(call.Input), Input: call.Input})
+	if rule, ok := coveredByRule(env, t, call); ok {
+		return rule.Note(), nil
+	}
+	return Ask(ctx, env, ApprovalRequest{Tool: call.ToolName, Summary: summarize(call.Input), Input: call.Input,
+		Rule: ProposeRule(env, t, call)})
 }
 
 // Ask puts a call to whoever approves this run's calls: the reviewer model
@@ -439,8 +494,11 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 // may go ahead, with a note for the result when the reviewer allowed it.
 // Tools that gate their own actions (node_invoke) use it directly.
 func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
-	req.Session, req.Task, req.Workspace = env.Session, env.Task, env.Workspace
+	req.Session, req.Task, req.Workspace, req.Agent = env.Session, env.Task, env.Workspace, env.Agent
 	req.Tainted = env.Taint.Marked()
+	if !rulesApply(env) {
+		req.Rule = nil
+	}
 	unattended := fmt.Errorf("%w: %s needs approval and no one is attending this run", ErrDenied, req.Tool)
 	if (env.Approvals == ApproveReviewer || env.Approvals == ApproveReviewerThenHuman) && env.Reviewer != nil {
 		rv := env.Reviewer.Review(ctx, req)
@@ -458,17 +516,53 @@ func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
 	if env.Approver == nil {
 		return "", unattended
 	}
-	ok, err := env.Approver.Approve(ctx, req)
+	a, err := decide(ctx, env.Approver, req)
 	if errors.Is(err, ErrNoApprover) {
 		return "", unattended
 	}
 	if err != nil {
 		return "", err
 	}
-	if !ok {
+	switch a.Decision {
+	case DecisionDeny:
 		return "", fmt.Errorf("%w: the user declined %s", ErrDenied, req.Tool)
+	case DecisionAlways:
+		return saveRule(env, req, a.By), nil
 	}
 	return "", nil
+}
+
+// decide asks an approver, with "Always allow" when it offers it.
+func decide(ctx context.Context, a Approver, req ApprovalRequest) (Answer, error) {
+	if d, ok := a.(Decider); ok && req.Rule != nil {
+		return d.Decide(ctx, req)
+	}
+	req.Rule = nil
+	ok, err := a.Approve(ctx, req)
+	if ok {
+		return Answer{Decision: DecisionOnce}, err
+	}
+	return Answer{Decision: DecisionDeny}, err
+}
+
+// saveRule keeps the rule a person chose "Always allow" for, and returns
+// the note for the call's result. The rule is checked again here: a
+// tainted or guest turn never saves one, whatever the approver said. It
+// applies where it was saved: in this chat, or on this machine.
+func saveRule(env *Env, req ApprovalRequest, by string) string {
+	if req.Rule == nil || !rulesApply(env) || (req.Rule.Tool == "exec" && !execRulesAllowed(env)) {
+		return ""
+	}
+	r := *req.Rule
+	r.Place, r.SavedBy, r.Source = turnPlace(env), by, "chat"
+	if r.Place == PlaceLocal {
+		r.Source = "local"
+	}
+	saved, err := env.Rules.Save(r)
+	if err != nil {
+		return "[approved once; saving the always-allow rule failed: " + err.Error() + "]"
+	}
+	return "[approved, and saved an always-allow rule (" + saved.ID + "): " + saved.String() + "]"
 }
 
 // confirmByHuman asks the attached human about a call a ConfirmTool marked;
@@ -478,9 +572,10 @@ func confirmByHuman(ctx context.Context, env *Env, call llm.Block, why string, c
 	if env.Approver == nil {
 		return unattended
 	}
+	// No rule is offered: these calls need a person every time.
 	ok, err := env.Approver.Approve(ctx, ApprovalRequest{Tool: call.ToolName, Summary: "[" + why + "] " + summarize(call.Input),
 		Input: call.Input, Session: env.Session, Task: env.Task, Workspace: env.Workspace, Review: why, Cause: cause,
-		Tainted: env.Taint.Marked()})
+		Tainted: env.Taint.Marked(), Agent: env.Agent})
 	switch {
 	case errors.Is(err, ErrNoApprover):
 		return unattended

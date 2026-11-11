@@ -42,13 +42,15 @@ There's one exception. A `whatsappagent` channel only ever hears from the person
 
 ## Outside content taints a turn
 
-A turn is tainted once it has read outside content. Outside content is a web page, a search result, an MCP or other network tool, an email, a webhook or Home Assistant payload, or a device's output. From then on, `exec`, `process` and writes outside the workspace need a human's approval. This holds even in `full` mode and even with `approvals: reviewer`. A model isn't asked, because the same text could steer it. When nobody is attending, these calls are denied.
+A turn is tainted once it has read outside content. Outside content is a web page, a search result, an MCP or other network tool, an email, a webhook or Home Assistant payload, a task another agent sent over A2A, or a device's output. From then on, `exec`, `process` and writes outside the workspace need a human's approval. This holds even in `full` mode and even with `approvals: reviewer`. A model isn't asked, because the same text could steer it. When nobody is attending, these calls are denied.
 
 A tainted turn also can't write trusted memory, change the user profile or set the agent's identity. Its `message_home` sends only a short status. A delegated task inherits its parent's taint and origin.
 
 The taint stays with the turn across a restart. Say a turn reads a web page and is then interrupted by a deploy or a crash. It's still tainted when it resumes. Habakkuk sets the taint again from the turn's own transcript, from any hosted search result and any call to a tool that can bring outside content in.
 
 Setting `allow_tainted_exec: true` on an agent turns this off. The audit flags it.
+
+Saved approval rules don't change this. A rule from **Always allow** or `agents.<name>.allow` never answers for a tainted turn, and a tainted turn is never offered **Always allow**. See [Saved approval rules](#saved-approval-rules).
 
 ## Trusted folders for notes
 
@@ -70,6 +72,43 @@ It doesn't protect you against these:
 - **Overwritten notes.** A trusted folder can be edited as well as added to. If the notes matter, keep the folder in version control or a backup.
 
 Use this setting for folders that hold only notes. `hk security` lists each agent's trusted folders. It flags them on an agent that chats or webhooks can reach.
+
+## Saved approval rules
+
+**Always allow** in a chat, and `agents.<name>.allow` in the config, let an agent run one simple command, or write to one folder, without asking you each time. See [how it works](../agents/approvals.md#always-allow).
+
+A rule is a standing yes, so it answers in one case only: a **typed** turn, whose whole message is plain text you just sent. That's a text message in a one-to-one chat on Telegram, WhatsApp (linked device or Cloud API) or the WhatsApp agent channel, a line typed at the `hk chat` (from a terminal) or TUI prompt, or a message typed into the dashboard's chat (`/api/chat` included, which is that chat behind the dashboard's token). Those are the channels whose platforms report forwards and quotes; every other channel is never typed. These are not typed either: TUI `/btw`, `/skill` and plugin commands, `hk run` (with or without `-skill`), `hk send`, retries, `/queue`, `/goal` follow-ups, Live mode, voice notes and recordings, `hk talk`, quotes of other messages, forwards, inline-bot and template-button messages, and messages with attachments.
+
+A typed turn also needs all of these:
+
+- **The conversation isn't shared** with anyone else: not a group, room or channel.
+- **The turn is untainted**, and your message carries no chat notes (nothing that reached the chat from elsewhere).
+- **Nothing but your own words entered the conversation since your previous typed message**: no outside content or notes in that message's turn, and no turn you didn't type after it.
+
+Everything else asks a person: schedules of any kind, notices, board cards, sub-agents, A2A tasks, the OpenAI-compatible API, MCP clients, editors, webhooks, guests, and chat accounts the config no longer has. Scheduled runs still ask you in their chat instead of being denied; they just never use rules.
+
+The rule itself is kept narrow:
+
+- **One simple command, one folder.** An exec rule is a program followed by plain words, matched exactly (only quoting may differ), in the one folder it was saved in, compared as the real path stored then. Nothing the shell would expand, join or redirect gets a rule: no unquoted `$`, backquote, brace, wildcard, `;`, `&`, `|`, `<`, `>` or parentheses, no quoted or escaped `~` and no `~` other than a leading `~/`, no word starting with `=`, no `cd`, `pushd` or `popd`.
+- **Bash, sh or dash, on this computer.** Command rules are judged for those shells. None are offered or applied in a Docker or SSH sandbox, on Windows, or when `HABAKKUK_SHELL` names zsh, PowerShell, or a path to fish or any other program. A bare name Habakkuk doesn't know is ignored, and bash runs.
+- **A workspace outside the home.** An agent whose workspace is inside Habakkuk's home (the default with no `workspace:`) gets no command or file rules there.
+- **The same program.** The rule records where its program was found when it was saved, `~/` expanded. If it can't be found, no rule is offered. One found elsewhere later, or swapped for a link, asks.
+- **Where you gave it.** A rule saved in a chat applies in that chat. One saved on this computer applies to messages typed here.
+- **Never past the hardline.** Commands on the blocklist never run, whatever a rule says.
+- **Never for the agent's instructions or Habakkuk's settings.** Writes to `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `USER.md`, any `approvals.json` and its lock, and Habakkuk's `config.yaml`, `.env` and databases in its home always ask, in every mode. Names are compared without regard to case (Unicode folding included). A command that names one, or whose words lead to one through a symlink or a hard link (short options like `-onotes.md` and values after `=` included), gets no rule.
+- **Never Habakkuk's own folders.** No rule covers a command run in, or naming a path in (a new file included), Habakkuk's home or its own folders: `agents`, `skills`, `plugins`, `hooks`, `personalities`, `channels`, `backups` and `scripts` in the home, any agent's folder configured elsewhere, the folders your hooks run from, and the folders scheduled scripts run in or name. A file rule doesn't cover them either, and hidden files and folders still ask.
+
+Work a tainted turn sets up still carries the taint: a schedule or board card it makes runs tainted, so its risky calls need a person. So does every turn that reads a script's output or a meeting's notes, and a card's result and a meeting's notes delivered to a chat leave a tainted note there.
+
+`hk approvals list` shows every rule, where it applies and who saved it, and `hk approvals rm ID` removes a saved one.
+
+These limits are known:
+
+- **Files a tainted turn wrote.** A tainted turn can still write files in the workspace without asking. A later message of yours that runs a command under a rule may run one of them (a script, a `Makefile`, a `package.json`). The command line is the one you approved; what it runs may not be. Keep rules on commands that run workspace files off agents that read the web, or allow those commands once.
+- **Programs that pick their own files.** Habakkuk checks the paths a command's words name, as they are when it starts. It can't see files a program chooses for itself, or a folder an option like `-C` moves it to.
+- **Pre-filled messages.** A link can fill in a message for you to send: `wa.me/...?text=`, `t.me/share/url?text=`, or a bot's `?start=` payload. If you tap it and press send, the text arrives as a plain message you typed, and a rule can answer it. Read a pre-filled message before you send it.
+- **Software already running as you.** Any program running under your account can post to the dashboard's API on loopback (it can read the token from your config) or drive `hk chat` through a fake terminal, and its message is typed. Rules don't defend against software that already runs as you; nothing in Habakkuk can.
+- **Commands in `full` mode.** `full` mode runs commands without asking and doesn't parse them, so a command can write an instruction file there. The file tools always ask.
 
 ## Skills and plugins from outside
 

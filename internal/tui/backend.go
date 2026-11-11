@@ -27,6 +27,9 @@ type Backend interface {
 	Busy(ctx context.Context, id string) bool
 	// Submit queues a user message as a turn of the session.
 	Submit(ctx context.Context, id, text string) error
+	// SubmitTyped queues a line the user just typed at the prompt, nothing
+	// added, as a typed turn (approval rules may answer for it).
+	SubmitTyped(ctx context.Context, id, text string) error
 	// Cancel stops the session's queued and running turns and returns how
 	// many it stopped.
 	Cancel(ctx context.Context, id string) int

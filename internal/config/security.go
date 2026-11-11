@@ -7,6 +7,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/habakkuk-ai/habakkuk/internal/tools"
 )
 
 // AgentSecurity is an agent's safety settings, written inline in
@@ -37,6 +39,58 @@ type AgentSecurity struct {
 	// not covered, nor are scripts, programs, hidden files, or anything in
 	// Habakkuk's own folders (TrustedWriteDirs, ProtectedDirs).
 	TrustedWritePaths []string `yaml:"trusted_write_paths"`
+	// Allow are approval rules: calls the agent may make without asking,
+	// the same as an "Always allow" answer in a chat. They never cover a
+	// turn that read outside content, a guest's turn, or a write to the
+	// agent's instruction files (tools.Rule).
+	Allow []AllowRule `yaml:"allow"`
+}
+
+// AllowRule is one entry of agents.<name>.allow: an exact command line,
+// run in the workspace or exactly in the folder in names; or a file tool
+// writing inside a folder. Command (a pattern) is refused for now:
+// wildcard rules may come later, with a reviewed list of programs.
+type AllowRule struct {
+	Command string `yaml:"command"`
+	Exact   string `yaml:"exact"`
+	In      string `yaml:"in"`
+	Tool    string `yaml:"tool"`
+	Path    string `yaml:"path"`
+}
+
+// Rule is the entry as a tools.Rule, with ~/ expanded.
+func (r AllowRule) Rule() tools.Rule {
+	out := tools.Rule{Tool: r.Tool, Exact: strings.TrimSpace(r.Exact),
+		In: expandHome(strings.TrimSpace(r.In)), Path: expandHome(strings.TrimSpace(r.Path)), Source: "config"}
+	if real, err := filepath.EvalSymlinks(out.In); out.In != "" && err == nil {
+		out.In = real // a rule's folder is compared as its real path
+	}
+	if out.Tool == "" && out.Exact != "" {
+		out.Tool = "exec"
+	}
+	return out
+}
+
+// AllowRules are an agent's allow entries as rules.
+func (c *Config) AllowRules(agent string) []tools.Rule {
+	a := c.Agents[agent]
+	if a == nil {
+		return nil
+	}
+	out := make([]tools.Rule, 0, len(a.Allow))
+	for _, r := range a.Allow {
+		out = append(out, r.Rule())
+	}
+	return out
+}
+
+func expandHome(p string) string {
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, rest)
+		}
+	}
+	return p
 }
 
 // SecurityCapabilities are the names channel_allow takes.
@@ -52,6 +106,19 @@ func (a *Agent) validateSecurity(name string) []error {
 	for _, c := range a.ChannelAllow {
 		if !slices.Contains(SecurityCapabilities, c) {
 			errs = append(errs, fmt.Errorf("agent %s: channel_allow %q must be one of exec, process, write, computer, browser", name, c))
+		}
+	}
+	for i, r := range a.Allow {
+		if r.Command != "" {
+			errs = append(errs, fmt.Errorf("agent %s: allow entry %d: command patterns are not supported yet; write the whole command line as exact (and in, if it runs outside the workspace)", name, i+1))
+			continue
+		}
+		if r.Tool == "" && r.Exact == "" {
+			errs = append(errs, fmt.Errorf("agent %s: allow entry %d needs exact, or tool and path", name, i+1))
+			continue
+		}
+		if err := r.Rule().Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("agent %s: allow entry %d: %v", name, i+1, err))
 		}
 	}
 	for _, p := range a.TrustedWritePaths {

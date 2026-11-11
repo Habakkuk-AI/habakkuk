@@ -88,6 +88,8 @@ CREATE TABLE asked_approvals (
 ) WITHOUT ROWID;
 `}, {Version: 4, SQL: `
 ALTER TABLE drafts ADD COLUMN answer TEXT NOT NULL DEFAULT '';
+`}, {Version: 5, SQL: `
+ALTER TABLE chat_notes ADD COLUMN tainted INTEGER NOT NULL DEFAULT 0;
 `}}
 
 type Store struct {

@@ -114,7 +114,22 @@ Reply yes or no. Reply details to see the exact command.
 - **Reply `details`** to see the exact command or call. Secrets are removed and long calls are cut short. The approval keeps waiting for your answer.
 - **`approvals_detail: full`** shows the exact call in every request, in a code block. The local web chat does this by default.
 
-On platforms with buttons, you get Approve and Deny as well. For who may answer and what happens across a restart, see [Permissions and approvals](../agents/approvals.md#answering-approvals).
+When the call can get a saved rule, the request also shows the rule **Always allow** would save, in full, and you can reply **always**:
+
+````text
+I'd like to run a command on your computer.
+
+Always allow saves a rule for this chat. I won't ask again before running exactly this command in your workspace:
+```
+git status
+```
+
+Reply yes to allow it once, always to allow it from now on, or no.
+````
+
+The rule is shown whatever `approvals_detail` says. It applies in this chat only, to messages you type here yourself, and only in a one-to-one chat. Email conversations, commands with a backquote or a line break, and very long commands don't get **Always allow**.
+
+On platforms with buttons, you get **Allow once**, **Always allow** and **Deny** as well. When no rule is possible, for example after the agent has read a web page, you get Approve and Deny. For who may answer, what happens across a restart and what a rule never covers, see [Permissions and approvals](../agents/approvals.md#answering-approvals).
 
 ## Changing these without a restart
 

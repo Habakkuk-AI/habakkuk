@@ -24,6 +24,8 @@ func (f *fakeNotes) TakeNotes(_ context.Context, _, _ string) string {
 	return `[Earlier in this chat, at 18:44, your scheduled task "inbox" sent: "3 new mails"]`
 }
 
+func (f *fakeNotes) NotesTaken(context.Context, string) bool { return false }
+
 func (f *fakeNotes) NotesSeen(context.Context, string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

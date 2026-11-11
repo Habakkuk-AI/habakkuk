@@ -383,6 +383,9 @@ type chatRequest struct {
 	Text         string `json:"text"`
 	Agent        string `json:"agent"`
 	ID           string `json:"id"` // optional client message id; resending it is a no-op
+	// Spoken: the text is a transcript of Live mode's speech, never set by
+	// a client.
+	Spoken bool `json:"-"`
 }
 
 // chat hands a message to the gateway and returns the turn it started, or
@@ -447,7 +450,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	s.hub.notify(req.Conversation, false)
 	m := channel.Message{
 		Account: s.Account, Conversation: req.Conversation, ID: req.ID, Sender: "web",
-		Text: req.Text, Direct: true, Agent: req.Agent,
+		Text: req.Text, Direct: true, Agent: req.Agent, Plain: true, // typed into the chat
 	}
 	in.Deliver(ctx, m)
 	out := map[string]string{"message": req.ID, "turn": ""}

@@ -217,6 +217,7 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 			env := &tools.Env{Agent: spec.Name, Workspace: spec.Workspace, Mode: spec.Mode, Blobs: a.Blobs, BlobDir: blobDir}
 			a.Work.equip(env)
 			env.Taint = tools.NewTaint(a.untrustedSession(context.Background(), sessionID))
+			env.Rules = a.Rules(spec.Name)
 			return env
 		},
 	}

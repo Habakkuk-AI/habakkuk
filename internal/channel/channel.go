@@ -30,6 +30,18 @@ type Message struct {
 	// Quote is the message this one replies to, when the sender quoted one
 	// and the platform says what it said; nil otherwise.
 	Quote *Quote
+	// Forwarded: the platform says the sender forwarded this message from
+	// someone else. Spoken: the text is a transcript of speech (Live mode, a
+	// voice note), which could be anyone's voice. Neither is text the sender
+	// just typed, so approval rules never answer for such a turn.
+	Forwarded, Spoken bool
+	// Plain: the adapter vouches that this is text the sender typed: not
+	// forwarded, not quoting anyone, no attachment, no transcript. Only the
+	// adapters whose platforms report forwards and quotes set it (Telegram,
+	// WhatsApp linked device and Cloud API, the WhatsApp agent channel, the
+	// web chat); on every other channel no turn is typed, and approval
+	// rules never answer there.
+	Plain bool
 }
 
 // Quote is a message that a reply quotes.

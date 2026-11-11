@@ -51,4 +51,65 @@ type ChatNotes interface {
 	// NotesSeen records that the job's user message, notes and all, is in
 	// the transcript, so no later turn shows them again.
 	NotesSeen(ctx context.Context, jobID string)
+	// NotesTaken reports whether the job took any note: text that reached
+	// the chat from elsewhere, which approval rules never act on.
+	NotesTaken(ctx context.Context, jobID string) bool
+}
+
+type turnInfoKey struct{}
+
+// TurnInfo says what started the running turn, for approvers and the
+// turn policy (approval rules answer only for the owner's own turns).
+type TurnInfo struct {
+	Source string // SourceSchedule, SourceBoard, SourceA2A, or "" (TurnPayload.Source)
+	Task   string // names that work in one line (`scheduled task "inbox"`)
+	// Local: the owner started it on this machine (the CLI, the TUI, hk
+	// talk); TurnPayload.Local.
+	Local bool
+	// Typed: the turn's whole message is plain text the owner just sent
+	// (TurnPayload.Typed).
+	Typed bool
+	// Background: nobody sent it a fresh message (TurnPayload.Background);
+	// Delegated: a sub-agent's task; Tainted: it starts tainted.
+	Background, Delegated, Tainted bool
+}
+
+// OwnerMessage reports whether the turn answers a fresh message: not
+// background work, a delegated task, or another system's request.
+func (i TurnInfo) OwnerMessage() bool {
+	return i.Source == "" && !i.Background && !i.Delegated
+}
+
+// WithTurnInfo notes what started the running turn. The runner sets it on
+// every turn.
+func WithTurnInfo(ctx context.Context, i TurnInfo) context.Context {
+	return context.WithValue(ctx, turnInfoKey{}, i)
+}
+
+// TurnInfoFrom is what started the turn running in ctx.
+func TurnInfoFrom(ctx context.Context) TurnInfo {
+	i, _ := ctx.Value(turnInfoKey{}).(TurnInfo)
+	return i
+}
+
+// SourceFrom is what started the turn running in ctx (SourceSchedule,
+// SourceBoard, SourceA2A), or "" for a chat message or a local client.
+func SourceFrom(ctx context.Context) string { return TurnInfoFrom(ctx).Source }
+
+// TaskFrom names the work that started the turn (`scheduled task
+// "inbox"`), or "".
+func TaskFrom(ctx context.Context) string { return TurnInfoFrom(ctx).Task }
+
+type taintedKey struct{}
+
+// WithTainted marks what is delivered under ctx as outside content: a chat
+// note it leaves is tainted (meeting notes, a tainted card's result).
+func WithTainted(ctx context.Context) context.Context {
+	return context.WithValue(ctx, taintedKey{}, true)
+}
+
+// TaintedFrom reports whether ctx was marked with WithTainted.
+func TaintedFrom(ctx context.Context) bool {
+	v, _ := ctx.Value(taintedKey{}).(bool)
+	return v
 }

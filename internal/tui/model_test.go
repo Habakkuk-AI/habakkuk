@@ -79,6 +79,10 @@ func (f *fakeBackend) Busy(context.Context, string) bool {
 	return f.busy
 }
 
+func (f *fakeBackend) SubmitTyped(ctx context.Context, id, text string) error {
+	return f.Submit(ctx, id, text)
+}
+
 func (f *fakeBackend) Submit(_ context.Context, _, text string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

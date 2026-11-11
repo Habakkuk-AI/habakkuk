@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/habakkuk-ai/habakkuk/internal/agent"
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
@@ -95,7 +96,9 @@ func TestTurnPolicyCarriesTrustedFolders(t *testing.T) {
 			t.Errorf("%s is not protected: %q", want, p.Protected)
 		}
 	}
-	if p, _ := TurnPolicy(cfg, "other", nil); len(p.TrustedWrite) != 0 || len(p.Protected) != 0 {
+	// Without the setting there are no trusted folders, but the protected
+	// ones still bound approval rules.
+	if p, _ := TurnPolicy(cfg, "other", nil); len(p.TrustedWrite) != 0 || !slices.Contains(p.Protected, filepath.Join(home, "agents")) {
 		t.Fatalf("an agent without the setting: %+v", p)
 	}
 }
@@ -116,5 +119,60 @@ func TestScheduledScriptFoldersAreProtected(t *testing.T) {
 	a.applyPolicy(ctx, a.Runner.Agents["habakkuk"], nil, env)
 	if len(env.Policy.TrustedWrite) != 1 || !slices.Contains(env.Policy.Protected, jobs) {
 		t.Fatalf("policy: trusted %q, protected %q; want %s protected", env.Policy.TrustedWrite, env.Policy.Protected, jobs)
+	}
+}
+
+// Where a turn stands for approval rules: this machine, the owner's chat
+// (or a schedule delivering there), or nowhere (guests, webhooks, A2A).
+func TestTurnPlaceForRules(t *testing.T) {
+	cfg := &config.Config{
+		Agents: map[string]*config.Agent{"main": {}},
+		Channels: map[string]*config.Channel{
+			"tg":   {Type: "telegram", AllowFrom: []string{"42"}},
+			"open": {Type: "whatsapp", AllowFrom: []string{"*"}},
+			"web":  {Type: "web", AllowFrom: []string{"*"}},
+		},
+	}
+	origin := func(acct, trust string) json.RawMessage {
+		b, _ := json.Marshal(channel.Address{Account: acct, Conversation: "c", Trust: trust})
+		return b
+	}
+	for name, c := range map[string]struct {
+		origin json.RawMessage
+		want   string
+	}{
+		"no reply address":          {nil, ""},
+		"web chat":                  {origin("web", ""), tools.PlaceLocal},
+		"owner on telegram":         {origin("tg", channel.TrustOwner), tools.ChatPlace("tg", "c")},
+		"schedule to a closed chat": {origin("tg", ""), tools.ChatPlace("tg", "c")},
+		"schedule to an open chat":  {origin("open", ""), ""},
+		"guest":                     {origin("open", channel.TrustGuest), ""},
+		"webhook":                   {origin("web", channel.TrustExternal), ""},
+		"trigger to a channel":      {origin("tg", channel.TrustExternal), ""},
+		"garbage":                   {json.RawMessage(`"x"`), ""},
+		"an account no longer here": {json.RawMessage(`{"account":"gone","conversation":"5","trust":"owner"}`), ""},
+		"a guest there":             {json.RawMessage(`{"account":"gone","conversation":"5","trust":"guest"}`), ""},
+	} {
+		if p, _ := TurnPolicy(cfg, "main", c.origin); p.Place != c.want {
+			t.Errorf("%s: place %q, want %q", name, p.Place, c.want)
+		}
+	}
+	// With no reply address, only a turn the owner typed here is local;
+	// schedules, the API, MCP and A2A are not.
+	a := &App{Cfg: cfg}
+	for name, c := range map[string]struct {
+		info agent.TurnInfo
+		want string
+	}{
+		"typed here":         {agent.TurnInfo{Local: true}, tools.PlaceLocal},
+		"schedule, no chat":  {agent.TurnInfo{Source: agent.SourceSchedule, Background: true}, ""},
+		"API or MCP request": {agent.TurnInfo{}, ""},
+		"A2A task":           {agent.TurnInfo{Source: agent.SourceA2A}, ""},
+	} {
+		env := &tools.Env{Taint: tools.NewTaint(false)}
+		a.applyPolicy(agent.WithTurnInfo(context.Background(), c.info), &agent.Spec{Name: "main"}, nil, env)
+		if env.Policy.Place != c.want {
+			t.Errorf("%s: place %q, want %q", name, env.Policy.Place, c.want)
+		}
 	}
 }
