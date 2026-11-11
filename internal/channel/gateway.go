@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
+	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 	"github.com/habakkuk-ai/habakkuk/internal/core/state"
@@ -279,7 +280,7 @@ func (g *Gateway) ingest(ctx context.Context, agentName string, atts []Attachmen
 		if inbox != "" {
 			// Saved only where the inbox really is inside the workspace: a
 			// link named inbox must not lead an attachment elsewhere.
-			ws := &tools.Env{Workspace: filepath.Dir(inbox)}
+			ws := &tools.Env{Workspace: filepath.Dir(inbox), Policy: &tools.Policy{Locked: lockedFolders(g.Runner, agentName)}}
 			if err := os.MkdirAll(inbox, 0o700); err == nil {
 				if dir, err := ws.OutputDir(inbox); err == nil {
 					path := filepath.Join(dir, g.now().UTC().Format("20060102-150405")+"-"+name)
@@ -1005,4 +1006,14 @@ func shorten(s string, n int) string {
 		return string([]rune(s)[:n]) + "..."
 	}
 	return s
+}
+
+// lockedFolders is the owner's trusted project files folder of the home
+// an agent lives in, which no save may reach.
+func lockedFolders(r *agent.Runner, agentName string) []string {
+	spec, ok := r.Agents[agentName]
+	if !ok || spec.Dir == "" {
+		return nil
+	}
+	return []string{(&projtrust.Store{Home: filepath.Dir(filepath.Dir(spec.Dir))}).Folder()}
 }

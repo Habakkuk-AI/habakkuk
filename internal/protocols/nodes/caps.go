@@ -44,6 +44,9 @@ type LocalOptions struct {
 	AllowRun    bool   // offer system.run (a shell)
 	AllowCamera bool   // offer camera.snap
 	Dir         string // files.get and files.put work inside this directory; "" offers neither
+	// Protected are folders files.put never writes, however reached (a
+	// link, another letter case): the Habakkuk homes on this machine.
+	Protected []string
 }
 
 // The platform and tool lookup, replaceable in tests.
@@ -80,7 +83,10 @@ func LocalCaps(o LocalOptions) Caps {
 	if o.Dir != "" {
 		root := o.Dir
 		c[CmdFilesGet] = Func(func(ctx context.Context, args json.RawMessage) (*Result, error) { return filesGet(root, args) })
-		c[CmdFilesPut] = Func(func(ctx context.Context, args json.RawMessage) (*Result, error) { return filesPut(root, args) })
+		protected := o.Protected
+		c[CmdFilesPut] = Func(func(ctx context.Context, args json.RawMessage) (*Result, error) {
+			return filesPut(root, protected, args)
+		})
 	}
 	return c
 }
@@ -474,7 +480,39 @@ func filesGet(root string, args json.RawMessage) (*Result, error) {
 		Files: []File{{Name: filepath.Base(path), Data: data}}}, nil
 }
 
-func filesPut(root string, args json.RawMessage) (*Result, error) {
+// underProtected reports whether path (links resolved) is in one of the
+// protected folders, compared as folders, not as strings.
+func underProtected(path string, protected []string) bool {
+	var infos []os.FileInfo
+	for _, d := range protected {
+		if d == "" {
+			continue
+		}
+		if real, err := filepath.EvalSymlinks(d); err == nil {
+			d = real
+		}
+		if rel, err := filepath.Rel(d, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+		if fi, err := os.Stat(d); err == nil {
+			infos = append(infos, fi)
+		}
+	}
+	for cur := path; ; cur = filepath.Dir(cur) {
+		if fi, err := os.Stat(cur); err == nil {
+			for _, p := range infos {
+				if os.SameFile(fi, p) {
+					return true
+				}
+			}
+		}
+		if filepath.Dir(cur) == cur {
+			return false
+		}
+	}
+}
+
+func filesPut(root string, protected []string, args json.RawMessage) (*Result, error) {
 	var in struct {
 		Path string `json:"path"`
 		Data []byte `json:"data"` // base64
@@ -486,6 +524,9 @@ func filesPut(root string, args json.RawMessage) (*Result, error) {
 	path, err := inside(root, in.Path)
 	if err != nil {
 		return nil, err
+	}
+	if underProtected(path, protected) {
+		return nil, fmt.Errorf("%s is inside Habakkuk's own folder on this machine, which files.put never writes", in.Path)
 	}
 	data := in.Data
 	if data == nil {
