@@ -184,6 +184,21 @@ hk migrate [--from hermes|openclaw|claude-code|codex] [--source DIR]
 | `--force` | Replace agents, persona files, skills, notes, schedules and `.env` values that already exist and differ. |
 | `-y` | Do not ask. Keys are copied only with `--secrets copy`, and files only with `--files copy`. |
 
+```text
+hk migrate finish [--from hermes|openclaw] [--source DIR] [--agent NAME] [--dry-run] [--force] [-y]
+hk migrate rollback [--from hermes|openclaw] [-y]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--from`, `--source` | The old agent and its home, as for the import. Without them, the one found on this computer is used. `rollback` picks the one with a record. |
+| `--agent NAME` | The name you gave the main agent at import, if it wasn't `habakkuk`. |
+| `--dry-run` | Show what still runs and what would change, then stop. |
+| `--force` | Resume the imported schedules even though the old agent's scheduler still runs. |
+| `-y` | Do not ask. |
+
+See [Switch over with hk migrate finish](#switch-over-with-hk-migrate-finish).
+
 If you leave out `--secrets`, an interactive run asks once whether to copy the keys. If you leave out `--files`, it asks once whether to copy your files. With `-y` and no `--files`, your files stay where they are. The report tells you how to bring them over later, which is to run `hk migrate --files copy`. That later run also fixes what was imported before. It rewrites in place any text that still names the old folder, and each schedule keeps its ID and stays on or paused. Text you changed since the import is covered too. Your wording is kept, and only the paths into the copied folders change.
 
 > [!NOTE]
@@ -260,6 +275,14 @@ Cannot carry over
 
 config.yaml will be created.
 
+The old agent
+  Hermes Agent is still running: gateway (systemd hermes-gateway), 1 worker, 2 active schedules.
+  service systemd hermes-gateway: running
+  gateway, pid 4121: /home/ada/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run
+  worker, pid 5530: /home/ada/.hermes/hermes-agent/venv/bin/python -m hermes_cli.kanban_worker_client
+  2 schedules on in Hermes Agent
+  After the import, hk migrate finish stops it, pauses its schedules and resumes the imported ones.
+
 Dry run: nothing was written.
 ```
 
@@ -280,24 +303,113 @@ Still points into /home/ada/.hermes (that folder is needed while these remain):
   - config.yaml: named once (habakkuk: SOUL.md): Hermes Agent's config (its settings are imported)
   - hermes-agent: named once (scripts/report.sh): Hermes Agent's own program
 
-Schedules are imported paused. Check them with hk schedules list, then resume each one:
+Schedules are imported paused, so nothing runs twice. Check them with hk schedules list.
+When you're ready to switch, hk migrate finish --from hermes stops Hermes Agent, pauses its schedules and resumes these:
   hk schedules resume sch_6f9580dd273695f7          # habakkuk/Inbox sweep
   hk schedules resume sch_4066676d3e5680b4          # habakkuk/Morning brief
 
 Next:
   hk doctor            check the config, keys and channels
+  hk migrate finish    stop Hermes Agent, pause its schedules and resume the imported ones
   hk serve             start the agents and connect the channels
   hk migrate --dry-run             see what still points into /home/ada/.hermes before you remove it
 ```
 
+Then switch over:
+
+```console
+$ hk migrate finish
+Hermes Agent is still running: gateway (systemd hermes-gateway), 1 worker, 2 active schedules.
+  service systemd hermes-gateway: running
+  gateway, pid 4121: /home/ada/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run
+  worker, pid 5530: /home/ada/.hermes/hermes-agent/venv/bin/python -m hermes_cli.kanban_worker_client
+  2 schedules on in Hermes Agent
+Channels both would use:
+  telegram (telegram): the same Telegram bot token as Hermes Agent's telegram channel; only one program at a time can poll it
+
+hk migrate finish will:
+  - stop Hermes Agent and keep it from starting again
+  - pause 2 of its schedules in Hermes Agent (paused, not deleted)
+  - resume the schedules hk migrate imported paused
+Everything it changes is recorded in /home/ada/.habakkuk/migrate/cutover-hermes.json, and hk migrate rollback puts it back.
+
+Stop Hermes Agent now? (y/N) y
+
+Set Hermes Agent's own pause switch (/home/ada/.hermes/ESTOP): it starts no new work.
+Stopped and disabled systemd hermes-gateway.
+Stopped the worker (pid 5530).
+Paused 2 of its schedules in Hermes Agent (paused, not deleted).
+Resumed 2 imported schedules in Habakkuk.
+
+Only Habakkuk runs now. If something is wrong, hk migrate rollback puts Hermes Agent back.
+```
+
 After this run, `SOUL.md` says the briefs are in `~/.habakkuk/files/workspaces/briefs`. The schedule runs `/home/ada/.habakkuk/files/scripts/inbox_sync.py`, and that script reads `/home/ada/.habakkuk/files/state/inbox.json`. The three things under "Still points into" are what's left for you to do by hand. In this example, `report.sh` loads the old `.env` and calls the old agent's own command. You need to edit that one script before the old folder can go.
 
-> [!WARNING]
-> Stop the old agent before `hk serve` starts the same channels. Only one program at a time can poll a Telegram, Discord or Slack bot. And if two agents answer one chat, everyone gets confused.
-
-Schedules come in paused, so nothing runs twice while both agents are installed. The usual time limit for a script schedule is two minutes. An imported one gets ten minutes (or its interval, when an `@every` interval is shorter), because the old agent let scripts run longer. Once the old agent is stopped, resume each schedule yourself, with `hk schedules resume ID` or from the dashboard. An agent can resume one only in a clean message you typed to it, not in a turn that read outside content or came from a schedule, a board card or another program. Without `--files copy`, a script schedule still runs the script from the old folder. With it, the script is copied and the schedule runs the copy.
+Schedules come in paused, so nothing runs twice while both agents are installed. The usual time limit for a script schedule is two minutes. An imported one gets ten minutes (or its interval, when an `@every` interval is shorter), because the old agent let scripts run longer. Without `--files copy`, a script schedule still runs the script from the old folder. With it, the script is copied and the schedule runs the copy.
 
 After the import, read through each agent's `SOUL.md` and `AGENTS.md`. Instructions written for the old agent may name its tools or commands, and Habakkuk doesn't have those.
+
+## Switch over with hk migrate finish
+
+Importing doesn't stop the old agent. Until you switch over, it keeps its gateway, its workers and its own schedules. If you only stop its gateway by hand, a worker or a service can keep running and start its scheduler again. Then every schedule runs twice, once in each agent, and spends model credit twice. Its WhatsApp bridge can also come back on the old linked session.
+
+`hk migrate finish` ends the move with one agent running. Run it once the import looks right:
+
+```bash
+hk migrate finish --dry-run    # see what still runs, change nothing
+hk migrate finish              # show it, ask, then switch over
+hk migrate rollback            # undo the switch
+```
+
+It works for Hermes Agent and OpenClaw. Claude Code and Codex don't run in the background, so there's nothing to stop.
+
+### What it checks
+
+The import plan and `hk migrate finish` both show what of the old agent still runs. They only read, and they look at:
+
+- its processes: the gateway, workers, a scheduler and channel bridges such as Hermes Agent's WhatsApp bridge;
+- its services: systemd user and system units, launchd agents on macOS, and scheduled tasks and Startup folder launchers on Windows;
+- its pid and lock files, so a process still counts when the process list doesn't show it plainly;
+- its own schedules that are still on.
+
+You get one line, for example:
+
+```text
+Hermes Agent is still running: gateway (systemd hermes-gateway), 1 worker, 37 active schedules
+```
+
+The plan also names each channel both agents would use: the same Telegram, Slack or Discord token, which only one program at a time can poll, or a WhatsApp number that's still linked in the old agent. Token values are never shown, only the channel.
+
+### What it changes
+
+Once you say yes, `hk migrate finish` does these steps in order:
+
+1. It sets Hermes Agent's own pause switch (its `ESTOP` file), so the old agent starts no new run, even if a process of it comes back later. OpenClaw has no such switch.
+2. It stops and disables the old agent's services, so they don't start again at login or after a crash. A system unit needs an administrator, so it prints the `sudo systemctl` command for you to run instead.
+3. It stops the processes that still run. Each one is asked to stop first. If it hasn't ended after ten seconds, it's forced.
+4. It pauses the old agent's schedules in the old agent's own store: `cron/jobs.json` for Hermes Agent, the schedule database for OpenClaw. They're paused, never deleted. Hermes Agent's jobs get the same pause marker its own `hermes cron pause` gives them, and a copy of `jobs.json` is kept as `jobs.json.before-habakkuk`.
+5. It resumes the imported schedules that match the ones the old agent was running. A schedule that was off there stays paused here.
+
+It won't do step 5 while the old agent's scheduler still runs. That happens when a service is supervised by something it can't stop, or when only an administrator can stop it. You'll see what's still running. Stop it, then run `hk migrate finish` again. If you'd rather resume the imported schedules anyway, run `hk migrate finish --force`. A schedule that's on in both agents then runs twice until you stop the old one. Step 4 always waits until the old scheduler is stopped, because a running scheduler can write over the change.
+
+Every change is written to `$HABAKKUK_HOME/migrate/cutover-<source>.json` as it happens, so a run that stops halfway still has a full record. Running `hk migrate finish` again picks up where it left off, and once everything is done it changes nothing.
+
+The WhatsApp session stays linked in the old agent. Its bridge is stopped, so it no longer answers. When you're happy with Habakkuk, unlink the old device from **Linked devices** on your phone.
+
+### Undo it
+
+`hk migrate rollback` reads the record and undoes it, newest change first:
+
+- it pauses the imported schedules again, before the old agent starts;
+- it turns the old agent's schedules back on (a job you paused yourself since then stays paused);
+- it enables and starts its services again, and removes the pause switch it set.
+
+A process that ran outside any service, such as a gateway you started in a terminal, can't be started again for you. Rollback prints the command line it had, so you can start it the way you did before. When every step is undone, the record is kept as `cutover-<source>.rolled-back-<time>.json`.
+
+### hk doctor
+
+`hk doctor` warns when the old agent still runs next to Habakkuk. It reports a problem when the old agent's scheduler runs and a schedule is on in both agents, and when the old agent runs and uses a channel Habakkuk uses too. Each line ends with the fix, `hk migrate finish --from hermes` or `--from openclaw`.
 
 ## Running it again
 
@@ -322,7 +434,7 @@ Copied files work the same way. A second `--files copy` brings over only what's 
 - its config, logs or session database, named in a persona file or note: edit the text, because Habakkuk has its own.
 - "(the folder itself)": the text names the old folder as a whole. Read that text and decide what it should mean now.
 
-Once the Files section lists nothing under "Not moved" and every folder shows `=`, nothing you imported names the old folder any more. Before you remove it, check that the old agent is stopped and that your schedules have run once from the new place.
+Once the Files section lists nothing under "Not moved" and every folder shows `=`, nothing you imported names the old folder any more. Before you remove it, run `hk migrate finish` so the old agent is stopped, and check that your schedules have run once from the new place. Keep the folder while you might still run `hk migrate rollback`.
 
 **"not enough room in ..."**: the copy needs more free space than the disk has. You can free some space, pass `--files-dir` with a folder on a bigger disk, or use `--files skip` and move the files yourself.
 
