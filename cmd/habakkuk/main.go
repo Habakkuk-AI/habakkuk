@@ -132,9 +132,10 @@ Usage:
   hk computer view                    how to watch the agents' virtual desktops (computer backend xvfb)
   hk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
                                     print habakkuk.log readably (-f keeps following it)
-  hk projects trust [-y] [-allow-control] [PATH] | list [PATH] | untrust [PATH]
+  hk projects trust [-allow-control] [PATH] | list [-agent A] [PATH] | untrust [PATH]
                                     trust the exact content of a project's AGENTS.md, CLAUDE.md and
-                                    .cursorrules, so agents follow them; any change untrusts a file
+                                    .cursorrules, so agents follow them; any change untrusts a file;
+                                    trust shows exactly what the agent gets and asks on your terminal
   hk skills held | approve AGENT/NAME   skills an agent saved after reading outside content wait here;
                                     approve one to put it in use
   hk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky

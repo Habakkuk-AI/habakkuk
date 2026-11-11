@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"unicode"
@@ -15,28 +16,55 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
 	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
+	"golang.org/x/term"
 )
 
-const projectsUsage = `usage: hk projects trust [-y] [-allow-control] [PATH] | list [PATH] | untrust [PATH]
+const projectsUsage = `usage: hk projects trust [-allow-control] [PATH] | list [-agent A] [PATH] | untrust [PATH]
   trust [PATH]    show exactly what an agent working in PATH (default: this folder) would
                   get from each project instruction file (AGENTS.md, CLAUDE.md, .cursorrules),
-                  or from the one file PATH names, and trust that exact content. It needs a
-                  terminal: you, not a script, decide. -y trusts without asking;
-                  -allow-control trusts a file with control or invisible format characters
+                  or from the one file PATH names, and ask, on your terminal, whether to trust
+                  that exact content. -allow-control trusts a file with control or invisible
+                  format characters
   list            every trusted file and whether it changed since
-  list PATH       the files an agent working in PATH reads, and whether each is trusted
+  list PATH       what an agent working in PATH (or the one file PATH names) really gets,
+                  and whether each file is trusted
   untrust [PATH]  stop trusting a file, or every file under a folder (default: this folder)`
 
-// projectsTerminal reports whether hk projects trust is talking to a
-// person: its input is a terminal. Tests replace it.
-var projectsTerminal = func(in io.Reader) bool {
-	f, ok := in.(*os.File)
-	if !ok {
-		return false
+// errNoTerminal is returned when nobody is at a terminal to ask.
+var errNoTerminal = errors.New("hk projects trust asks you on your terminal, and there is none: run it yourself in a terminal")
+
+// projectsTTY opens the terminal of the person running the command, for
+// showing the files and reading the answer. Standard input and output are
+// not used for that: they can be a pipe or /dev/null. It is a hurdle for
+// scripts and agents, not a guarantee: a process on this machine that can
+// fake a terminal (with script, say) can answer it. Tests replace it.
+var projectsTTY = openTTY
+
+func openTTY() (io.ReadWriteCloser, error) {
+	if runtime.GOOS == "windows" {
+		if !isTerminalFile(os.Stdin) || !isTerminalFile(os.Stdout) {
+			return nil, errNoTerminal
+		}
+		return struct {
+			io.Reader
+			io.Writer
+			io.Closer
+		}{os.Stdin, os.Stdout, io.NopCloser(nil)}, nil
 	}
-	info, err := f.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return nil, errNoTerminal
+	}
+	if !isTerminalFile(f) {
+		f.Close()
+		return nil, errNoTerminal
+	}
+	return f, nil
 }
+
+// isTerminalFile is a real terminal check: a character device such as
+// /dev/null is not one.
+func isTerminalFile(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
 
 // projectsCmd runs hk projects. A project instruction file is followed as
 // instructions only while its content is exactly what the owner trusted
@@ -49,22 +77,29 @@ func projectsCmd(home string, args []string, in io.Reader, out io.Writer) error 
 	st := &projtrust.Store{Home: home}
 	switch sub {
 	case "list", "ls":
-		if len(args) > 0 {
-			return projectsListAt(home, st, args[0], out)
+		fs := flag.NewFlagSet("projects list", flag.ContinueOnError)
+		fs.SetOutput(out)
+		agentName := fs.String("agent", "", "the agent whose view to show (default: the default agent)")
+		if err := fs.Parse(args); err != nil {
+			return err
+		}
+		if fs.NArg() > 0 {
+			return projectsListAt(home, st, *agentName, fs.Arg(0), out)
 		}
 		return projectsList(st, out)
 	case "trust":
 		fs := flag.NewFlagSet("projects trust", flag.ContinueOnError)
 		fs.SetOutput(out)
-		yes := fs.Bool("y", false, "trust without asking")
 		allowControl := fs.Bool("allow-control", false, "trust a file that holds control or invisible format characters")
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
-		if !projectsTerminal(in) {
-			return errors.New("hk projects trust needs a terminal: run it yourself, so a script or an agent cannot trust files for you")
+		tty, err := projectsTTY()
+		if err != nil {
+			return err
 		}
-		return projectsTrust(home, st, pathArg(fs.Args()), *yes, *allowControl, in, out)
+		defer tty.Close()
+		return projectsTrust(home, st, pathArg(fs.Args()), *allowControl, tty, out)
 	case "untrust", "rm":
 		removed, err := st.Untrust(pathArg(args))
 		if err != nil {
@@ -91,20 +126,31 @@ func pathArg(args []string) string {
 	return "."
 }
 
-// projectAgentDir is the default agent's folder, which the loader uses to
-// fence off the Habakkuk home.
-func projectAgentDir(home string) string {
-	if cfg, err := config.Load(home); err == nil {
-		if name, err := defaultAgent(cfg, ""); err == nil {
-			return cfg.AgentDir(name)
+// projectAgent is an agent's folder (which the loader uses to fence off
+// the Habakkuk home and the agent's own folder) and its project_files
+// setting: the named agent, or the default one.
+func projectAgent(home, name string) (dir, mode string, err error) {
+	cfg, err := config.Load(home)
+	if err != nil {
+		if name != "" {
+			return "", "", err
 		}
+		return filepath.Join(home, "agents", "habakkuk"), agent.ProjectFilesOn, nil
 	}
-	return filepath.Join(home, "agents", "habakkuk")
+	if name, err = defaultAgent(cfg, name); err != nil {
+		return "", "", err
+	}
+	return cfg.AgentDir(name), cfg.Agents[name].ProjectFiles, nil
 }
 
 // projectFilesAt lists the instruction files a session working in path
-// would read, or the one file path names.
+// would read, or the one file path names, each with its trust now when
+// trust is given.
 func projectFilesAt(home, path string, trust agent.ProjectTrust) ([]agent.ProjectFile, error) {
+	return projectFilesFor(home, "", path, trust, false)
+}
+
+func projectFilesFor(home, agentName, path string, trust agent.ProjectTrust, honourMode bool) ([]agent.ProjectFile, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -114,12 +160,32 @@ func projectFilesAt(home, path string, trust agent.ProjectTrust) ([]agent.Projec
 			return nil, fmt.Errorf("%s is not a project instruction file (%s)", path, strings.Join(agent.ProjectFileNames, ", "))
 		}
 		abs, _ := filepath.Abs(path)
-		return []agent.ProjectFile{{Path: abs}}, nil
+		f := agent.ProjectFile{Path: abs, Real: abs}
+		if real, err := projtrust.Real(abs); err == nil {
+			f.Real = real
+		}
+		if sum, _, err := projtrust.Hash(f.Real); err != nil {
+			f.Skipped = err.Error()
+		} else if trust != nil {
+			f.SHA256 = sum
+			f.Trusted, f.Changed = trust.Check(f.Real, sum)
+			f.Changed = f.Changed && !f.Trusted
+		}
+		return []agent.ProjectFile{f}, nil
 	}
-	return agent.LoadProjectFiles(projectAgentDir(home), path, agent.ProjectFilesOn, trust).Files, nil
+	dir, mode, err := projectAgent(home, agentName)
+	if err != nil {
+		return nil, err
+	}
+	if !honourMode {
+		mode = agent.ProjectFilesOn
+	}
+	return agent.LoadProjectFiles(dir, path, mode, trust).Files, nil
 }
 
-func projectsTrust(home string, st *projtrust.Store, path string, yes, allowControl bool, in io.Reader, out io.Writer) error {
+// projectsTrust shows each file on the terminal and asks there; standard
+// output only gets the result lines.
+func projectsTrust(home string, st *projtrust.Store, path string, allowControl bool, tty io.ReadWriter, out io.Writer) error {
 	files, err := projectFilesAt(home, path, nil)
 	if err != nil {
 		return err
@@ -128,7 +194,7 @@ func projectsTrust(home string, st *projtrust.Store, path string, yes, allowCont
 		fmt.Fprintf(out, "No project instruction files (%s) for %s.\n", strings.Join(agent.ProjectFileNames, ", "), path)
 		return nil
 	}
-	answers := bufio.NewReader(in)
+	answers := bufio.NewReader(tty)
 	trusted := 0
 	for _, f := range files {
 		if f.Skipped != "" && !strings.Contains(f.Skipped, "already fill") {
@@ -149,21 +215,17 @@ func projectsTrust(home string, st *projtrust.Store, path string, yes, allowCont
 			continue
 		}
 		hidden := hiddenChars(data)
-		if !yes {
-			showFile(out, f.Path, sum, data)
-		}
+		showFile(tty, f.Path, sum, data)
 		if len(hidden) > 0 && !allowControl {
 			fmt.Fprintf(out, "not trusted: %s holds %d control or invisible format character(s) (%s), which can make what you see differ from what the agent gets. Remove them, or pass -allow-control once you have read the file with them shown.\n",
 				f.Path, len(hidden), strings.Join(hidden, ", "))
 			continue
 		}
-		if !yes {
-			fmt.Fprint(out, "Agents will follow exactly the text between the --- lines as instructions. Trust it? [y/N] ")
-			line, _ := answers.ReadString('\n')
-			if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
-				fmt.Fprintf(out, "not trusted: %s\n", f.Path)
-				continue
-			}
+		fmt.Fprint(tty, "Agents will follow exactly the text between the --- lines as instructions. Trust it? [y/N] ")
+		line, _ := answers.ReadString('\n')
+		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+			fmt.Fprintf(out, "not trusted: %s\n", f.Path)
+			continue
 		}
 		e, _, err := st.Trust(real)
 		if err != nil {
@@ -266,9 +328,14 @@ func projectsList(st *projtrust.Store, out io.Writer) error {
 }
 
 // projectsListAt shows what an agent working in path really gets: each
-// file it reads, and whether that file is trusted now.
-func projectsListAt(home string, st *projtrust.Store, path string, out io.Writer) error {
-	files, err := projectFilesAt(home, path, st)
+// file it reads (with that agent's fences and project_files setting), and
+// whether that file is trusted now.
+func projectsListAt(home string, st *projtrust.Store, agentName, path string, out io.Writer) error {
+	if _, mode, err := projectAgent(home, agentName); err == nil && mode == agent.ProjectFilesOff {
+		fmt.Fprintln(out, "project_files is off for this agent: it reads no project instruction files.")
+		return nil
+	}
+	files, err := projectFilesFor(home, agentName, path, st, true)
 	if err != nil {
 		return err
 	}
