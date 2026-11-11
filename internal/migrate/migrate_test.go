@@ -17,22 +17,42 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/app"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
+
+	"gopkg.in/yaml.v3"
 )
 
 var testNow = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 
 // copyHome copies a fixture home, turning its stored dotenv files (the
-// repository ignores .env) into .env.
+// repository ignores .env) into .env, and names stored as dot-NAME (the
+// repository ignores .claude/) into .NAME.
 func copyHome(dst, src string) error {
 	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
 		return err
 	}
-	return filepath.WalkDir(dst, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && d.Name() == "dotenv" {
-			return os.Rename(p, filepath.Join(filepath.Dir(p), ".env"))
+	var renames [][2]string
+	err := filepath.WalkDir(dst, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		return err
+		switch name := d.Name(); {
+		case name == "dotenv":
+			renames = append(renames, [2]string{p, filepath.Join(filepath.Dir(p), ".env")})
+		case strings.HasPrefix(name, "dot-"):
+			renames = append(renames, [2]string{p, filepath.Join(filepath.Dir(p), "."+strings.TrimPrefix(name, "dot-"))})
+		}
+		return nil
 	})
+	if err != nil {
+		return err
+	}
+	slices.Reverse(renames) // inner names first
+	for _, r := range renames {
+		if err := os.Rename(r[0], r[1]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // fixture copies a synthetic source home from testdata so a test may
@@ -111,8 +131,8 @@ func TestRead(t *testing.T) {
 		mcp:       []string{"github", "notion", "time"},
 		channels:  []string{"telegram", "whatsapp"},
 		schedules: []string{"Morning brief=CRON_TZ=America/Toronto 0 8 * * 1-5", "Inbox sweep=@every 30m", "Digest script=30 18 * * *"},
-		secrets:   []string{"ANTHROPIC_API_KEY", "GITHUB_PERSONAL_ACCESS_TOKEN", "NOTION_TOKEN", "OPENROUTER_API_KEY", "TELEGRAM_BOT_TOKEN"},
-		leftovers: []string{"conversation history", "WhatsApp linked-device session", "board cards"},
+		secrets:   []string{"ANTHROPIC_API_KEY", "GITHUB_PERSONAL_ACCESS_TOKEN", "MCP_NOTION_URL", "NOTION_TOKEN", "OPENROUTER_API_KEY", "TELEGRAM_BOT_TOKEN"},
+		leftovers: []string{"older sessions/ folder", "WhatsApp linked-device session", "board cards"},
 		skipped:   []string{"1 skill that came with", "MCP server retired", "One-off long past", "1 schedule of agent habakkuk: turned off"},
 	}, {
 		from: OpenClaw,
@@ -124,7 +144,7 @@ func TestRead(t *testing.T) {
 		mcp:       []string{"docs", "remote"},
 		channels:  []string{"discord-ops", "telegram", "whatsapp"},
 		schedules: []string{"Weekly money summary=CRON_TZ=Europe/Lisbon 0 9 * * 1", "Disk check=@every 1h0m0s"},
-		secrets:   []string{"ANTHROPIC_API_KEY", "DISCORD_BOT_TOKEN_OPS", "GROQ_API_KEY", "MCP_REMOTE_TOKEN", "STUDIO_KEY", "TELEGRAM_BOT_TOKEN"},
+		secrets:   []string{"ANTHROPIC_API_KEY", "DISCORD_BOT_TOKEN_OPS", "GROQ_API_KEY", "MCP_REMOTE_TOKEN", "MCP_REMOTE_URL", "STUDIO_KEY", "TELEGRAM_BOT_TOKEN"},
 		leftovers: []string{"heartbeat checklist", "imessage channel", "WhatsApp linked-device session"},
 		skipped:   []string{"MCP server parked", "1 schedule: turned off"},
 	}}
@@ -280,7 +300,7 @@ func TestOtherEnvSkipsKeysCopiedElsewhere(t *testing.T) {
 }
 
 func TestPlanNeverShowsSecrets(t *testing.T) {
-	for _, from := range Sources {
+	for _, from := range []string{Hermes, OpenClaw} { // coding tools: TestCodingToolsNeverTakeKeys
 		t.Run(from, func(t *testing.T) {
 			home := t.TempDir()
 			p := mustPlan(t, from, fixture(t, from), home, false)
@@ -853,5 +873,64 @@ func TestImportedScriptTimeout(t *testing.T) {
 		if got := importedScriptTimeout(spec); got != want {
 			t.Errorf("%s: %v, want %v", spec, got, want)
 		}
+	}
+}
+
+// A source's list of calls allowed without asking is named as left
+// behind, never imported as an approval rule; the rules you set in
+// config.yaml stay as they are, even with force.
+func TestAllowListsStayBehind(t *testing.T) {
+	home := t.TempDir()
+	old := "version: 1\nproviders:\n  anthropic:\n    preset: anthropic\nagents:\n  habakkuk:\n    model: anthropic/claude-opus-4-6\n    allow:\n      - exact: git status\n"
+	if err := os.WriteFile(filepath.Join(home, "config.yaml"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hermes := fixture(t, Hermes)
+	cfg := readFile(t, filepath.Join(hermes, "config.yaml")) + "\ncommand_allowlist:\n  - rm -rf build\n"
+	if err := os.WriteFile(filepath.Join(hermes, "config.yaml"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	openclaw := fixture(t, OpenClaw)
+	if err := os.WriteFile(filepath.Join(openclaw, "exec-approvals.json"), []byte(`{"version":1,"agents":{"main":{"allowlist":[{"pattern":"/usr/bin/curl"}]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ from, src, want string }{
+		{Hermes, hermes, "the commands agent habakkuk ran without asking (command_allowlist)"},
+		{OpenClaw, openclaw, "the commands allowed without asking (exec-approvals.json)"},
+		{ClaudeCode, fixture(t, ClaudeCode), "the tools and commands allowed without asking in Claude Code's settings.json"},
+		{Codex, fixture(t, Codex), "Codex's command rules"},
+	} {
+		p := mustPlan(t, c.from, c.src, home, true)
+		var l *Leftover
+		for i := range p.Found.Leftovers {
+			if p.Found.Leftovers[i].What == c.want {
+				l = &p.Found.Leftovers[i]
+			}
+		}
+		if l == nil || !strings.Contains(l.Instead, "not imported") || !strings.Contains(l.Instead, ".allow in config.yaml") {
+			t.Errorf("%s: leftovers = %+v; want %q", c.from, p.Found.Leftovers, c.want)
+		}
+		if _, err := p.Apply(context.Background(), false); err != nil {
+			t.Fatal(err)
+		}
+		var got struct {
+			Agents map[string]struct {
+				Allow []map[string]string `yaml:"allow"`
+			} `yaml:"agents"`
+		}
+		if err := yaml.Unmarshal([]byte(readFile(t, filepath.Join(home, "config.yaml"))), &got); err != nil {
+			t.Fatal(err)
+		}
+		for name, a := range got.Agents {
+			if want := name == "habakkuk"; len(a.Allow) != map[bool]int{true: 1}[want] || want && a.Allow[0]["exact"] != "git status" {
+				t.Errorf("%s: agent %s allow = %v", c.from, name, a.Allow)
+			}
+		}
+		_ = filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
+			if err == nil && d.Name() == "approvals.json" {
+				t.Errorf("%s: an approval rule file was written: %s", c.from, path)
+			}
+			return nil
+		})
 	}
 }

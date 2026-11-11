@@ -54,6 +54,9 @@ type Hit struct {
 	Role    string
 	At      time.Time // when the session was last updated
 	Snippet string    // matched words in [brackets]
+	// Imported marks a hit in a conversation imported from another agent:
+	// history this agent did not take part in, from senders it cannot vet.
+	Imported bool
 }
 
 var reTerm = regexp.MustCompile(`[\p{L}\p{N}_]+`)
@@ -81,7 +84,8 @@ func (s *Store) Search(ctx context.Context, agent, query, except string, limit i
 	}
 	limit = min(limit, 50)
 	rows, err := s.db.QueryContext(ctx, `SELECT t.session_id, s.agent, s.title, t.seq, t.role, s.updated_at,
-			snippet(message_fts, 0, '[', ']', '…', 24)
+			snippet(message_fts, 0, '[', ']', '…', 24),
+			EXISTS (SELECT 1 FROM imported_sessions i WHERE i.session_id = t.session_id)
 		FROM message_fts JOIN message_text t ON t.id = message_fts.rowid JOIN sessions s ON s.id = t.session_id
 		WHERE message_fts MATCH ? AND (? = '' OR s.agent = ?) AND t.session_id != ?
 		ORDER BY bm25(message_fts), s.updated_at DESC LIMIT ?`, mq, agent, agent, except, limit)
@@ -93,7 +97,7 @@ func (s *Store) Search(ctx context.Context, agent, query, except string, limit i
 	for rows.Next() {
 		var h Hit
 		var at int64
-		if err := rows.Scan(&h.Session, &h.Agent, &h.Title, &h.Seq, &h.Role, &at, &h.Snippet); err != nil {
+		if err := rows.Scan(&h.Session, &h.Agent, &h.Title, &h.Seq, &h.Role, &at, &h.Snippet, &h.Imported); err != nil {
 			return nil, err
 		}
 		h.At = time.UnixMilli(at)

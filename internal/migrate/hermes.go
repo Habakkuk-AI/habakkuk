@@ -2,7 +2,6 @@ package migrate
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +34,7 @@ type hermesHome struct {
 var hermesMarks = []string{"config.yaml", ".env", "SOUL.md", "profile.yaml", "auth.json", "state.db"}
 
 func readHermes(dir string, o Options) (*Found, error) {
-	f := &Found{}
+	f := &Found{Dir: dir, userHome: o.userHome()}
 	homes := []hermesHome{{name: "default", dir: dir, main: true}}
 	entries, err := os.ReadDir(filepath.Join(dir, "profiles"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -115,6 +114,16 @@ func (r *hermesReader) read() error {
 	r.f.Agents = append(r.f.Agents, a)
 
 	r.model()
+	switch l := r.cfg["command_allowlist"].(type) {
+	case []any:
+		if len(l) > 0 {
+			r.f.allowLeftover(fmt.Sprintf("the commands agent %s ran without asking (command_allowlist)", a.Name), a.Name)
+		}
+	case string:
+		if strings.TrimSpace(l) != "" {
+			r.f.allowLeftover(fmt.Sprintf("the commands agent %s ran without asking (command_allowlist)", a.Name), a.Name)
+		}
+	}
 	if cwd, _ := dig(r.cfg, "terminal", "cwd").(string); filepath.IsAbs(cwd) {
 		a.Workspace = tilde(cwd, r.o.userHome())
 	} else if a.Main {
@@ -321,7 +330,7 @@ func (r *hermesReader) facts() {
 	if _, err := os.Stat(path); err != nil {
 		return
 	}
-	facts, err := readFacts(path)
+	facts, err := readFacts(path, func(err error) { r.f.skip("a fact in %s: %v", path, err) })
 	if err != nil {
 		r.f.skip("the facts in %s: %v", path, err)
 		return
@@ -348,18 +357,16 @@ func (r *hermesReader) facts() {
 
 type fact struct{ content, category, tags string }
 
-// readFacts reads memory_store.db's facts table, oldest first.
-func readFacts(path string) ([]fact, error) {
+// readFacts reads memory_store.db's facts table, oldest first. A row that
+// cannot be read goes to bad, and the rest are still read.
+func readFacts(path string, bad func(error)) ([]fact, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	q := url.Values{}
-	q.Add("mode", "ro")
-	q.Add("_pragma", "busy_timeout(5000)")
-	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	db, closeDB, err := openSourceDB(path)
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { _ = closeDB() }()
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'facts'`).Scan(&n); err != nil {
 		return nil, err
@@ -376,7 +383,8 @@ func readFacts(path string) ([]fact, error) {
 	for rows.Next() {
 		var f fact
 		if err := rows.Scan(&f.content, &f.category, &f.tags); err != nil {
-			return nil, err
+			bad(err)
+			continue
 		}
 		out = append(out, f)
 	}
@@ -416,7 +424,7 @@ func (r *hermesReader) skills() error {
 			}
 		}
 	}
-	dirs, err := findSkills(root)
+	dirs, err := r.f.findSkills(root)
 	if err != nil {
 		return err
 	}
@@ -471,81 +479,6 @@ func (r *hermesReader) mcp() {
 		}
 		r.agent.MCP = append(r.agent.MCP, r.f.mcp(s, r.agent.Name))
 	}
-}
-
-// readMCP turns one server definition (the same shape in both sources:
-// command/args/env or url/headers) into a Habakkuk server, moving literal
-// secrets into variables.
-func (f *Found) readMCP(raw string, m map[string]any, env map[string]string, used map[string]bool) *MCPServer {
-	name := cleanName(raw, 32)
-	if name == "" {
-		f.skip("MCP server %q: its name cannot be used", raw)
-		return nil
-	}
-	s := &MCPServer{Name: name}
-	s.Command, _ = m["command"].(string)
-	s.URL, _ = m["url"].(string)
-	if s.URL == "" {
-		s.URL, _ = m["baseUrl"].(string)
-	}
-	s.Args = asList(m["args"])
-	if (s.Command == "") == (s.URL == "") {
-		f.skip("MCP server %s: needs exactly one of command or url", raw)
-		return nil
-	}
-	if auth, _ := m["auth"].(string); strings.EqualFold(auth, "oauth") && s.URL != "" {
-		s.OAuth = true
-		f.leftover("the sign-in to MCP server "+name, "hk mcp login "+name)
-	}
-	vars := func(kind string, in map[string]any) map[string]string {
-		out := map[string]string{}
-		for _, k := range sortedKeys(in) {
-			v := fmt.Sprint(in[k])
-			if ref, ok := refOnly(v); ok {
-				out[k] = ref
-				used[ref] = true
-				f.secret(ref, env[ref])
-				continue
-			}
-			if refs := varRefs(v); len(refs) > 0 {
-				out[k] = v // a template like "Bearer ${TOKEN}"
-				for _, ref := range refs {
-					used[ref] = true
-					f.secret(ref, env[ref])
-				}
-				continue
-			}
-			// A literal: it moves into a variable of its own.
-			v2 := "MCP_" + envSuffix(name) + "_" + envSuffix(k)
-			if kind == "env" && envName.MatchString(k) && strings.ToUpper(k) == k {
-				v2 = k
-			}
-			if prev, ok := f.Secrets[v2]; ok && prev != v {
-				v2 = "MCP_" + envSuffix(name) + "_" + envSuffix(k)
-			}
-			if kind == "header" {
-				if tok, ok := strings.CutPrefix(v, "Bearer "); ok {
-					f.secret(v2, tok)
-					out[k] = "Bearer ${" + v2 + "}"
-					continue
-				}
-			}
-			f.secret(v2, v)
-			out[k] = v2
-		}
-		if len(out) == 0 {
-			return nil
-		}
-		return out
-	}
-	env2, _ := m["env"].(map[string]any)
-	hdr, _ := m["headers"].(map[string]any)
-	if s.Command != "" {
-		s.Env = vars("env", env2)
-	} else {
-		s.Headers = vars("header", hdr)
-	}
-	return s
 }
 
 // channels reads the .env variables of each messaging platform.
@@ -780,8 +713,8 @@ func scriptCommand(script, dir string) string {
 
 // hermesLeftovers lists what the home holds that has no equivalent.
 func hermesLeftovers(f *Found, dir string) {
-	if exists(filepath.Join(dir, "state.db")) || exists(filepath.Join(dir, "sessions")) {
-		f.leftover("conversation history", "it stays in "+dir+"; Habakkuk starts fresh sessions")
+	if !exists(filepath.Join(dir, "state.db")) && exists(filepath.Join(dir, "sessions")) {
+		f.leftover("conversations kept in the older sessions/ folder", "only state.db is read; they stay in "+dir)
 	}
 	if exists(filepath.Join(dir, "platforms", "whatsapp", "session")) || slices.ContainsFunc(f.Channels, func(c *Channel) bool { return c.Link }) {
 		f.leftover("the WhatsApp linked-device session", "hk whatsapp link (or hk setup channel whatsapp) to link the number again")
@@ -797,4 +730,14 @@ func hermesLeftovers(f *Found, dir string) {
 			f.leftover(d, "see hk plugins and the hooks section of config.yaml")
 		}
 	}
+}
+
+// redactURL is a URL as the plan shows it: no user, password or query.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(a URL that does not parse)"
+	}
+	u.User, u.RawQuery, u.Fragment = nil, "", ""
+	return u.String()
 }

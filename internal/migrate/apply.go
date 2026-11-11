@@ -15,6 +15,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/app"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
+	"github.com/habakkuk-ai/habakkuk/internal/knowledge/hub"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
 	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
 )
@@ -30,6 +31,9 @@ type Result struct {
 	Copied   []string          // .env variables written
 	ToSet    []string          // variables the user still has to set
 	WroteCfg bool
+	// Conversations and Messages count the past conversations imported as
+	// read-only sessions, and the messages in them.
+	Conversations, Messages int
 	// Files is what the copy of the files the imported text names did; nil
 	// when nothing was to be copied.
 	Files *FilesResult
@@ -42,6 +46,9 @@ type Result struct {
 // When the plan copies files, they are copied first: the imported text
 // names the copies, so nothing else is written if the copy cannot finish.
 func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
+	// The conversations open their source databases as they are read;
+	// they are all closed once the import ends.
+	defer func() { _ = p.Found.Close() }()
 	if p.ConfigErr != nil {
 		return nil, p.ConfigErr
 	}
@@ -138,7 +145,8 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 		case "note":
 			var m *memory.Store
 			if m, err = openMem(); err == nil {
-				_, _, err = m.Put(ctx, it.Agent, memory.Note{Title: it.note.Title, Content: it.note.Body, Tags: it.note.Tags, Source: memory.SourceUser})
+				_, _, err = m.Put(ctx, it.Agent, memory.Note{Title: it.note.Title, Content: it.note.Body, Tags: it.note.Tags, Source: memory.SourceUser,
+					Untrusted: it.note.Untrusted})
 			}
 		case "skill":
 			err = p.copySkill(it)
@@ -164,6 +172,9 @@ func (p *Plan) Apply(ctx context.Context, copySecrets bool) (*Result, error) {
 	}
 	res.ToSet = append(res.ToSet, p.Found.Missing...)
 	if err := p.applySchedules(ctx, res); err != nil {
+		return res, err
+	}
+	if err := p.applyHistory(ctx, res); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -283,7 +294,7 @@ func (p *Plan) copySkill(it *Item) error {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	staged := filepath.Join(tmp, it.skill.Name)
-	if err := copyTree(it.skill.Dir, staged, p.rw); err != nil {
+	if err := skillCopy(it.skill, staged, p.rw); err != nil {
 		return err
 	}
 	if it.Status == Update {
@@ -298,6 +309,24 @@ func (p *Plan) copySkill(it *Item) error {
 			return err
 		}
 		if err := os.Rename(dest, bak); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	if it.skill.Held {
+		// Recorded in the agent's skills lock as not approved and held
+		// before it is moved into place, so it never loads, even for a
+		// moment, until the owner approves it.
+		path := filepath.Join(parent, hub.LockName)
+		lock, err := hub.ReadLock(path)
+		if err != nil {
+			return err
+		}
+		sum, err := treeHash(staged, nil)
+		if err != nil {
+			return err
+		}
+		lock.Packages[it.skill.Name] = &hub.Entry{Source: it.skill.Source, SHA256: sum, Installed: time.Now().UTC(), Held: true}
+		if err := lock.Write(path); err != nil {
 			return err
 		}
 	}

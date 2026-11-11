@@ -214,7 +214,8 @@ func (r *Runner) active(ctx context.Context, from, to time.Time) ([]string, erro
 		return nil, nil
 	}
 	rows, err := r.Sources.Transcripts.QueryContext(ctx, `SELECT DISTINCT agent FROM sessions
-		WHERE updated_at >= ? AND created_at < ? ORDER BY agent`, from.UnixMilli(), to.UnixMilli())
+		WHERE updated_at >= ? AND created_at < ? AND id NOT IN (SELECT session_id FROM imported_sessions)
+		ORDER BY agent`, from.UnixMilli(), to.UnixMilli())
 	if err != nil {
 		return nil, err
 	}

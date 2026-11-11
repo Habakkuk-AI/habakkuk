@@ -33,12 +33,20 @@ import (
 
 // The import sources.
 const (
-	Hermes   = "hermes"
-	OpenClaw = "openclaw"
+	Hermes     = "hermes"
+	OpenClaw   = "openclaw"
+	ClaudeCode = "claude-code"
+	Codex      = "codex"
 )
 
-// Sources lists the import sources by their --from names.
-var Sources = []string{Hermes, OpenClaw}
+// Sources lists the import sources by their --from names: the agents
+// first, then the coding tools.
+var Sources = []string{Hermes, OpenClaw, ClaudeCode, Codex}
+
+// IsCodingTool reports whether a source is a coding tool (Claude Code,
+// Codex) rather than an agent. Its keys are never copied, and an agent
+// found beside it is the likelier import.
+func IsCodingTool(from string) bool { return from == ClaudeCode || from == Codex }
 
 // Label is a source's name for people.
 func Label(from string) string {
@@ -47,8 +55,20 @@ func Label(from string) string {
 		return "Hermes Agent"
 	case OpenClaw:
 		return "OpenClaw"
+	case ClaudeCode:
+		return "Claude Code"
+	case Codex:
+		return "Codex"
 	}
 	return from
+}
+
+// Brings says in a few words what an import from a source brings over.
+func Brings(from string) string {
+	if IsCodingTool(from) {
+		return "instructions, MCP servers, skills and memory"
+	}
+	return "agents, memory, conversations, skills, schedules and keys"
 }
 
 // Options say what to import and how.
@@ -84,6 +104,18 @@ type Options struct {
 	FilesMax int64
 	// FreeSpace reports the room at a folder; nil asks the file system.
 	FreeSpace func(dir string) (uint64, error)
+
+	// History says what happens to past conversations: HistoryCopy, or
+	// "", imports them as read-only sessions; HistorySkip leaves them.
+	History string
+	// Project is a project folder whose own instructions, MCP servers and
+	// skills a coding tool's import adds; "" is none.
+	Project string
+	// Secrets says whether keys will be copied: "copy", or "skip". An MCP
+	// server with a key in its command line, URL or headers is imported
+	// only with "copy" (and never from a coding tool). The caller that asks
+	// plans with "copy" and plans again with "skip" on a no.
+	Secrets string
 }
 
 func (o *Options) getenv(k string) string {
@@ -132,6 +164,16 @@ func DefaultSource(from string, o Options) string {
 			return filepath.Join(o.userHome(), ".openclaw-"+p)
 		}
 		return filepath.Join(o.userHome(), ".openclaw")
+	case ClaudeCode:
+		if d := o.getenv("CLAUDE_CONFIG_DIR"); d != "" {
+			return expandHome(d, o.userHome())
+		}
+		return filepath.Join(o.userHome(), ".claude")
+	case Codex:
+		if d := o.getenv("CODEX_HOME"); d != "" {
+			return expandHome(d, o.userHome())
+		}
+		return filepath.Join(o.userHome(), ".codex")
 	}
 	return ""
 }
@@ -144,6 +186,10 @@ func Present(from, dir string) bool {
 		marks = []string{"config.yaml", "SOUL.md", "memories", "profiles"}
 	case OpenClaw:
 		marks = []string{"openclaw.json", "workspace"}
+	case ClaudeCode:
+		marks = []string{"CLAUDE.md", "skills", "commands", "settings.json"}
+	case Codex:
+		marks = []string{"config.toml", "AGENTS.md", "skills", "prompts", "memories"}
 	}
 	for _, m := range marks {
 		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
@@ -183,6 +229,8 @@ type Found struct {
 	Leftovers []Leftover
 	// Skipped are things left out on purpose, for the report.
 	Skipped []string
+	// History are the past conversations, to import as read-only sessions.
+	History []*Conversation
 	// OtherEnv are the source .env's other variable names, not copied.
 	OtherEnv []string
 
@@ -196,6 +244,29 @@ type Found struct {
 	// workspaces are the agents' workspace folders the import leaves where
 	// they are: folder -> agent.
 	workspaces map[string]string
+	// userHome is the user's home folder, for "~/" paths.
+	userHome string
+	// dbs are the read-only connections to source databases (and to the
+	// Habakkuk home's transcripts while planning); Close closes them.
+	dbs map[string]*sourceDB
+}
+
+// Close closes the connections reading the source opened.
+func (f *Found) Close() error {
+	var errs []error
+	for path := range f.dbs {
+		errs = append(errs, f.closeDB(path))
+	}
+	return errors.Join(errs...)
+}
+
+func (f *Found) closeDB(path string) error {
+	db := f.dbs[path]
+	delete(f.dbs, path)
+	if db == nil {
+		return nil
+	}
+	return db.close()
 }
 
 // otherEnv offers the variables of one source .env that this home's import
@@ -237,13 +308,23 @@ type Note struct {
 	Title string
 	Body  string
 	Tags  []string
+	// Untrusted marks a note whose text came from outside the user's own
+	// setup, such as a project's instruction file from a repository.
+	Untrusted bool
 }
 
-// Skill is one SKILL.md folder to copy.
+// Skill is one SKILL.md folder to copy, or one SKILL.md made from a slash
+// command (Text), which exists only in memory until the import writes it.
 type Skill struct {
 	Name   string
 	Dir    string
-	Shared bool // into $HABAKKUK_HOME/skills rather than the agent's own folder
+	Text   string // a skill made by the import: its SKILL.md, when Dir is ""
+	Shared bool   // into $HABAKKUK_HOME/skills rather than the agent's own folder
+	// Held marks a skill from a project folder: it goes to the agent's own
+	// skills, recorded as from Source and held back until the owner
+	// approves it (hk skills approve -agent).
+	Held   bool
+	Source string
 }
 
 // Provider is one model provider for config.yaml.
@@ -265,6 +346,15 @@ type MCPServer struct {
 	URL     string
 	Headers map[string]string // header -> variable or "Bearer ${VAR}"
 	OAuth   bool
+	Allow   []string // expose only these tools ("" all)
+	Approve []string // tools that always need approval
+	// Project is the project folder it came from, for servers a project
+	// defines; the plan shows those in full.
+	Project string
+	// Keyed lists the variables holding values from its command line, URL
+	// or headers that may be keys. A keyed server is imported only when the
+	// keys are copied.
+	Keyed []string
 }
 
 // Channel is one channel account for config.yaml.
@@ -333,6 +423,10 @@ func Read(o Options) (*Found, error) {
 		f, err = readHermes(dir, o)
 	case OpenClaw:
 		f, err = readOpenClaw(dir, o)
+	case ClaudeCode:
+		f, err = readClaudeCode(dir, o)
+	case Codex:
+		f, err = readCodex(dir, o)
 	default:
 		return nil, fmt.Errorf("--from %q: want %s", o.From, strings.Join(Sources, " or "))
 	}
@@ -340,6 +434,33 @@ func Read(o Options) (*Found, error) {
 		return nil, err
 	}
 	f.From, f.Dir = o.From, dir
+	if IsCodingTool(o.From) {
+		// Keys are never taken from a coding tool: each one its config
+		// names is listed for the user to set.
+		f.Secrets = nil
+		for _, p := range f.Providers {
+			if pr, ok := config.Presets[p.Preset]; ok && pr.KeyEnv != "" && !pr.KeyOptional {
+				f.Missing = append(f.Missing, pr.KeyEnv)
+			}
+		}
+	}
+	switch {
+	case IsCodingTool(o.From):
+		f.leftover("past coding sessions", "they stay in "+dir+"; hk migrate does not bring them over yet")
+	case o.History == HistorySkip:
+		f.leftover("conversation history", "left in "+dir+" (--history skip); run hk migrate again without it to bring it over")
+	default:
+		if f.dbs == nil {
+			f.dbs = map[string]*sourceDB{} // shared by the copies NewPlan makes
+		}
+		f.readHistory()
+		// Nothing is held open between the plan and the import: a
+		// conversation opens its database again when the import reads it,
+		// and Apply closes it at the end.
+		if err := f.Close(); err != nil {
+			f.skip("closing the source databases: %v", err)
+		}
+	}
 	f.finish()
 	return f, nil
 }
@@ -390,11 +511,22 @@ func (f *Found) finish() {
 		}
 	}
 	slices.Sort(f.Missing)
+	f.Missing = slices.DeleteFunc(slices.Compact(f.Missing), func(k string) bool { return slices.Contains(systemVars, k) })
 	f.OtherEnv = slices.DeleteFunc(f.OtherEnv, func(k string) bool {
 		_, copied := f.Secrets[k]
 		return f.usedEnv[k] || copied
 	})
 	slices.Sort(f.OtherEnv)
+}
+
+// allowLeftover names a source's list of calls its agent could make
+// without asking. It is never imported: Habakkuk's approval rules
+// (agents.<name>.allow, and Always allow in a chat) are exact commands a
+// person chose, while the old lists are patterns another agent's checks
+// were built for. Each call asks again until you decide.
+func (f *Found) allowLeftover(what, agent string) {
+	f.leftover(what, "not imported, so each call asks again; answer Always allow in a chat, or add the exact command to agents."+
+		agent+".allow in config.yaml")
 }
 
 // leftover records something that cannot carry over, once.
@@ -451,6 +583,7 @@ func (f *Found) mcp(m *MCPServer, owner string) string {
 
 func sameMCP(a, b *MCPServer) bool {
 	return a.Command == b.Command && slices.Equal(a.Args, b.Args) && a.URL == b.URL && a.OAuth == b.OAuth &&
+		slices.Equal(a.Allow, b.Allow) && slices.Equal(a.Approve, b.Approve) &&
 		fmt.Sprint(a.Env) == fmt.Sprint(b.Env) && fmt.Sprint(a.Headers) == fmt.Sprint(b.Headers)
 }
 

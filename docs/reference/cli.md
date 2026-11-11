@@ -27,17 +27,24 @@ hk init                             write a starter config to $HABAKKUK_HOME (de
 hk setup [model|channel [TYPE]|name|service] [-y] [flags]
                                     a one-minute wizard: model, where to talk (WhatsApp agent,
                                     Telegram, web, ...), names; -y runs it from flags (hk setup -h);
-                                    on a new home it offers to import another agent (-y -migrate does it)
+                                    on a new home it offers to import another agent or a coding tool
+                                    (-y -migrate does it)
 hk setup channel NAME [-progress plain|detailed|off] [-approvals-detail summary|full]
                                     change only what an existing channel shows in its chats while the
                                     agent works and in approval requests; serve picks it up, no restart
-hk migrate [-from SOURCE] [-source DIR] [-agent NAME] [-dry-run] [-secrets copy|skip]
-                 [-files copy|skip] [-files-dir DIR] [-files-max SIZE] [-force] [-y]
-                                    bring agents, persona files, profile, memory, skills, schedules
-                                    (paused), MCP servers, providers, channels and keys over from
-                                    another agent; -files copy also copies your own files that the
-                                    imported text names into $HABAKKUK_HOME/files and rewrites the
-                                    text to name the copies (see Move from another agent)
+hk migrate [-from SOURCE] [-source DIR] [-agent NAME] [-project DIR] [-dry-run]
+                 [-secrets copy|skip] [-history copy|skip] [-files copy|skip]
+                 [-files-dir DIR] [-files-max SIZE] [-force] [-y]
+                                    bring agents, persona files, profile, memory, past conversations
+                                    (as read-only sessions), skills, schedules (paused), MCP servers,
+                                    providers, channels and keys over from another agent;
+                                    -history skip leaves the conversations behind; -files copy also
+                                    copies your own files that the imported text names into
+                                    $HABAKKUK_HOME/files and rewrites the text to name the copies;
+                                    -from claude-code or codex brings instructions, MCP servers,
+                                    skills, slash commands and memory, never keys, and -project DIR
+                                    adds one project's own: its instructions as a note, the MCP
+                                    servers you approved for it, its skills (see Move from another agent)
 hk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped
@@ -75,7 +82,7 @@ hk board [list|show|add|done|cancel]
                                     done: ID -result R)
 hk meetings [list|show [-transcript] ID|leave ID]
                                     meetings Habakkuk attends (meeting_join): status, notes, transcript
-hk sessions [-agent A]              list recent sessions
+hk sessions [-agent A]              list recent sessions (imported ones are marked read-only)
 hk sessions compact SESSION         summarize a long session's older messages now
 hk sessions export ID [-format md|json|html] [-o FILE]
                                     write a transcript as Markdown, JSON or an HTML page

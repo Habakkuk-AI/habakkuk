@@ -516,6 +516,7 @@ func (r *Registry) Execute(ctx context.Context, env *Env, call llm.Block) llm.Bl
 		return res
 	}
 	env.checkpoint(ctx, t, call.Input)
+	before := env.Taint.Marked()
 	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
 		rt.mu.Lock()
 		rt.waited = 0 // approvals before Run are outside its time already
@@ -531,6 +532,9 @@ func (r *Registry) Execute(ctx context.Context, env *Env, call llm.Block) llm.Bl
 	if taints(t) {
 		env.Taint.Mark()
 	}
+	// A tool that marked the turn itself (session_search reading imported
+	// history) is recorded on its result, for restoreTaint.
+	res.Tainted = taints(t) || !before && env.Taint.Marked()
 	if err != nil {
 		res.IsError = true
 		if out != "" {

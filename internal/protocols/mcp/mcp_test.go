@@ -496,3 +496,35 @@ func TestHeaderVars(t *testing.T) {
 		t.Errorf("plain = %v", got)
 	}
 }
+
+// An argument or URL may name a variable as ${NAME}, so a key in a server's
+// command line or address stays in .env.
+func TestRefsInArgsAndURL(t *testing.T) {
+	vars := map[string]string{"SHOP_TOKEN": "tok123", "SHOP_PATH": "/s/abc/mcp"}
+	m := New(nil, tools.NewRegistry(), func(k string) string { return vars[k] }, nil)
+	defer m.Close()
+	s := &server{m: m, cfg: &config.MCPServer{Command: "srv", Args: []string{"-k", "${SHOP_TOKEN}", "plain"}}}
+	_, cmd, _, err := s.stdio()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cmd.Args[1:]; !slices.Equal(got, []string{"-k", "tok123", "plain"}) {
+		t.Errorf("args = %v", got)
+	}
+	s = &server{m: m, cfg: &config.MCPServer{Command: "srv", Args: []string{"${NOPE}"}}}
+	if _, _, _, err := s.stdio(); err == nil || !strings.Contains(err.Error(), "NOPE not set") {
+		t.Errorf("missing variable: %v", err)
+	}
+	s = &server{m: m, cfg: &config.MCPServer{URL: "https://shop.example${SHOP_PATH}"}}
+	tr, err := s.http()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tr.(*sdk.StreamableClientTransport).Endpoint; got != "https://shop.example/s/abc/mcp" {
+		t.Errorf("endpoint = %s", got)
+	}
+	cfg := &config.MCPServer{URL: "https://shop.example${SHOP_PATH}", Headers: map[string]string{"A": "Bearer ${T}"}}
+	if got := ServerVars(cfg); !slices.Equal(got, []string{"T", "SHOP_PATH"}) {
+		t.Errorf("ServerVars = %v", got)
+	}
+}

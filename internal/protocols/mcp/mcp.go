@@ -503,10 +503,18 @@ func (s *server) stdio() (sdk.Transport, *exec.Cmd, *tailBuffer, error) {
 		}
 		env = append(env, k+"="+v)
 	}
+	command, unset := s.expandRefs(s.cfg.Command)
+	missing = append(missing, unset...)
+	args := make([]string, len(s.cfg.Args))
+	for i, a := range s.cfg.Args {
+		v, unset := s.expandRefs(a)
+		args[i] = v
+		missing = append(missing, unset...)
+	}
 	if len(missing) > 0 {
 		return nil, nil, nil, fmt.Errorf("%s not set in the environment or .env", strings.Join(missing, ", "))
 	}
-	cmd := exec.Command(s.cfg.Command, s.cfg.Args...)
+	cmd := exec.Command(command, args...)
 	cmd.Env = env
 	stderr := &tailBuffer{}
 	cmd.Stderr = stderr
@@ -523,11 +531,13 @@ func (s *server) http() (sdk.Transport, error) {
 		missing = append(missing, unset...)
 		h.Set(k, v)
 	}
+	endpoint, unset := s.expandRefs(s.cfg.URL)
+	missing = append(missing, unset...)
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("%s not set in the environment or .env", strings.Join(missing, ", "))
 	}
 	t := &sdk.StreamableClientTransport{
-		Endpoint:             s.cfg.URL,
+		Endpoint:             endpoint,
 		HTTPClient:           &http.Client{Transport: &headerTransport{base: http.DefaultTransport, header: h}},
 		DisableStandaloneSSE: true, // Habakkuk only needs replies to its own requests
 	}
@@ -558,6 +568,48 @@ func (s *server) headerValue(spec string) (string, []string) {
 		return val
 	})
 	return v, missing
+}
+
+// expandRefs replaces the ${NAME} references in a command, argument or URL
+// with the variables' values, so a key never has to be written in
+// config.yaml.
+// Text without a reference is used as it is.
+func (s *server) expandRefs(v string) (string, []string) {
+	if !strings.Contains(v, "${") {
+		return v, nil
+	}
+	return s.headerValue(v)
+}
+
+// RefVars lists the ${NAME} references in an argument or URL.
+func RefVars(v string) []string {
+	if !strings.Contains(v, "${") {
+		return nil
+	}
+	return HeaderVars(v)
+}
+
+// ServerVars lists every variable a configured server needs: its env and
+// header variables and the references in its arguments and URL.
+func ServerVars(m *config.MCPServer) []string {
+	var out []string
+	out = append(out, slices.Sorted(maps.Values(m.Env))...)
+	for _, spec := range slices.Sorted(maps.Values(m.Headers)) {
+		out = append(out, HeaderVars(spec)...)
+	}
+	for _, a := range append([]string{m.Command, m.URL}, m.Args...) {
+		out = append(out, RefVars(a)...)
+	}
+	return out
+}
+
+// Expand fills the ${NAME} references in a command, argument or URL from
+// lookup, which reads the environment and .env.
+func Expand(v string, lookup func(string) string) string {
+	if !strings.Contains(v, "${") {
+		return v
+	}
+	return os.Expand(v, lookup)
 }
 
 // HeaderVars lists the variables a configured header value needs.

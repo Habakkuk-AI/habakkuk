@@ -113,6 +113,9 @@ func Scan(dir string) ([]Finding, error) {
 	return out, err
 }
 
+// ScanFile is Scan for one file held in memory, named rel.
+func ScanFile(rel string, data []byte) []Finding { return scanFile(rel, data) }
+
 func scanFile(rel string, data []byte) []Finding {
 	if isExecutable(data) {
 		return []Finding{{File: rel, Rule: "binary", Text: "an executable program"}}

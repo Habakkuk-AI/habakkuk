@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/habakkuk-ai/habakkuk/internal/core/session"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory/history"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/usage"
@@ -300,5 +301,31 @@ func TestCorrectionPatterns(t *testing.T) {
 	}
 	if repeated(normalize("ok"), []string{"ok"}) {
 		t.Error("one word counted as a repeat")
+	}
+}
+
+// A conversation imported from another agent is not this agent's work:
+// its user's "no, that's wrong" is not a correction, and it does not make
+// the agent active.
+func TestGatherSkipsImportedSessions(t *testing.T) {
+	ctx := context.Background()
+	rg := newRig(t)
+	at := rg.from.Add(time.Hour)
+	if _, _, err := rg.sessions.Import(ctx, session.Import{Source: "other", SourceID: "a/1", Agent: "habakkuk", Messages: []session.ImportedMessage{
+		{Role: llm.User, Text: "Book the van for Saturday", At: at},
+		{Role: llm.Assistant, Text: "Booked for Sunday.", At: at.Add(time.Minute)},
+		{Role: llm.User, Text: "No, that's wrong", At: at.Add(2 * time.Minute)},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := Gather(ctx, rg.r.Sources, rg.r.Agents["habakkuk"], rg.from, rg.to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.Corrections) != 0 || ev.Sessions != 0 {
+		t.Errorf("corrections %+v, sessions %d; an imported conversation counted", ev.Corrections, ev.Sessions)
+	}
+	if agents, err := rg.r.active(ctx, rg.from, rg.to); err != nil || len(agents) != 0 {
+		t.Errorf("active = %v, %v", agents, err)
 	}
 }

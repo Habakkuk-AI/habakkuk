@@ -39,15 +39,25 @@ func (l *Library) Backups() hub.Backups {
 	return hub.Backups{Dir: filepath.Join(l.SharedDir(), ".backups")}
 }
 
-// Untrusted reports where an installed shared skill came from when the
-// owner has not approved it yet (`hk skills approve`). Skills written
-// by hand or by an agent, and plugin skills (enabling a plugin approves
-// it), are trusted.
+// Untrusted reports where an installed skill came from when the owner has
+// not approved it yet (`hk skills approve`). A shared skill is recorded in
+// skills/.lock.json, an agent's own one (brought in by hk migrate from a
+// project) in that agent's skills/.lock.json. Skills written by hand or by
+// an agent, and plugin skills (enabling a plugin approves it), are trusted.
 func (l *Library) Untrusted(s Skill) (source string, untrusted bool) {
-	if !s.Shared || s.Plugin || filepath.Dir(s.Dir) != l.SharedDir() {
+	if s.Plugin {
 		return "", false
 	}
-	lock, err := hub.ReadLock(filepath.Join(l.SharedDir(), hub.LockName))
+	if s.Shared && filepath.Dir(s.Dir) != l.SharedDir() {
+		return "", false
+	}
+	path := filepath.Join(filepath.Dir(s.Dir), hub.LockName)
+	if !s.Shared {
+		if _, err := os.Stat(path); err != nil {
+			return "", false // no lock: written by hand or by the agent
+		}
+	}
+	lock, err := hub.ReadLock(path)
 	if err != nil {
 		return "an unreadable lock file", true
 	}
@@ -58,15 +68,45 @@ func (l *Library) Untrusted(s Skill) (source string, untrusted bool) {
 	return e.Source, true
 }
 
-// Disabled reports whether an installed shared skill is held back until
-// the owner approves it (hk skills approve): it came from outside,
-// is not approved, and ships files an agent could run as programs. Such a
-// skill is not listed or loaded; one without scripts loads with a caution.
+// Disabled reports whether an installed skill is held back until the
+// owner approves it (hk skills approve): it came from outside, is not
+// approved, and either ships files an agent could run as programs or was
+// marked held. Such a skill is not listed or loaded; one without scripts
+// loads with a caution.
 func (l *Library) Disabled(s Skill) bool {
 	if _, untrusted := l.Untrusted(s); !untrusted {
 		return false
 	}
+	if lock, err := hub.ReadLock(filepath.Join(filepath.Dir(s.Dir), hub.LockName)); err == nil {
+		if e := lock.Packages[s.Name]; e != nil && e.Held {
+			return true
+		}
+	}
 	return len(hub.Scripts(s.Dir)) > 0
+}
+
+// Approve marks a skill approved: a shared one, or with agent set, that
+// agent's own one.
+func (l *Library) Approve(agent, name string) error {
+	dir := l.SharedDir()
+	if agent != "" {
+		d, err := l.agentDir(agent)
+		if err != nil {
+			return err
+		}
+		dir = d
+	}
+	path := filepath.Join(dir, hub.LockName)
+	lock, err := hub.ReadLock(path)
+	if err != nil {
+		return err
+	}
+	e := lock.Packages[name]
+	if e == nil {
+		return fmt.Errorf("no installed skill %q in %s", name, dir)
+	}
+	e.Trusted, e.Held = true, false
+	return lock.Write(path)
 }
 
 const usageFile = ".usage.json"

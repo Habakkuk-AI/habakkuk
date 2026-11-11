@@ -76,6 +76,9 @@ func (s *Store) Fork(ctx context.Context, src string, upto int, title string) (*
 	if upto < 0 {
 		return nil, errors.New("fork: negative length")
 	}
+	if orig.Imported {
+		return nil, ErrImported
+	}
 	now := s.now()
 	sess := &Session{ID: jobs.NewID("ses"), Agent: orig.Agent, Title: title, SystemPrompt: orig.SystemPrompt,
 		CreatedAt: now, UpdatedAt: now, Parent: src}

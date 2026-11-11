@@ -292,6 +292,9 @@ func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if sess.Imported {
+		return "", session.ErrImported
+	}
 	kind := t.Kind
 	if kind == "" {
 		kind = KindTurn
@@ -313,6 +316,9 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	sess, err := r.Sessions.Get(ctx, p.Session)
 	if err != nil {
 		return "", jobs.Permanent{Err: err}
+	}
+	if sess.Imported {
+		return "", jobs.Permanent{Err: session.ErrImported}
 	}
 	spec, ok := r.Agents[sess.Agent]
 	if !ok {

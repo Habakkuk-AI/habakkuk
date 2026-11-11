@@ -48,6 +48,10 @@ type Block struct {
 	ToolName  string          `json:"tool_name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
+	// Tainted marks a tool_result that brought outside content into the
+	// turn (Habakkuk's own record; never sent to a provider), so a turn
+	// resumed after a restart is tainted again.
+	Tainted bool `json:"tainted,omitempty"`
 	// Toolset marks a call to a member of a provider-defined client toolset
 	// (the native computer-use tool): ToolName is the toolset, which Habakkuk
 	// runs as one tool, and Input carries the member's name as "action".

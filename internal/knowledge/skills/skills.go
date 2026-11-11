@@ -138,13 +138,20 @@ func (l *Library) List(agent string) ([]Skill, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := scan(dir, false, byName); err != nil {
+	own := map[string]Skill{}
+	if err := scan(dir, false, own); err != nil {
 		return nil, err
+	}
+	for n, s := range own {
+		if l.Disabled(s) {
+			continue // held: it does not hide a shared skill of the same name
+		}
+		byName[n] = s
 	}
 	out := make([]Skill, 0, len(byName))
 	for _, s := range byName {
-		if s.Shared && !s.Plugin && l.Disabled(s) {
-			continue // ships scripts and is not approved yet
+		if !s.Plugin && l.Disabled(s) {
+			continue // held, or ships scripts, and is not approved yet
 		}
 		out = append(out, s)
 	}
@@ -213,18 +220,31 @@ func (l *Library) get(agent, name string) (Skill, string, error) {
 	for _, x := range l.Extra {
 		roots = append(roots, root{x, true, true})
 	}
+	var held error
 	for _, c := range roots {
 		s, body, err := load(filepath.Join(c.dir, name))
 		if err == nil {
 			s.Shared, s.Plugin = c.shared, c.plugin
-			if s.Shared && !s.Plugin && l.Disabled(s) {
-				return Skill{}, "", fmt.Errorf("skill %q is disabled: it was installed from outside, ships scripts and is not approved yet (the owner can run hk skills approve %s)", name, name)
+			if !s.Plugin && l.Disabled(s) {
+				how := "hk skills approve " + name
+				if !s.Shared {
+					how = "hk skills approve -agent " + agent + " " + name
+				}
+				err := fmt.Errorf("skill %q is disabled: it came from outside and is not approved yet (the owner can run %s)", name, how)
+				if s.Shared {
+					return Skill{}, "", err
+				}
+				held = err // the agent's held copy does not hide a shared skill
+				continue
 			}
 			return s, body, nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return Skill{}, "", err
 		}
+	}
+	if held != nil {
+		return Skill{}, "", held
 	}
 	return Skill{}, "", fmt.Errorf("no skill %q", name)
 }
@@ -339,6 +359,11 @@ func (l *Library) SaveContext(ctx context.Context, agent, name, description, bod
 		return s, false, err
 	}
 	dir := filepath.Join(root, name)
+	if _, untrusted := l.Untrusted(Skill{Name: name, Dir: dir}); untrusted {
+		// Writing over it would make another source's skill look like the
+		// agent's own work while it waits for approval.
+		return s, false, fmt.Errorf("skill %q came from outside and waits for the owner's approval (hk skills approve -agent %s %s); save under another name", name, agent, name)
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return s, false, err
 	}

@@ -2,11 +2,9 @@ package migrate
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,7 +35,7 @@ type ocReader struct {
 }
 
 func readOpenClaw(dir string, o Options) (*Found, error) {
-	r := &ocReader{f: &Found{}, o: o, dir: dir, used: map[string]bool{}, names: map[string]string{}}
+	r := &ocReader{f: &Found{Dir: dir, userHome: o.userHome()}, o: o, dir: dir, used: map[string]bool{}, names: map[string]string{}}
 	path := filepath.Join(dir, "openclaw.json")
 	if p := o.getenv("OPENCLAW_CONFIG_PATH"); p != "" && o.Source == "" {
 		path = expandHome(p, o.userHome())
@@ -161,7 +159,7 @@ func (r *ocReader) agents() error {
 		if a.Main {
 			a.Skills = append(a.Skills, shared...)
 		}
-		own, err := findSkills(filepath.Join(ws, "skills"))
+		own, err := r.f.findSkills(filepath.Join(ws, "skills"))
 		if err != nil {
 			return err
 		}
@@ -400,7 +398,7 @@ func cleanIdentity(id agent.Identity) agent.Identity {
 
 // sharedSkills are the managed skills in the state folder.
 func (r *ocReader) sharedSkills() ([]Skill, map[string]string) {
-	dirs, err := findSkills(filepath.Join(r.dir, "skills"))
+	dirs, err := r.f.findSkills(filepath.Join(r.dir, "skills"))
 	if err != nil {
 		r.f.skip("skills in %s could not be listed: %v", filepath.Join(r.dir, "skills"), err)
 	}
@@ -429,9 +427,6 @@ func (r *ocReader) mcp() {
 		if on, ok := m["enabled"].(bool); ok && !on {
 			r.f.skip("MCP server %s: turned off in %s", raw, Label(OpenClaw))
 			continue
-		}
-		if t, _ := m["transport"].(string); t == "sse" {
-			r.f.skip("MCP server %s uses the older SSE transport; Habakkuk connects with Streamable HTTP, so check it with hk mcp", raw)
 		}
 		s := r.f.readMCP(raw, m, r.env, r.used)
 		if s == nil {
@@ -627,7 +622,13 @@ func (r *ocReader) schedules() {
 	var jobs []map[string]any
 	db := filepath.Join(r.dir, "state", "openclaw.sqlite")
 	if exists(db) {
-		js, err := readCronDB(db)
+		js, err := readCronDB(db, func(name string, err error) {
+			what := "a schedule"
+			if name != "" {
+				what = fmt.Sprintf("schedule %q", name)
+			}
+			r.f.skip("%s in %s could not be read (%v); it was not imported", what, db, err)
+		})
 		if err != nil {
 			r.f.skip("%s could not be read (%v); its schedules were not imported", db, err)
 		}
@@ -658,17 +659,16 @@ func (r *ocReader) schedules() {
 	}
 }
 
-func readCronDB(path string) ([]map[string]any, error) {
+// readCronDB reads the cron_jobs table. A row that cannot be read goes to
+// bad, and the rest are still read.
+func readCronDB(path string, bad func(name string, err error)) ([]map[string]any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	q := url.Values{}
-	q.Add("mode", "ro")
-	q.Add("_pragma", "busy_timeout(5000)")
-	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	db, closeDB, err := openSourceDB(path)
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { _ = closeDB() }()
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'cron_jobs'`).Scan(&n); err != nil {
 		return nil, err
@@ -686,7 +686,8 @@ func readCronDB(path string) ([]map[string]any, error) {
 		var js, agentID, name string
 		var enabled bool
 		if err := rows.Scan(&js, &enabled, &agentID, &name); err != nil {
-			return nil, err
+			bad(name, err)
+			continue
 		}
 		j := map[string]any{}
 		if err := json.Unmarshal([]byte(js), &j); err != nil {
@@ -814,8 +815,8 @@ func (r *ocReader) deliverTo(job, agentName string, d map[string]any) *Address {
 }
 
 func (r *ocReader) leftovers() {
-	if exists(filepath.Join(r.dir, "agents")) {
-		r.f.leftover("conversation history", "it stays in "+r.dir+"; Habakkuk starts fresh sessions")
+	if exists(filepath.Join(r.dir, "exec-approvals.json")) {
+		r.f.allowLeftover("the commands allowed without asking (exec-approvals.json)", r.names[r.mainID])
 	}
 	if ms, _ := filepath.Glob(filepath.Join(r.dir, "agents", "*", "agent", "openclaw-agent.sqlite")); len(ms) > 0 || exists(filepath.Join(r.dir, "credentials", "oauth.json")) {
 		r.f.leftover("API keys and sign-ins saved by onboarding (in its own credential store)",

@@ -124,8 +124,15 @@ func (a *App) openConsolidation() {
 }
 
 // untrustedSession reports sessions whose messages come from a channel
-// whose senders nobody vets: an email inbox.
+// whose senders nobody vets (an email inbox), and sessions imported from
+// another agent: their text was not said to this agent, and may have come
+// from a group chat, an inbox or a webhook there.
 func (a *App) untrustedSession(ctx context.Context, sessionID string) bool {
+	if a.Sessions != nil {
+		if imported, err := a.Sessions.IsImported(ctx, sessionID); err != nil || imported {
+			return true
+		}
+	}
 	if a.Gateway == nil {
 		return false
 	}

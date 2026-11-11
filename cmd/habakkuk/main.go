@@ -665,7 +665,11 @@ func sessions(ctx context.Context, home string, args []string) error {
 		return err
 	}
 	for _, s := range list {
-		fmt.Printf("%s  %-10s  %s  %s\n", s.ID, s.Agent, s.UpdatedAt.Format("2006-01-02 15:04"), s.Title)
+		title := s.Title
+		if s.Imported {
+			title += "  (imported, read-only)"
+		}
+		fmt.Printf("%s  %-10s  %s  %s\n", s.ID, s.Agent, s.UpdatedAt.Format("2006-01-02 15:04"), title)
 	}
 	return nil
 }
@@ -853,16 +857,9 @@ func doctor(ctx context.Context, home string) error {
 	for _, name := range slices.Sorted(maps.Keys(cfg.MCP)) {
 		m := cfg.MCP[name]
 		var missing []string
-		for _, env := range slices.Sorted(maps.Values(m.Env)) {
+		for _, env := range mcp.ServerVars(m) {
 			if a.Secret(env) == "" {
 				missing = append(missing, env)
-			}
-		}
-		for _, spec := range slices.Sorted(maps.Values(m.Headers)) {
-			for _, env := range mcp.HeaderVars(spec) {
-				if a.Secret(env) == "" {
-					missing = append(missing, env)
-				}
 			}
 		}
 		switch {

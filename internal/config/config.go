@@ -614,6 +614,9 @@ func isHTTPURL(s string) bool {
 
 var mcpServerName = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,32}$`)
 
+// wholeRef is a value that is one ${NAME} reference.
+var wholeRef = regexp.MustCompile(`^\$\{[A-Za-z_][A-Za-z0-9_]*\}$`)
+
 func validateMCP(name string, m *MCPServer) []error {
 	var errs []error
 	bad := func(format string, args ...any) {
@@ -633,8 +636,8 @@ func validateMCP(name string, m *MCPServer) []error {
 		bad("headers apply to url servers only")
 	case m.URL != "" && (len(m.Args) > 0 || len(m.Env) > 0):
 		bad("args and env apply to command servers only")
-	case m.URL != "" && !strings.HasPrefix(m.URL, "http://") && !strings.HasPrefix(m.URL, "https://"):
-		bad("url %q must start with http:// or https://", m.URL)
+	case m.URL != "" && !strings.HasPrefix(m.URL, "http://") && !strings.HasPrefix(m.URL, "https://") && !wholeRef.MatchString(m.URL):
+		bad("url %q must start with http:// or https://, or be a ${NAME} variable that holds the address", m.URL)
 	}
 	for k, v := range m.Env {
 		if k == "" || v == "" {
