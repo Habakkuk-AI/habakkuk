@@ -399,3 +399,21 @@ func (s *Store) List() ([]Entry, []Status, error) {
 	}
 	return entries, st, nil
 }
+
+// CheckPrivate reports whether the record could have been written by
+// someone else (nil when it is private or there is none). Habakkuk then
+// trusts nothing; tightening the mode would not make it the owner's, so
+// fixers must leave it alone: the owner looks at it and runs hk projects
+// trust again, which writes a fresh record.
+func (s *Store) CheckPrivate() error {
+	if _, err := os.Lstat(s.Folder()); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err := private(s.Folder(), true); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(s.file()); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return private(s.file(), false)
+}

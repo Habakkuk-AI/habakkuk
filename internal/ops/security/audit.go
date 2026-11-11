@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/platform"
 )
@@ -86,6 +87,7 @@ func Audit(o Options) []Finding {
 			Fix: "fix config.yaml (hk doctor shows the errors); the checks below that need it were skipped"})
 	}
 	out = append(out, checkPermissions(o.Home)...)
+	out = append(out, checkProjects(o.Home)...)
 	if c := o.Config; c != nil {
 		out = append(out, checkAgents(c)...)
 		out = append(out, checkPolicies(c)...)
@@ -111,7 +113,7 @@ func Audit(o Options) []Finding {
 // key and subscriptions, the owner's trusted project files and copies of
 // the service file.
 var sensitiveDirs = []string{"agents", "blobs", "browser", "channels", "backups", "checkpoints", "computer",
-	"meetings", "procs", "ssh", "state", "auth", "mcp", "nodes", "push", "projects", "service-backups"}
+	"meetings", "procs", "ssh", "state", "auth", "mcp", "nodes", "push", "service-backups"}
 
 // sensitive names hold credentials, keys, memory or conversations.
 func sensitive(rel string) bool {
@@ -158,6 +160,11 @@ func checkPermissions(home string) []Finding {
 		rel, _ := filepath.Rel(home, path)
 		if d.IsDir() && isWorkspace(rel) {
 			return filepath.SkipDir // the user's files, not Habakkuk's
+		}
+		if rel == projtrust.Dir {
+			// Checked on its own (checkProjects): a fix that tightened a
+			// planted record's mode would make it look like the owner's.
+			return filepath.SkipDir
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
 			return nil
@@ -676,3 +683,17 @@ func statfs(path string) (free, total uint64, err error) { return platform.DiskU
 
 // owner returns a file's uid, or -1 when the platform does not say.
 func owner(info fs.FileInfo) int { return platform.FileOwner(info) }
+
+// checkProjects reports a trust record for project files that is not
+// private to the owner. It has no automatic fix on purpose: making a
+// planted record owner-only would launder it into a valid one. Habakkuk
+// trusts nothing while it is so.
+func checkProjects(home string) []Finding {
+	st := &projtrust.Store{Home: home}
+	if err := st.CheckPrivate(); err != nil {
+		return []Finding{{Severity: High, Check: "permissions",
+			Message: fmt.Sprintf("the trusted project files record is not private to you (%v), so Habakkuk trusts no project file", err),
+			Fix:     "find out how it got that way. Then remove " + st.Folder() + " and run hk projects trust in each project you want followed: it writes a fresh, private record"}}
+	}
+	return nil
+}
