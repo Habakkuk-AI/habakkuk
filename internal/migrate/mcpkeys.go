@@ -17,9 +17,10 @@ import (
 //
 //   - a runner and one package: npx, uvx or bunx, or pipx run or uv tool
 //     run, followed by one package name such as @scope/server@1.2 (a
-//     version is digits and dots with an optional "-" pre-release of at
-//     most 12 letters, digits and dots, or latest); a runner with no
-//     package is not copied as it is;
+//     version is digits and dots, optionally followed by "-" and digits
+//     and dots or a tag (alpha, beta, rc, pre, dev, next) with an optional
+//     ".<number>", or latest); a runner with no package is not copied as
+//     it is;
 //   - nothing at all, for a program that is not a runner;
 //
 // with, anywhere, only these flags, which take no value: -y, --yes, -q,
@@ -28,9 +29,13 @@ import (
 //
 // A plain path is absolute (or starts with "~/"), has no spaces, line
 // breaks, "@" or ":", and exists on this computer. A variable reference
-// is an argument that is ${NAME} (or ${NAME:-default}), a flag name set to
-// one (--token=${NAME}), or a bare flag name (lowercase, nothing attached)
-// followed by one: it holds no value, so
+// is an argument that is ${NAME} (or ${NAME:-default}; NAME in capitals,
+// digits and underscores, as variables are named), a flag name set to
+// one (--token=${NAME}), or a flag name followed by one. A flag name here
+// is one dash and one letter (-k), or two dashes and words of letters
+// joined by hyphens (--api-key), at most 32 characters: nothing else may
+// hide in it. (A key made only of letters could still pass as a long flag
+// name; it is the one shape this cannot tell apart.) It holds no value, so
 // config.yaml keeps ${NAME}, and the variable's value moves the way keys do
 // (the default when the source has none).
 //
@@ -44,13 +49,15 @@ import (
 // .env with the other keys.
 
 var (
-	reProgram    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	rePackage    = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|[0-9]+(\.[0-9]+)*(-[0-9A-Za-z.]{1,12})?))?$`)
-	reRefOnly    = regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
-	reFlagRef    = regexp.MustCompile(`^(--?[a-z][a-z0-9-]*=)\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
-	reHeader     = regexp.MustCompile(`^((Bearer|Basic|Token)\s+)?\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
-	plainFlags   = []string{"-y", "--yes", "-q", "--quiet", "--stdio"}
-	reFlagName   = regexp.MustCompile(`^--?[a-z][a-z0-9-]*$`)
+	reProgram  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	rePackage  = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|[0-9]+(\.[0-9]+)*(-([0-9]+(\.[0-9]+)*|(alpha|beta|rc|pre|dev|next)(\.[0-9]+)?))?))?$`)
+	reRefOnly  = regexp.MustCompile(`^\$\{([A-Z_][A-Z0-9_]{0,63})(:-([^}]*))?\}$`)
+	reFlagRef  = regexp.MustCompile(`^((?:-[a-z]|--[a-z]+(?:-[a-z]+)*)=)\$\{([A-Z_][A-Z0-9_]{0,63})(:-([^}]*))?\}$`)
+	reHeader   = regexp.MustCompile(`^((Bearer|Basic|Token)\s+)?\$\{([A-Z_][A-Z0-9_]{0,63})(:-([^}]*))?\}$`)
+	plainFlags = []string{"-y", "--yes", "-q", "--quiet", "--stdio"}
+	// reFlagName is a flag that may stand before a variable: one dash and
+	// one letter, or two dashes and words of letters joined by hyphens.
+	reFlagName   = regexp.MustCompile(`^(-[a-z]|--[a-z]+(-[a-z]+)*)$`)
 	pkgRunners   = []string{"npx", "uvx", "bunx"}
 	runnerSubcmd = map[string][]string{"pipx": {"run"}, "uv": {"tool", "run"}}
 )
@@ -88,14 +95,14 @@ func (f *Found) argKinds(command string, args []string) (kinds []int, noPackage 
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case reRefOnly.MatchString(a) || reFlagRef.MatchString(a):
+		case reRefOnly.MatchString(a) || reFlagRef.MatchString(a) && len(strings.SplitN(a, "=", 2)[0]) <= 32:
 			out[i] = argRef
 		case slices.Contains(plainFlags, a):
 			out[i] = argPlain
 		case strings.HasPrefix(a, "-"):
 			// Any other flag: plain only when it is a bare flag name with
 			// nothing attached and a variable follows it.
-			if reFlagName.MatchString(a) && i+1 < len(args) && reRefOnly.MatchString(args[i+1]) {
+			if len(a) <= 32 && reFlagName.MatchString(a) && i+1 < len(args) && reRefOnly.MatchString(args[i+1]) {
 				out[i], out[i+1] = argPlain, argRef
 				i++
 				continue
@@ -110,7 +117,7 @@ func (f *Found) argKinds(command string, args []string) (kinds []int, noPackage 
 			if sub = sub[1:]; len(sub) == 0 {
 				wantPkg = true
 			}
-		case wantPkg && !pkgSeen && rePackage.MatchString(a):
+		case wantPkg && !pkgSeen && plainPackage(a):
 			out[i], pkgSeen = argPlain, true
 		case f.plainPath(a):
 			out[i] = argPlain
@@ -274,4 +281,25 @@ func expandFrom(v string, env map[string]string) string {
 		}
 		return m
 	})
+}
+
+// rePackageHex is a run of hex digits as long as a token's.
+var rePackageHex = regexp.MustCompile(`[0-9a-f]{12,}`)
+
+// plainPackage reports a package spec that does not look like it hides a
+// key: the right shape, at most three digits in its name, and no long run
+// of hex digits. (A key made only of letters could still pass as a package
+// name; like a letters-only flag name, it is a shape this cannot tell
+// apart.)
+func plainPackage(a string) bool {
+	if !rePackage.MatchString(a) {
+		return false
+	}
+	name := a
+	if i := strings.LastIndex(a, "@"); i > 0 {
+		name = a[:i]
+	}
+	return strings.Count(name, "0")+strings.Count(name, "1")+strings.Count(name, "2")+strings.Count(name, "3")+strings.Count(name, "4")+
+		strings.Count(name, "5")+strings.Count(name, "6")+strings.Count(name, "7")+strings.Count(name, "8")+strings.Count(name, "9") <= 3 &&
+		!rePackageHex.MatchString(name)
 }

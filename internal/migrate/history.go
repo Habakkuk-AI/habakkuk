@@ -279,55 +279,10 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 	if mc["message_uid"] {
 		uid = "COALESCE(message_uid, '')"
 	}
-	// The plan's count is what the import will write: each turn once, no
-	// summaries, and not the turns a compaction carried into a child
-	// session from the one it continues.
-	countKey := key
-	byContentSQL := !mc["message_uid"] && !mc["display_order"]
-	if byContentSQL {
-		countKey = "role || char(0) || content || char(0) || CAST(" + col(mc, "timestamp", "0") + " AS TEXT)"
-	}
-	countWhere := shown + ` AND ` + hasTextSQL + ` AND upper(ltrim(content, ` + wsSQL + `)) NOT LIKE '[CONTEXT COMPACTION%'
-		AND upper(ltrim(content, ` + wsSQL + `)) NOT LIKE '[CONTEXT SUMMARY]%'`
-	countSQL := `SELECT session_id, count(DISTINCT ` + countKey + `) FROM messages m WHERE ` + countWhere + ` GROUP BY session_id`
-	if sc["parent_session_id"] {
-		match := "p.message_uid = m.message_uid"
-		if byContentSQL {
-			match = "p.role = m.role AND p.content = m.content"
-			if mc["timestamp"] {
-				match += " AND p.timestamp = m.timestamp"
-			}
-		}
-		if mc["message_uid"] || byContentSQL {
-			countSQL = `WITH RECURSIVE anc(sid, aid) AS (
-				SELECT id, parent_session_id FROM sessions WHERE COALESCE(parent_session_id, '') != ''
-				UNION SELECT anc.sid, s.parent_session_id FROM anc JOIN sessions s ON s.id = anc.aid WHERE COALESCE(s.parent_session_id, '') != '')
-			SELECT session_id, count(DISTINCT ` + countKey + `) FROM messages m WHERE ` + countWhere + `
-				AND NOT EXISTS (SELECT 1 FROM anc JOIN messages p ON p.session_id = anc.aid WHERE anc.sid = m.session_id AND ` + match + `)
-			GROUP BY session_id`
-		}
-	}
-	counts := map[string]int{}
-	rows, err := db.QueryContext(ctx, countSQL)
-	if err != nil {
-		f.skip("the conversations in %s: %v", path, err)
-		return
-	}
-	for rows.Next() {
-		var id string
-		var n int
-		if err := rows.Scan(&id, &n); err != nil {
-			rows.Close()
-			f.skip("the conversations in %s: %v", path, err)
-			return
-		}
-		counts[id] = n
-	}
-	rows.Close()
 	q := `SELECT id, ` + col(sc, "source", "''") + `, ` + col(sc, "chat_id", "''") + `, ` + col(sc, "thread_id", "''") + `, ` +
 		col(sc, "chat_type", "''") + `, ` + col(sc, "title", "''") + `, ` + col(sc, "started_at", "0") + `, ` +
 		col(sc, "parent_session_id", "''") + ` FROM sessions ORDER BY ` + col(sc, "started_at", "0") + `, id`
-	rows, err = db.QueryContext(ctx, q)
+	rows, err := db.QueryContext(ctx, q)
 	if err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 		return
@@ -338,6 +293,7 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 		order = "id"
 	}
 	ts := col(mc, "timestamp", "0")
+	before := len(f.History)
 	parents := map[string]string{} // a compaction's child session -> the session it continues
 	for rows.Next() {
 		var id, src, chat, thread, chatType, title, parent string
@@ -366,7 +322,6 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 		f.conversation(a, &Conversation{
 			ID: a.From + "/" + id, Title: title, Started: unixTime(started), Platform: src, Chat: chat, Thread: thread,
 			Untrusted: !slices.Contains(personSources, strings.ToLower(src)) || !slices.Contains(directChats, strings.ToLower(chatType)) || author != "",
-			Count:     counts[id],
 			load: func() ([]session.ImportedMessage, bool, error) {
 				seen := map[string]bool{}
 				// Turns a compaction carried into this session from the one it
@@ -442,6 +397,14 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 	if err := rows.Err(); err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 	}
+	rows.Close()
+	// The plan counts each conversation by reading it the way the import
+	// does, so the numbers agree.
+	for _, c := range f.History[before:] {
+		if msgs, _, err := c.Load(); err == nil {
+			c.Count = len(msgs)
+		}
+	}
 }
 
 // stripHermesReply takes out the quote Hermes Agent's gateway puts before a
@@ -449,15 +412,19 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 // message: "..."], then a blank line. The quote is not escaped, so the
 // last '"]' followed by a blank line ends it: a quote cannot fake the
 // boundary to pass its own text off as the user's.
-func stripHermesReply(text string) (string, bool) {
+// others reports a quote of someone else's message; one of the agent's
+// own ("[Replying to your previous message: ...]") is taken out too, but
+// is no one else's text.
+func stripHermesReply(text string) (rest string, others bool) {
 	if !strings.HasPrefix(text, "[Replying to") {
 		return text, false
 	}
+	others = !strings.HasPrefix(text, "[Replying to your previous message:")
 	i := strings.LastIndex(text, "\"]\n\n")
 	if i < 0 {
-		return "", true // no end found for certain: none of it is the user's
+		return "", others // no end found for certain: none of it is the user's
 	}
-	return strings.TrimSpace(text[i+len("\"]\n\n"):]), true
+	return strings.TrimSpace(text[i+len("\"]\n\n"):]), others
 }
 
 // contentKey names a message by its role, text and time: what a
@@ -471,24 +438,6 @@ func summaryText(text string) bool {
 	t := strings.ToUpper(strings.TrimSpace(text))
 	return strings.HasPrefix(t, "[CONTEXT COMPACTION") || strings.HasPrefix(t, "[CONTEXT SUMMARY]")
 }
-
-// The plan counts Hermes messages in SQL with the predicate the import
-// applies in Go (hermesText): text that is not blank, or structured content
-// ("\x00json:" then JSON) with a part that holds text.
-const (
-	wsSQL      = `' ' || char(9) || char(10) || char(13)`
-	jsonSQL    = `CAST(substr(CAST(content AS BLOB), 7) AS TEXT)` // after the "\x00json:" prefix (text functions stop at the NUL)
-	hasTextSQL = `(CASE WHEN substr(CAST(content AS BLOB), 1, 6) = X'006A736F6E3A' AND json_valid(` + jsonSQL + `) THEN
-		CASE json_type(` + jsonSQL + `)
-			WHEN 'text' THEN trim(json_extract(` + jsonSQL + `, '$'), ` + wsSQL + `) != ''
-			WHEN 'array' THEN EXISTS (SELECT 1 FROM json_each(` + jsonSQL + `) j WHERE
-				(j.type = 'text' AND trim(j.value, ` + wsSQL + `) != '') OR
-				(j.type = 'object' AND COALESCE(json_extract(j.value, '$.type'), '') IN ('text', 'input_text', 'output_text', '')
-					AND trim(COALESCE(json_extract(j.value, '$.text'), ''), ` + wsSQL + `) != ''))
-			WHEN 'object' THEN trim(COALESCE(json_extract(` + jsonSQL + `, '$.text'), ''), ` + wsSQL + `) != ''
-			ELSE 0 END
-		ELSE trim(content, ` + wsSQL + `) != '' END)`
-)
 
 // hermesText is the text of a stored message: plain, or the text parts of
 // structured content.
@@ -1000,11 +949,6 @@ func stripInbound(text string) (string, bool) {
 	if reHistoryMarker.MatchString(t) {
 		return "", true // the history with no marked message after it
 	}
-	low := strings.ToLower(t)
-	if !strings.ContainsRune(t, '⟦') && !strings.Contains(low, "untrusted") && !strings.Contains(low, "current message") &&
-		!strings.Contains(low, "conversation context") && !strings.Contains(low, "chat history") && !strings.Contains(low, "chat messages") {
-		return text, false
-	}
 	paras := strings.Split(t, "\n\n")
 	found := false
 	i := 0
@@ -1047,6 +991,9 @@ func stripInbound(text string) (string, bool) {
 				return "", true
 			}
 		}
+	}
+	if !found {
+		return text, false // nothing taken out: the message as it was
 	}
 	return strings.TrimSpace(strings.Join(rest, "\n\n")), found
 }

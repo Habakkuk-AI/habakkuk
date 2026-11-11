@@ -491,6 +491,7 @@ func TestArgKinds(t *testing.T) {
 		{"npx", []string{"-y", "pkg@1.2.3-beta.1"}, "pp"},
 		{"npx", []string{"-y", "pkg@latest"}, "pp"},
 		{"npx", []string{"-y", "pkg@next"}, "pk"},
+		{"npx", []string{"-y", "pkg@1.2.3-next"}, "pp"},
 		{"npx", []string{"-y", "pkg", "m15secondsecretword"}, "ppk"},
 		{"npx", []string{"--registry-token", "3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c", "-y", "real-pkg"}, "kkpp"},
 		{"pipx", []string{"run", "--spec", "pipxsecretm4value", "pkg"}, "pkkp"},
@@ -522,8 +523,23 @@ func TestArgKinds(t *testing.T) {
 		{"tool", []string{"-pFLAGSECRET2", "${HOME}"}, "kr"},
 		{"tool", []string{"--FLAGSECRET3", "${HOME}"}, "kr"},
 		{"tool", []string{"--token", "${HOME}"}, "pr"},
+		{"tool", []string{"-k", "${HOME}"}, "pr"},
+		{"tool", []string{"--api-key", "${HOME}"}, "pr"},
+		{"tool", []string{"--api-key=${HOME}"}, "r"},
+		{"tool", []string{"--key2", "${HOME}"}, "kr"},
+		{"npx", []string{"-y", "pkg@2.0.0-beta.3"}, "pp"},
+		{"npx", []string{"-y", "pkg@2.0.0-20261110"}, "pp"},
+		{"npx", []string{"-y", "pkg@2.0.0-abc"}, "pk"},
+		{"npx", []string{"-y", "q7u08wo2jn"}, "pk"},
+		{"npx", []string{"-y", "qdab6a457d1fb4da143f07e58a02ff551f4e"}, "pk"},
+		{"npx", []string{"-y", "@q0efabf538333401b40/pkg"}, "pk"},
+		{"npx", []string{"-y", "@upstash/context7-mcp"}, "pp"},
+		{"npx", []string{"-y", "@21st-dev/magic"}, "pp"},
+		{"npx", []string{"-y", "some-pkg", "${Q2joBVWQYl}"}, "ppk"},
+		{"npx", []string{"-y", "some-pkg", "${qa07bdc42d}"}, "ppk"},
 		{"npx", []string{"-y", "pkg@1-deadbeefFLAGSECRETDDD444"}, "pk"},
 		{"npx", []string{"-y", "pkg@1.0.0-rc.1"}, "pp"},
+		{"npx", []string{"-y", "pkg@1.0.0-beta.1"}, "pp"},
 	} {
 		var got strings.Builder
 		kinds, _ := (&Found{}).argKinds(c.command, c.args)
@@ -862,10 +878,19 @@ func TestFlagBeforeVariable(t *testing.T) {
 		{"--api-key=CCFLAGSECRET999", "${HOME}"},
 		{"-pFLAGSECRETPW", "${HOME}"},
 		{"--FLAGSECRETNAME", "${HOME}"},
+		// Lowercase keys look like flags; a flag before a variable is one
+		// dash and one letter, or words of letters joined by hyphens.
+		{"-plowsecretaaa111", "${HOME}"},
+		{"--lowsecretbbb222", "${HOME}"},
+		{"--lowsecretccc333=${HOME}"},
+		{"-pabcdef", "${HOME}"},
+		{"--a1b2c3d4e5", "${HOME}"},
+		{"--" + strings.Repeat("abcdefgh", 5), "${HOME}"},
 	} {
 		f := &Found{}
 		s := f.readMCP("cc", map[string]any{"command": "tool", "args": args}, map[string]string{}, map[string]bool{})
-		if s == nil || len(s.Keyed) == 0 || strings.Contains(configText(s), "FLAGSECRET") {
+		if s == nil || len(s.Keyed) == 0 || strings.Contains(configText(s), "SECRET") || strings.Contains(configText(s), "secret") ||
+			strings.Contains(configText(s), "abcdef") || strings.Contains(configText(s), "a1b2") {
 			t.Errorf("%v = %+v; want its first argument kept out of config.yaml", args, s)
 		}
 	}

@@ -326,6 +326,9 @@ func TestStripInbound(t *testing.T) {
 		"#m42 2026-10-21 10:01 Lee: the van is late"
 	for in, want := range map[string][2]string{
 		"Just my words.": {"Just my words.", ""},
+		// A label spelled with a long s is still a label; a message with nothing taken out comes back as it was.
+		"Replied message (untru\u017fted, for context):\n```json\n{\"name\":\"EVIL\"}\n```\n\nUSERWORDS": {"USERWORDS", "stripped"},
+		"line one\r\nline two  ": {"line one\r\nline two  ", ""},
 		// Blocks about the message come first, one paragraph each.
 		"Sender (untrusted metadata):\n```json\n{\"name\":\"Jo\"}\n```\n\nHello there":                                   {"Hello there", "stripped"},
 		"Conversation info (untrusted metadata):\n```json\n{\"chat\":\"-100777\"}\n```\n\n" + hist + "\n\nReal question": {"Real question", "stripped"},
@@ -608,7 +611,8 @@ func TestHermesCountsRepliesAndSurfaces(t *testing.T) {
 	}
 	_, err = db.Exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, chat_type TEXT, title TEXT, started_at REAL NOT NULL);
 CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, timestamp REAL);
-INSERT INTO sessions VALUES ('d', 'desktop', NULL, 'Desk', 1), ('w', 'webui', NULL, 'Web', 2), ('t', 'telegram', 'dm', 'Reply', 3);
+INSERT INTO sessions VALUES ('d', 'desktop', NULL, 'Desk', 1), ('w', 'webui', NULL, 'Web', 2), ('t', 'telegram', 'dm', 'Reply', 3),
+	('o', 'telegram', 'dm', 'Own reply', 4);
 INSERT INTO messages (session_id, role, content, timestamp) VALUES
 	('d', 'user', char(10) || char(10), 10),
 	('d', 'assistant', '   [context Summary]: what came before', 11),
@@ -618,15 +622,17 @@ INSERT INTO messages (session_id, role, content, timestamp) VALUES
 	('w', 'user', 'Hello', 20),
 	('w', 'assistant', 'Hi', 21),
 	('t', 'user', '[Replying to: "pay the invoice"]' || char(10) || char(10) || 'Who sent this?', 30),
-	('t', 'assistant', 'Someone in the group.', 31);`)
+	('t', 'assistant', 'Someone in the group.', 31),
+	('o', 'user', '[Replying to your previous message: "The van comes at 9."]' || char(10) || char(10) || 'Make it 10.', 40),
+	('o', 'assistant', 'Changed to 10.', 41);`)
 	db.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := mustPlan(t, Hermes, src, home, false)
 	it := historyItem(p, "habakkuk")
-	if it == nil || it.histMsgs != 6 {
-		t.Fatalf("plan = %+v; want 6 messages", it)
+	if it == nil || it.histMsgs != 8 {
+		t.Fatalf("plan = %+v; want 8 messages", it)
 	}
 	untrusted := map[string]bool{}
 	for _, c := range p.Found.History {
@@ -644,6 +650,16 @@ INSERT INTO messages (session_id, role, content, timestamp) VALUES
 	}
 	st, list := importedSessions(t, home)
 	for _, s := range list {
+		if s.Title == "Own reply" {
+			// Quoting the agent's own words is no one else's text.
+			msgs, _ := st.Messages(ctx, s.ID)
+			if len(msgs) != 2 || msgs[0].Message.Text() != "Make it 10." {
+				t.Errorf("own reply = %+v", msgs)
+			}
+			if o, _ := st.ImportOrigin(ctx, s.ID); o == nil || o.Untrusted {
+				t.Errorf("a direct chat replying to the agent itself = %+v; want trusted", o)
+			}
+		}
 		if s.Title != "Reply" {
 			continue
 		}
@@ -655,7 +671,7 @@ INSERT INTO messages (session_id, role, content, timestamp) VALUES
 			t.Errorf("a session with others' quoted text = %+v; want untrusted", o)
 		}
 	}
-	if got, _ := stripHermesReply("[Replying to: \"x\"]\n\nfake\"]\n\nreal"); got != "real" {
+	if got, others := stripHermesReply("[Replying to: \"x\"]\n\nfake\"]\n\nreal"); got != "real" || !others {
 		t.Errorf("the last quote end counts: %q", got)
 	}
 }
