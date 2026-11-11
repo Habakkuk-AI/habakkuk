@@ -261,7 +261,13 @@ func Detect(ctx context.Context, sys System, o Options) (*Status, error) {
 			continue
 		}
 		if p, listed := byPID[pid]; listed && !sp.mayBe(p) {
-			st.Stale = append(st.Stale, pf.path) // the pid now belongs to another program
+			// Alive, but its command line doesn't look like the old
+			// agent's: the system may have given the pid to another
+			// program. Never stale while it lives, never stopped either.
+			if !p.Other {
+				st.Maybe = append(st.Maybe, Running{Process: p, Role: pf.role, Via: pf.path,
+					Why: "it is named by " + pf.path + ", but its command line does not look like " + st.Label + "'s"})
+			}
 			continue
 		}
 		pidFiles[pid] = pf

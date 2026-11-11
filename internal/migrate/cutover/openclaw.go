@@ -41,7 +41,9 @@ import (
 
 var openclawSpec = &spec{
 	services: openclawServices,
-	home:     openclawHomeOf,
+	explicit: openclawExplicit,
+	implicit: openclawImplicit,
+	programs: programArgs,
 	role: func(p Process, dir, _ string) (string, bool) {
 		args := p.Args()
 		if len(args) == 0 {
@@ -96,12 +98,11 @@ var openclawSpec = &spec{
 	},
 }
 
-// openclawHomeOf: OPENCLAW_STATE_DIR names the home; OPENCLAW_PROFILE or
-// --profile NAME (--dev is the dev profile) names ~/.openclaw-NAME;
-// neither means the default home.
-func openclawHomeOf(w where, p Process, env map[string]string) (verdict, string) {
+// openclawExplicit: OPENCLAW_STATE_DIR names the home; OPENCLAW_PROFILE
+// or --profile NAME (--dev is the dev profile) names ~/.openclaw-NAME.
+func openclawExplicit(w where, p Process, env map[string]string) (verdict, string) {
 	uh := w.sys.UserHome()
-	if d, ok := env["OPENCLAW_STATE_DIR"]; ok && d != "" {
+	if d := env["OPENCLAW_STATE_DIR"]; d != "" {
 		if under(expandTilde(d, uh), w.dir) {
 			return ours, "its OPENCLAW_STATE_DIR is " + d
 		}
@@ -113,14 +114,27 @@ func openclawHomeOf(w where, p Process, env map[string]string) (verdict, string)
 	} else if hasWord(p.Args(), "--dev") {
 		prof = "dev"
 	}
+	if prof == "" {
+		return unknown, ""
+	}
 	home := filepath.Join(uh, ".openclaw")
-	if prof != "" && prof != "default" {
+	if prof != "default" {
 		home += "-" + prof
 	}
-	switch {
-	case prof == "" && env == nil:
+	if isDefaultHome(w.dir, home) {
+		return ours, "it uses " + home
+	}
+	return theirs, "it uses " + home
+}
+
+// openclawImplicit: a readable environment that names no home or profile
+// means the default home.
+func openclawImplicit(w where, _ Process, env map[string]string) (verdict, string) {
+	if env == nil {
 		return unknown, ""
-	case isDefaultHome(w.dir, home):
+	}
+	home := filepath.Join(w.sys.UserHome(), ".openclaw")
+	if isDefaultHome(w.dir, home) {
 		return ours, "it uses " + home
 	}
 	return theirs, "it uses " + home

@@ -35,10 +35,13 @@ import (
 //     cron run, board run or gateway turn starts. hermes resume removes it.
 
 var hermesSpec = &spec{
-	services: hermesServices,
-	role:     hermesRole,
-	home:     hermesHomeOf,
-	mayBe:    func(p Process) bool { return hermesish(p) },
+	services:    hermesServices,
+	role:        hermesRole,
+	explicit:    hermesExplicit,
+	implicit:    hermesImplicit,
+	programs:    programArgs,
+	scopePrefix: "hermes-worker-",
+	mayBe:       func(p Process) bool { return hermesish(p) },
 	pidFiles: func(dir string) []pidFile {
 		var out []pidFile
 		for _, h := range hermesHomes(dir) {
@@ -136,9 +139,10 @@ func hermesish(p Process) bool {
 	case strings.HasPrefix(m, "hermes_cli."), m == "gateway.run":
 		return true
 	case m == "cron.scheduler":
-		// A module name other projects use too: only with the flag
-		// Hermes Agent starts its job workers with.
-		return slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, "--external-worker-file") })
+		// Its scheduler, alone or as a job worker. Other projects may
+		// have a module of that name: ownership is proved separately, and
+		// one that can't be tied to the home is only listed.
+		return true
 	}
 	// python [flags] /path/to/hermes ...: the first word that is not a
 	// flag or a flag's value.
@@ -160,34 +164,75 @@ func isPython(exe string) bool {
 	return exe == "python" || exe == "pythonw" || exe == "py" || strings.HasPrefix(exe, "python3") || strings.HasPrefix(exe, "python2")
 }
 
-// hermesHomeOf: HERMES_HOME names the home a process uses; a profile
-// flag names one inside the default home; no HERMES_HOME means the
-// default home.
-func hermesHomeOf(w where, p Process, env map[string]string) (verdict, string) {
+// hermesExplicit: HERMES_HOME names the home a process uses; a profile
+// flag names one inside the default home; a bridge's --session folder is
+// in the home it serves.
+func hermesExplicit(w where, p Process, env map[string]string) (verdict, string) {
 	uh := w.sys.UserHome()
 	def := isDefaultHome(w.dir, filepath.Join(uh, ".hermes"))
-	if h, ok := env["HERMES_HOME"]; ok && h != "" {
+	if h := env["HERMES_HOME"]; h != "" {
 		if under(expandTilde(h, uh), w.dir) {
 			return ours, "its HERMES_HOME is " + h
 		}
 		return theirs, "its HERMES_HOME is " + h
 	}
-	if prof := wordAfter(p.Args(), "-p", "--profile"); prof != "" && prof != "default" {
-		if def && fileExists(filepath.Join(w.dir, "profiles", prof)) {
+	args := p.Args()
+	if prof := wordAfter(args, "-p", "--profile"); prof != "" && prof != "default" && def {
+		if fileExists(filepath.Join(w.dir, "profiles", prof)) {
 			return ours, "it runs profile " + prof + " of this home"
 		}
-		if env != nil {
-			return theirs, "its profile " + prof + " is not in this home"
-		}
-		return unknown, ""
+		return theirs, "its profile " + prof + " is not in this home"
 	}
-	if env != nil {
-		if def {
-			return ours, "it has no HERMES_HOME, so it uses the default home"
+	if s := wordAfter(args, "--session"); s != "" {
+		if under(expandTilde(s, uh), w.dir) {
+			return ours, "its session folder " + s + " is in the home"
 		}
-		return theirs, "it has no HERMES_HOME, so it uses the default home"
+		return theirs, "its session folder " + s + " is in another home"
 	}
 	return unknown, ""
+}
+
+// hermesImplicit: a readable environment with no HERMES_HOME means the
+// default home, for a process that is surely Hermes Agent's. A bare
+// cron.scheduler module is a name other projects use too, so it needs a
+// tie to the home itself: its pid file, a path, its folder or its scope.
+func hermesImplicit(w where, p Process, env map[string]string) (verdict, string) {
+	if env == nil {
+		return unknown, ""
+	}
+	if wordAfter(p.Args(), "-m") == "cron.scheduler" {
+		return unknown, "other programs have a cron.scheduler module too, and nothing ties this one to " + w.dir
+	}
+	if isDefaultHome(w.dir, filepath.Join(w.sys.UserHome(), ".hermes")) {
+		return ours, "it has no HERMES_HOME, so it uses the default home"
+	}
+	return theirs, "it has no HERMES_HOME, so it uses the default home"
+}
+
+// programArgs are the program a command line runs: its first word and,
+// for an interpreter, the script (the first word that is not a flag or a
+// flag's value, unless -m names a module).
+func programArgs(p Process) []string {
+	args := p.Args()
+	if len(args) == 0 {
+		return nil
+	}
+	out := []string{args[0]}
+	if exe := p.Exe(); isPython(exe) || exe == "node" || exe == "nodejs" || exe == "bun" {
+		for i := 1; i < len(args); i++ {
+			a := args[i]
+			switch {
+			case a == "-m" || a == "-c":
+				return out
+			case a == "-X" || a == "-W":
+				i++
+			case strings.HasPrefix(a, "-"):
+			default:
+				return append(out, a)
+			}
+		}
+	}
+	return out
 }
 
 func hermesRole(p Process, dir, userHome string) (string, bool) {
@@ -214,8 +259,13 @@ func hermesRole(p Process, dir, userHome string) (string, bool) {
 		return "", false
 	}
 	switch wordAfter(args, "-m") {
-	case "hermes_cli.kanban_worker_client", "cron.scheduler":
+	case "hermes_cli.kanban_worker_client":
 		return RoleWorker, true
+	case "cron.scheduler":
+		if slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, "--external-worker-file") }) {
+			return RoleWorker, true // one job's run
+		}
+		return RoleScheduler, true
 	case "hermes_cli.web_server":
 		return RoleDashboard, true
 	}

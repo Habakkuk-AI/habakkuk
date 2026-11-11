@@ -116,24 +116,26 @@ func runCutover(ctx context.Context, home, verb string, args []string, in io.Rea
 // a record (for rollback), else the one whose home is here.
 func pickRunning(home, verb, source string, getenv func(string) string, userHome string) (string, error) {
 	var found []string
-	for _, from := range migrate.Sources {
-		if !cutover.Runs(from) {
-			continue
-		}
-		switch {
-		case verb == "rollback":
-			if r, _ := cutover.LoadRecord(home, from); r != nil {
-				found = append(found, from)
-			}
-		case source != "":
-			if migrate.Present(from, source) {
-				found = append(found, from)
-			}
-		default:
-			if migrate.Present(from, migrate.DefaultSource(from, migrate.Options{Getenv: getenv, UserHome: userHome})) {
+	has := func(ok func(from string) bool) {
+		for _, from := range migrate.Sources {
+			if cutover.Runs(from) && ok(from) {
 				found = append(found, from)
 			}
 		}
+	}
+	switch {
+	case verb == "rollback":
+		has(func(from string) bool { r, _ := cutover.LoadRecord(home, from); return r != nil })
+		if len(found) == 0 {
+			// Nothing open: one already rolled back still answers.
+			has(func(from string) bool { return len(cutover.RolledBack(home, from)) > 0 })
+		}
+	case source != "":
+		has(func(from string) bool { return migrate.Present(from, source) })
+	default:
+		has(func(from string) bool {
+			return migrate.Present(from, migrate.DefaultSource(from, migrate.Options{Getenv: getenv, UserHome: userHome}))
+		})
 	}
 	switch len(found) {
 	case 1:
@@ -252,6 +254,10 @@ func (m *migration) rollback(ctx context.Context, sys cutover.System, from strin
 		return err
 	}
 	if rec == nil {
+		if done := cutover.RolledBack(m.home, from); len(done) > 0 {
+			m.say("Nothing to roll back: the move from %s was already rolled back (%s).", migrate.Label(from), done[len(done)-1])
+			return nil
+		}
 		return fmt.Errorf("there is no finished move from %s to roll back", migrate.Label(from))
 	}
 	if !yes {

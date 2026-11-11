@@ -166,3 +166,10 @@ func (r *Record) retire(now time.Time) (string, error) {
 	dest := r.path[:len(r.path)-len(".json")] + ".rolled-back-" + now.UTC().Format("20060102T150405Z") + ".json"
 	return dest, os.Rename(r.path, dest)
 }
+
+// RolledBack lists the records of moves from a source that rollback has
+// already undone, oldest first.
+func RolledBack(home, from string) []string {
+	m, _ := filepath.Glob(filepath.Join(home, "migrate", "cutover-"+from+".rolled-back-*.json"))
+	return m
+}

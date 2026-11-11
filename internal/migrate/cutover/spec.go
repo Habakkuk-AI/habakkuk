@@ -19,9 +19,18 @@ type spec struct {
 	// role says whether a process belongs to the agent in dir, and what
 	// it does there.
 	role func(p Process, dir, userHome string) (string, bool)
-	// home judges, from the environment (nil when unreadable) and the
-	// command line's profile flags, whether a process uses this home.
-	home func(w where, p Process, env map[string]string) (verdict, string)
+	// explicit judges what a process says about its home itself: its
+	// home variable in env (nil when unreadable), a profile flag, a
+	// session folder. unknown when it says nothing.
+	explicit func(w where, p Process, env map[string]string) (verdict, string)
+	// implicit judges a process whose environment could be read and
+	// names no home: it uses the default home.
+	implicit func(w where, p Process, env map[string]string) (verdict, string)
+	// programs are the arguments that name the program run (the
+	// interpreter, the script), which prove nothing about the home.
+	programs func(p Process) []string
+	// scopePrefix starts the names of the systemd scopes its workers run in.
+	scopePrefix string
 	// mayBe reports whether a process could be the agent at all, to tell
 	// a live pid file from a pid the system gave to another program.
 	mayBe func(p Process) bool

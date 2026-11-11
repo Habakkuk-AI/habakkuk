@@ -52,8 +52,9 @@ func TestOnlyThisHomesProcessesAreStopped(t *testing.T) {
 	if got := pids(st.Processes); !slices.Equal(got, []int{20, 21, 22}) {
 		t.Errorf("ours = %v, want 20 21 22", got)
 	}
-	if got := pids(st.Maybe); !slices.Equal(got, []int{11}) {
-		t.Errorf("maybe = %v, want 11", got)
+	// 11 can't be read; 12 is a cron.scheduler module nothing ties here.
+	if got := pids(st.Maybe); !slices.Equal(got, []int{11, 12}) {
+		t.Errorf("maybe = %v, want 11 12", got)
 	}
 
 	home, found := imported(t, migrate.Hermes, userHome)
@@ -361,13 +362,148 @@ func TestPythonFlagsBeforeTheModule(t *testing.T) {
 	if r, ok := hermesRole(p, "/h", ""); !ok || r != RoleWorker {
 		t.Errorf("role %q %v", r, ok)
 	}
-	if _, ok := hermesRole(Process{Cmdline: "/usr/bin/python3 -u -m cron.scheduler"}, "/h", ""); ok {
-		t.Error("another project's cron.scheduler module was taken for Hermes Agent's")
+	if r, ok := hermesRole(Process{Cmdline: "/usr/bin/python3 -u -m cron.scheduler"}, "/h", ""); !ok || r != RoleScheduler {
+		t.Errorf("a bare cron.scheduler is a scheduler to check: %q %v", r, ok)
 	}
 	if _, ok := hermesRole(Process{Cmdline: "vim /home/u/bin/hermes"}, "/h", ""); ok {
 		t.Error("an editor on a file named hermes was taken for it")
 	}
 	if r, ok := hermesRole(Process{Cmdline: "/usr/bin/python3 -X utf8 /home/u/.local/bin/hermes gateway run"}, "/h", ""); !ok || r != RoleGateway {
 		t.Errorf("python running the hermes command: %q %v", r, ok)
+	}
+}
+
+// The incident's own command line: a bare `python -m cron.scheduler`. It
+// is found, tied to the home by whatever holds (its cron.pid, its folder,
+// its worker scope), and stopped before anything is resumed; one nothing
+// ties is listed and keeps the imported schedules paused.
+func TestBareCronSchedulerIsFound(t *testing.T) {
+	ctx := context.Background()
+	const sched = "/usr/bin/python3 -m cron.scheduler"
+	for _, c := range []struct {
+		name string
+		set  func(f *fakeSystem, dir string)
+		ours bool
+	}{
+		{"its cron.pid", func(f *fakeSystem, dir string) {
+			_ = os.WriteFile(filepath.Join(dir, "cron.pid"), []byte("300\n"), 0o600)
+		}, true},
+		{"its folder", func(f *fakeSystem, dir string) { f.info[300] = ProcInfo{Cwd: dir} }, true},
+		{"its worker scope", func(f *fakeSystem, dir string) {
+			f.info[300] = ProcInfo{Cgroup: "0::/user.slice/user@501.service/app.slice/hermes-worker-kanban-zzz.scope"}
+		}, true},
+		{"nothing", func(f *fakeSystem, dir string) {}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			userHome, dir := fixture(t, migrate.Hermes)
+			sys := newFake(userHome)
+			sys.run(Process{PID: 300, PPID: 1, Cmdline: sched})
+			sys.info[300] = ProcInfo{} // environment unreadable
+			c.set(sys, dir)
+			st, err := Detect(ctx, sys, Options{From: migrate.Hermes, Getenv: noEnv})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.ours {
+				if len(st.Processes) != 1 || st.Processes[0].Role != RoleScheduler || len(st.Maybe) != 0 {
+					t.Fatalf("ours %+v, maybe %+v", st.Processes, st.Maybe)
+				}
+			} else if len(st.Processes) != 0 || len(st.Maybe) != 1 || st.Maybe[0].Role != RoleScheduler {
+				t.Fatalf("ours %+v, maybe %+v", st.Processes, st.Maybe)
+			}
+			if len(st.Stale) > 0 {
+				t.Errorf("a live pid file was called stale: %v", st.Stale)
+			}
+			home, found := imported(t, migrate.Hermes, userHome)
+			_, err = Finish(ctx, sys, FinishOptions{Options: Options{From: migrate.Hermes, Getenv: noEnv}, Home: home, Found: found})
+			on := habakkukSchedules(t, home)["habakkuk/Morning brief"]
+			switch {
+			case c.ours && (err != nil || sys.Alive(300) || !on):
+				t.Errorf("err %v, still alive %v, resumed %v: want it stopped, then resumed", err, sys.Alive(300), on)
+			case !c.ours && (!errors.Is(err, ErrSchedulerRunning) || !sys.Alive(300) || on):
+				t.Errorf("err %v, alive %v, resumed %v: want it left running and nothing resumed", err, sys.Alive(300), on)
+			}
+		})
+	}
+	// Tied to the home but back as soon as it's stopped: nothing resumes.
+	t.Run("comes back", func(t *testing.T) {
+		userHome, dir := fixture(t, migrate.Hermes)
+		sys := newFake(userHome)
+		sys.run(Process{PID: 300, PPID: 1, Cmdline: sched})
+		sys.respawn[300] = true
+		_ = os.WriteFile(filepath.Join(dir, "cron.pid"), []byte("300"), 0o600)
+		home, found := imported(t, migrate.Hermes, userHome)
+		if _, err := Finish(ctx, sys, FinishOptions{Options: Options{From: migrate.Hermes, Getenv: noEnv}, Home: home, Found: found}); !errors.Is(err, ErrSchedulerRunning) {
+			t.Fatalf("err = %v", err)
+		}
+		if habakkukSchedules(t, home)["habakkuk/Morning brief"] {
+			t.Error("resumed while its scheduler runs")
+		}
+	})
+}
+
+// A live pid in the home's cron.pid is never stale, even when the
+// program at that pid doesn't look like the old agent: it's listed, not
+// stopped, and nothing resumes.
+func TestLivePidFileIsNeverStale(t *testing.T) {
+	ctx := context.Background()
+	userHome, dir := fixture(t, migrate.Hermes)
+	sys := newFake(userHome)
+	sys.run(Process{PID: 400, PPID: 1, Cmdline: "/usr/bin/sleep 1000"})
+	_ = os.WriteFile(filepath.Join(dir, "cron.pid"), []byte("400"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "gateway.pid"), []byte(`{"pid": 999}`), 0o600) // gone
+	st, err := Detect(ctx, sys, Options{From: migrate.Hermes, Getenv: noEnv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(st.Stale, []string{filepath.Join(dir, "gateway.pid")}) {
+		t.Errorf("stale = %v, want only gateway.pid", st.Stale)
+	}
+	if len(st.Maybe) != 1 || st.Maybe[0].PID != 400 || st.Maybe[0].Role != RoleScheduler {
+		t.Fatalf("maybe = %+v", st.Maybe)
+	}
+	home, found := imported(t, migrate.Hermes, userHome)
+	if _, err := Finish(ctx, sys, FinishOptions{Options: Options{From: migrate.Hermes, Getenv: noEnv}, Home: home, Found: found}); !errors.Is(err, ErrSchedulerRunning) {
+		t.Fatalf("err = %v", err)
+	}
+	if !sys.Alive(400) {
+		t.Error("it was stopped")
+	}
+}
+
+// Every home's processes may run the program installed in the default
+// home: what a process says about its own home decides, and the program's
+// path alone only makes it one that may be the old agent's.
+func TestExplicitHomeWinsOverProgramPath(t *testing.T) {
+	ctx := context.Background()
+	userHome, dir := fixture(t, migrate.Hermes)
+	sys := newFake(userHome)
+	py := filepath.Join(dir, "hermes-agent", "venv", "bin", "python")
+	cmd := py + " -m hermes_cli.main gateway run"
+	sys.run(Process{PID: 500, PPID: 1, Cmdline: cmd})
+	sys.info[500] = ProcInfo{Env: map[string]string{"HERMES_HOME": "/srv/o"}}
+	sys.run(Process{PID: 501, PPID: 1, Cmdline: "~/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run"})
+	sys.info[501] = ProcInfo{Env: map[string]string{"HERMES_HOME": "/srv/o"}}
+	sys.run(Process{PID: 502, PPID: 1, Cmdline: cmd})
+	sys.info[502] = ProcInfo{} // can't be read
+	sys.run(Process{PID: 503, PPID: 1, Cmdline: cmd})
+	sys.info[503] = ProcInfo{Env: map[string]string{"PATH": "/usr/bin"}} // no HERMES_HOME: the default home, this one
+	// A bridge serving another home's session, with no HERMES_HOME.
+	sys.run(Process{PID: 504, PPID: 1, Cmdline: "node " + filepath.Join(dir, "scripts", "whatsapp-bridge", "bridge.js") + " --session /srv/o/platforms/whatsapp/session"})
+
+	st, err := Detect(ctx, sys, Options{From: migrate.Hermes, Getenv: noEnv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pids(st.Processes); !slices.Equal(got, []int{503}) {
+		t.Errorf("ours = %v, want 503", got)
+	}
+	if got := pids(st.Maybe); !slices.Equal(got, []int{502}) || !strings.Contains(st.Maybe[0].Why, "its program is in") {
+		t.Errorf("maybe = %+v, want 502 for its program's path", st.Maybe)
+	}
+	home, found := imported(t, migrate.Hermes, userHome)
+	_, _ = Finish(ctx, sys, FinishOptions{Options: Options{From: migrate.Hermes, Getenv: noEnv}, Home: home, Found: found})
+	if !slices.Equal(sys.stopped, []int{503}) {
+		t.Errorf("stopped %v, want only 503", sys.stopped)
 	}
 }

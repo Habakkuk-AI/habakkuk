@@ -215,6 +215,13 @@ func TestMigrateFinishAndRollbackCommands(t *testing.T) {
 			t.Errorf("%s is still on after rollback", n)
 		}
 	}
+	// Again, with and without --from: nothing to do, and that's no error.
+	for _, args := range [][]string{{"rollback", "-y"}, {"rollback", "--from", "hermes", "-y"}} {
+		out, err = migrateRun(t, home, user, "", args...)
+		if err != nil || !strings.Contains(out, "Nothing to roll back: the move from Hermes Agent was already rolled back") {
+			t.Errorf("%v: %v\n%s", args, err, out)
+		}
+	}
 }
 
 func TestMigrateFinishRefusesWhileTheOldSchedulerRuns(t *testing.T) {

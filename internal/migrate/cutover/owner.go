@@ -21,24 +21,63 @@ const (
 )
 
 // proof decides whether a process is the old agent's in this home, and
-// says why. A positive sign wins over a negative one: a path into the
-// home is stronger than an environment the process may have changed.
+// says why. In order:
+//
+//  1. what the process says about its home itself: its home variable
+//     (HERMES_HOME, OPENCLAW_STATE_DIR), a profile flag, a session folder.
+//     This decides, either way: every home's processes may run the same
+//     installed program, so the program's path proves nothing against it.
+//  2. a data path into the home on its command line (not its program);
+//  3. its working folder in the home;
+//  4. the service or worker scope it runs under;
+//  5. an environment that could be read and names no home: the default
+//     home.
+//
+// When none of these decides, a program installed inside the home only
+// makes it one that may be the old agent's.
 func proof(sp *spec, w where, p Process, info ProcInfo, units []string) (verdict, string) {
+	if sp.explicit != nil {
+		if v, why := sp.explicit(w, p, info.Env); v != unknown {
+			return v, why
+		}
+	}
+	uh := w.sys.UserHome()
+	exe := map[string]bool{}
+	if sp.programs != nil {
+		for _, a := range sp.programs(p) {
+			exe[a] = true
+		}
+	}
 	for _, a := range p.Args() {
-		if path := argPath(a, w.sys.UserHome()); path != "" && under(path, w.dir) {
+		if exe[a] {
+			continue
+		}
+		if path := argPath(a, uh); path != "" && under(path, w.dir) {
 			return ours, "its command line names " + path
 		}
 	}
 	if info.Cwd != "" && under(info.Cwd, w.dir) {
 		return ours, "it runs in " + info.Cwd
 	}
-	for _, u := range units {
-		if info.Cgroup != "" && strings.Contains(info.Cgroup, "/"+u) {
-			return ours, "it runs under " + u
+	if info.Cgroup != "" {
+		for _, u := range units {
+			if strings.Contains(info.Cgroup, "/"+u) {
+				return ours, "it runs under " + u
+			}
+		}
+		if sp.scopePrefix != "" && strings.Contains(info.Cgroup, "/"+sp.scopePrefix) {
+			return ours, "it runs in one of its worker scopes"
 		}
 	}
-	if sp.home != nil {
-		return sp.home(w, p, info.Env)
+	if sp.implicit != nil {
+		if v, why := sp.implicit(w, p, info.Env); v != unknown {
+			return v, why
+		}
+	}
+	for a := range exe {
+		if path := argPath(a, uh); path != "" && under(path, w.dir) {
+			return unknown, "its program is in " + w.dir + ", but which home it uses could not be read"
+		}
 	}
 	return unknown, ""
 }
