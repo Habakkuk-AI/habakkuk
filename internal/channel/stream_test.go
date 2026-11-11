@@ -142,6 +142,36 @@ func TestTextBeforeAToolIsNotTheReply(t *testing.T) {
 	}
 }
 
+// Where posts already notify (Slack), a progress draft that was showing
+// when the reply began is removed and the reply gets a new message, so it
+// lands below anything posted meanwhile, such as an approval prompt, and
+// notifies; it is never written into the older message above.
+func TestStreamedReplyStartsBelowAProgressDraft(t *testing.T) {
+	r := newStateRig(t, &config.Channel{AllowFrom: []string{"7"}})
+	ed := &editor{recorder: r.a}
+	r.g.Adapters["tg"] = ed
+	r.g.StreamEvery, r.g.ProgressAfter, r.g.ProgressEvery = 20*time.Millisecond, 10*time.Millisecond, 10*time.Millisecond
+	r.g.Runner.Models = &streamModel{gap: 30 * time.Millisecond,
+		first: stream{tool: toolCall("c1", "list_dir", `{"path":"."}`)},
+		final: stream{pieces: words(longAnswer)}}
+	send(r, "m1", "when is the bakery open")
+	waitFor(t, "final reply", func() bool {
+		return slices.ContainsFunc(ed.entries(), func(s string) bool { return strings.HasSuffix(s, " "+longAnswer) })
+	})
+	log := ed.entries()
+	progress := slices.IndexFunc(log, func(s string) bool { return strings.HasPrefix(s, "post 1 _") })
+	del := slices.Index(log, "delete 1")
+	reply := slices.IndexFunc(log, func(s string) bool { return strings.HasPrefix(s, "post 2 Here is what I found") })
+	if progress < 0 || del < progress || reply < del {
+		t.Fatalf("want the progress draft posted, removed, then the reply as a new message: %q", log)
+	}
+	for _, e := range log {
+		if strings.HasPrefix(e, "edit 1 Here is") {
+			t.Fatalf("the reply was written into the older progress message: %q", log)
+		}
+	}
+}
+
 // A short "let me check" before a tool call never shows.
 func TestShortTextBeforeAToolDoesNotShow(t *testing.T) {
 	r := newStateRig(t, &config.Channel{AllowFrom: []string{"7"}})
