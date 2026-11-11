@@ -124,6 +124,9 @@ func TestDevNullIsNotATerminal(t *testing.T) {
 	if isTerminalFile(null) {
 		t.Fatal("/dev/null counted as a terminal")
 	}
+	if inForeground(null) {
+		t.Fatal("/dev/null counted as a foreground terminal")
+	}
 }
 
 // What the owner sees is what the agent gets: terminal escapes and bidi
@@ -210,5 +213,39 @@ func TestProjectsListShowsWhatTheAgentSees(t *testing.T) {
 	out.Reset()
 	if err := projectsCmd(off, []string{"list", proj}, nil, &out); err != nil || !strings.Contains(out.String(), "project_files is off") {
 		t.Fatalf("list with project_files off: %v\n%s", err, out.String())
+	}
+}
+
+// list FILE and trust FILE see a file exactly as the agent's loader does:
+// a file in a fenced folder is never read, and a link out is left out.
+func TestProjectsFileGoesThroughTheLoader(t *testing.T) {
+	atTerminal(t, "y\ny\n")
+	home := writeHome(t, "")
+	inHome := filepath.Join(home, "AGENTS.md") // the Habakkuk home is never a project
+	os.WriteFile(inHome, []byte("Use tabs."), 0o644)
+	var out bytes.Buffer
+	projectsCmd(home, []string{"list", inHome}, nil, &out)
+	if !strings.Contains(out.String(), "never reads") {
+		t.Fatalf("list FILE in a fenced folder:\n%s", out.String())
+	}
+	out.Reset()
+	projectsCmd(home, []string{"trust", inHome}, nil, &out)
+	if entries, _, _ := (&projtrust.Store{Home: home}).List(); len(entries) != 0 {
+		t.Fatalf("trusted a file the agent never reads:\n%s", out.String())
+	}
+
+	proj, elsewhere := t.TempDir(), t.TempDir()
+	os.MkdirAll(filepath.Join(proj, ".git"), 0o755)
+	os.WriteFile(filepath.Join(elsewhere, "AGENTS.md"), []byte("from elsewhere"), 0o644)
+	os.Symlink(filepath.Join(elsewhere, "AGENTS.md"), filepath.Join(proj, "CLAUDE.md"))
+	out.Reset()
+	projectsCmd(home, []string{"list", filepath.Join(proj, "CLAUDE.md")}, nil, &out)
+	if !strings.Contains(out.String(), "left out") {
+		t.Fatalf("list FILE for a link out:\n%s", out.String())
+	}
+	out.Reset()
+	projectsCmd(home, []string{"list", proj}, nil, &out)
+	if !strings.Contains(out.String(), "left out") {
+		t.Fatalf("list DIR for a link out:\n%s", out.String())
 	}
 }

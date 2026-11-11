@@ -205,8 +205,10 @@ func locate(path string) place {
 		p.real = r
 	}
 	for dir := filepath.Dir(p.real); ; dir = filepath.Dir(dir) {
-		if common, ok := gitCommonDir(dir); ok {
-			if rel, err := filepath.Rel(dir, p.real); err == nil {
+		if common, found := gitCommonDir(dir); found {
+			// A checkout top whose .git does not hold up gives no
+			// repository identity: only the file itself can match.
+			if rel, err := filepath.Rel(dir, p.real); err == nil && common != "" {
 				p.repo, p.rel = common, filepath.ToSlash(rel)
 			}
 			return p
@@ -218,9 +220,18 @@ func locate(path string) place {
 }
 
 // gitCommonDir finds the shared git folder of a checkout whose top is
-// dir: dir/.git itself, or for a worktree the folder its .git file names
-// (and that folder's commondir). It does not run git.
-func gitCommonDir(dir string) (string, bool) {
+// dir. found reports that dir holds a .git at all; common is "" when that
+// .git does not hold up as a checkout, and then the files there match only
+// by their own identity. It does not run git.
+//
+// A main checkout has a .git folder: that folder is the shared one. A
+// worktree has a .git file naming its entry, <common>/worktrees/<name>,
+// and git keeps the way back in that entry's gitdir file. Only a .git file
+// whose entry names this very .git file back counts, so a folder cannot
+// claim a trusted repository's identity by writing a .git file that points
+// at it; and a .git file that points straight at a main git folder (which
+// has no gitdir file) never counts.
+func gitCommonDir(dir string) (common string, found bool) {
 	dotgit := filepath.Join(dir, ".git")
 	info, err := os.Lstat(dotgit)
 	if err != nil {
@@ -231,28 +242,51 @@ func gitCommonDir(dir string) (string, bool) {
 	}
 	data, err := ReadRegular(dotgit, 4096)
 	if err != nil {
-		return "", false
+		return "", true
 	}
 	line, _, _ := strings.Cut(string(data), "\n")
-	gitdir, ok := strings.CutPrefix(strings.TrimSpace(line), "gitdir:")
+	entry, ok := strings.CutPrefix(strings.TrimSpace(line), "gitdir:")
 	if !ok {
-		return "", false
+		return "", true
 	}
-	gitdir = strings.TrimSpace(gitdir)
-	if !filepath.IsAbs(gitdir) {
-		gitdir = filepath.Join(dir, gitdir)
+	entry = strings.TrimSpace(entry)
+	if !filepath.IsAbs(entry) {
+		entry = filepath.Join(dir, entry)
 	}
-	if c, err := ReadRegular(filepath.Join(gitdir, "commondir"), 4096); err == nil {
-		sc := bufio.NewScanner(strings.NewReader(string(c)))
-		if sc.Scan() {
-			common := strings.TrimSpace(sc.Text())
-			if !filepath.IsAbs(common) {
-				common = filepath.Join(gitdir, common)
-			}
-			return realOr(common), true
-		}
+	// The way back: the entry's gitdir file names this .git file.
+	back, err := ReadRegular(filepath.Join(entry, "gitdir"), 4096)
+	if err != nil {
+		return "", true
 	}
-	return realOr(gitdir), true
+	backPath := strings.TrimSpace(firstLine(string(back)))
+	if !filepath.IsAbs(backPath) {
+		backPath = filepath.Join(entry, backPath)
+	}
+	if !sameFile(backPath, dotgit) {
+		return "", true
+	}
+	c, err := ReadRegular(filepath.Join(entry, "commondir"), 4096)
+	if err != nil {
+		return "", true
+	}
+	common = strings.TrimSpace(firstLine(string(c)))
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(entry, common)
+	}
+	common = realOr(common)
+	// The entry must be one of that repository's worktree entries.
+	if !sameFile(filepath.Dir(entry), filepath.Join(common, "worktrees")) {
+		return "", true
+	}
+	return common, true
+}
+
+func firstLine(s string) string {
+	sc := bufio.NewScanner(strings.NewReader(s))
+	if sc.Scan() {
+		return sc.Text()
+	}
+	return ""
 }
 
 func realOr(p string) string {
@@ -305,10 +339,15 @@ func (s *Store) Check(path, sum string) (trusted, known bool) {
 	return false, known
 }
 
-// Trust records a file's current content as trusted, replacing any
-// earlier record for the same file. It returns the record and the content
-// it hashed.
-func (s *Store) Trust(path string) (Entry, []byte, error) {
+// ErrChanged is returned by Trust when the file's content is no longer the
+// content the owner was shown.
+var ErrChanged = errors.New("the file changed since it was shown")
+
+// Trust records a file as trusted with exactly the content whose SHA-256
+// is want (what the owner was shown), replacing any earlier record for the
+// same file. If the file's content is no longer that, nothing is written
+// and ErrChanged is returned. It returns the record and the content.
+func (s *Store) Trust(path, want string) (Entry, []byte, error) {
 	real, err := Real(path)
 	if err != nil {
 		return Entry{}, nil, err
@@ -316,6 +355,9 @@ func (s *Store) Trust(path string) (Entry, []byte, error) {
 	sum, data, err := Hash(real)
 	if err != nil {
 		return Entry{}, nil, err
+	}
+	if sum != want {
+		return Entry{}, nil, fmt.Errorf("%w: %s", ErrChanged, path)
 	}
 	now := time.Now
 	if s.Now != nil {

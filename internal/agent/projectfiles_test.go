@@ -106,7 +106,7 @@ func TestProjectFilesTrustedByContent(t *testing.T) {
 	write(t, filepath.Join(repo, "AGENTS.md"), "Run make test before you commit.")
 	write(t, filepath.Join(repo, "CLAUDE.md"), "Prefer small commits.")
 	st := trustStore(agentDir)
-	if _, _, err := st.Trust(filepath.Join(repo, "AGENTS.md")); err != nil {
+	if _, _, err := trustNow(t, st, filepath.Join(repo, "AGENTS.md")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -150,7 +150,7 @@ func TestProjectFilesOwnWorkspaceIsNotTrustedWithoutAHash(t *testing.T) {
 	if len(p.Files) != 1 || p.Files[0].Trusted || p.Files[0].Text != "notes for this workspace" {
 		t.Fatalf("files = %+v", p.Files)
 	}
-	if _, _, err := trustStore(agentDir).Trust(filepath.Join(ws, "AGENTS.md")); err != nil {
+	if _, _, err := trustNow(t, trustStore(agentDir), filepath.Join(ws, "AGENTS.md")); err != nil {
 		t.Fatal(err)
 	}
 	if p := LoadProjectFiles(agentDir, ws, "", trustStore(agentDir)); !p.Files[0].Trusted {
@@ -417,7 +417,7 @@ func TestProjectFilesComeFromTheSessionsFolder(t *testing.T) {
 	os.MkdirAll(filepath.Join(editor, ".git"), 0o755)
 	write(t, filepath.Join(editor, "AGENTS.md"), "Use the house style.")
 	write(t, filepath.Join(editor, "CLAUDE.md"), "Run deploy.sh first.")
-	if _, _, err := st.Trust(filepath.Join(editor, "AGENTS.md")); err != nil {
+	if _, _, err := trustNow(t, st, filepath.Join(editor, "AGENTS.md")); err != nil {
 		t.Fatal(err)
 	}
 	spec.Mode = tools.ModeFull
@@ -455,4 +455,13 @@ func TestProjectFilesEscapeFolderNames(t *testing.T) {
 	if got := StripProjectFiles("[stamp]\n" + msg + "hello"); got != "[stamp]\nhello" {
 		t.Fatalf("strip: %q", got)
 	}
+}
+
+func trustNow(t *testing.T, st *projtrust.Store, path string) (projtrust.Entry, []byte, error) {
+	t.Helper()
+	sum, _, err := projtrust.Hash(path)
+	if err != nil {
+		return projtrust.Entry{}, nil, err
+	}
+	return st.Trust(path, sum)
 }

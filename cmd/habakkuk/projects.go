@@ -55,7 +55,10 @@ func openTTY() (io.ReadWriteCloser, error) {
 	if err != nil {
 		return nil, errNoTerminal
 	}
-	if !isTerminalFile(f) {
+	// Nothing is printed unless this is the terminal's foreground job: a
+	// background process (an agent's command under the gateway, the TUI
+	// or an editor) is refused without a word on the owner's screen.
+	if !isTerminalFile(f) || !inForeground(f) {
 		f.Close()
 		return nil, errNoTerminal
 	}
@@ -155,24 +158,6 @@ func projectFilesFor(home, agentName, path string, trust agent.ProjectTrust, hon
 	if err != nil {
 		return nil, err
 	}
-	if !info.IsDir() {
-		if !slices.Contains(agent.ProjectFileNames, filepath.Base(path)) {
-			return nil, fmt.Errorf("%s is not a project instruction file (%s)", path, strings.Join(agent.ProjectFileNames, ", "))
-		}
-		abs, _ := filepath.Abs(path)
-		f := agent.ProjectFile{Path: abs, Real: abs}
-		if real, err := projtrust.Real(abs); err == nil {
-			f.Real = real
-		}
-		if sum, _, err := projtrust.Hash(f.Real); err != nil {
-			f.Skipped = err.Error()
-		} else if trust != nil {
-			f.SHA256 = sum
-			f.Trusted, f.Changed = trust.Check(f.Real, sum)
-			f.Changed = f.Changed && !f.Trusted
-		}
-		return []agent.ProjectFile{f}, nil
-	}
 	dir, mode, err := projectAgent(home, agentName)
 	if err != nil {
 		return nil, err
@@ -180,7 +165,25 @@ func projectFilesFor(home, agentName, path string, trust agent.ProjectTrust, hon
 	if !honourMode {
 		mode = agent.ProjectFilesOn
 	}
-	return agent.LoadProjectFiles(dir, path, mode, trust).Files, nil
+	if info.IsDir() {
+		return agent.LoadProjectFiles(dir, path, mode, trust).Files, nil
+	}
+	// One file: what the agent's own loader makes of it, working in its
+	// folder, with the same fences and link rules. A file the agent would
+	// never read is not shown, and cannot be trusted.
+	if !slices.Contains(agent.ProjectFileNames, filepath.Base(path)) {
+		return nil, fmt.Errorf("%s is not a project instruction file (%s)", path, strings.Join(agent.ProjectFileNames, ", "))
+	}
+	want, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range agent.LoadProjectFiles(dir, filepath.Dir(path), mode, trust).Files {
+		if got, err := os.Lstat(f.Path); err == nil && os.SameFile(got, want) {
+			return []agent.ProjectFile{f}, nil
+		}
+	}
+	return nil, nil
 }
 
 // projectsTrust shows each file on the terminal and asks there; standard
@@ -191,7 +194,7 @@ func projectsTrust(home string, st *projtrust.Store, path string, allowControl b
 		return err
 	}
 	if len(files) == 0 {
-		fmt.Fprintf(out, "No project instruction files (%s) for %s.\n", strings.Join(agent.ProjectFileNames, ", "), path)
+		fmt.Fprintf(out, "No project instruction files (%s) that an agent reads for %s.\n", strings.Join(agent.ProjectFileNames, ", "), visibleText(path))
 		return nil
 	}
 	answers := bufio.NewReader(tty)
@@ -227,15 +230,13 @@ func projectsTrust(home string, st *projtrust.Store, path string, allowControl b
 			fmt.Fprintf(out, "not trusted: %s\n", f.Path)
 			continue
 		}
-		e, _, err := st.Trust(real)
-		if err != nil {
-			return err
-		}
-		if e.SHA256 != sum {
-			// It changed between showing and recording: trust nothing.
-			_, _ = st.Untrust(real)
+		e, _, err := st.Trust(real, sum) // only the content that was shown
+		if errors.Is(err, projtrust.ErrChanged) {
 			fmt.Fprintf(out, "not trusted: %s changed while you read it; run this again\n", f.Path)
 			continue
+		}
+		if err != nil {
+			return err
 		}
 		trusted++
 		fmt.Fprintf(out, "trusted: %s (sha256 %s)\n", e.Path, e.SHA256[:12])
@@ -340,6 +341,10 @@ func projectsListAt(home string, st *projtrust.Store, agentName, path string, ou
 		return err
 	}
 	if len(files) == 0 {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			fmt.Fprintf(out, "An agent never reads %s: it is not in a folder an agent treats as a project (your home folder and the Habakkuk home are not).\n", visibleText(path))
+			return nil
+		}
 		fmt.Fprintf(out, "An agent working in %s reads no project instruction files.\n", visibleText(path))
 		return nil
 	}
