@@ -138,6 +138,7 @@ func (t searchTool) Run(ctx context.Context, env *tools.Env, input json.RawMessa
 		fmt.Fprintf(&b, " updated %s", h.Updated.Format("2006-01-02"))
 		if h.Untrusted {
 			b.WriteString(" (untrusted)")
+			env.Taint.Mark() // its title and snippet are outside text
 		}
 		b.WriteString("\n")
 		if h.Snippet != "" {
@@ -172,6 +173,9 @@ func (t readTool) Run(ctx context.Context, env *tools.Env, input json.RawMessage
 		return "", err
 	}
 	_ = t.s.Recalled(ctx, env.Agent, m.Slug) // staleness bookkeeping only
+	if m.Untrusted() {
+		env.Taint.Mark() // what is saved after reading it is saved untrusted
+	}
 	return FormatNote(m), nil
 }
 

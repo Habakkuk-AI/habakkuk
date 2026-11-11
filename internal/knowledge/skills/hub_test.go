@@ -271,3 +271,26 @@ func TestHeldSkillsStayHeld(t *testing.T) {
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// A held skill in the agent's folder does not hide a shared skill of the
+// same name.
+func TestHeldSkillDoesNotHideShared(t *testing.T) {
+	l := &Library{Home: t.TempDir()}
+	write(t, filepath.Join(l.SharedDir(), "deploy", FileName), skillMD("deploy", "Ship the app.", "Shared steps."))
+	dir := l.AgentDir("habakkuk")
+	write(t, filepath.Join(dir, "deploy", FileName), skillMD("deploy", "Ship it.", "Held steps."))
+	lock := &hub.Lock{Version: 1, Packages: map[string]*hub.Entry{"deploy": {Source: "project x", Held: true}}}
+	if err := lock.Write(filepath.Join(dir, hub.LockName)); err != nil {
+		t.Fatal(err)
+	}
+	list, err := l.List("habakkuk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := slices.IndexFunc(list, func(s Skill) bool { return s.Name == "deploy" }); i < 0 || !list[i].Shared {
+		t.Errorf("list = %+v; want the shared deploy", list)
+	}
+	if _, body, _, err := l.View("habakkuk", "deploy"); err != nil || !strings.Contains(body, "Shared steps.") {
+		t.Errorf("view = %q, %v; want the shared one", body, err)
+	}
+}

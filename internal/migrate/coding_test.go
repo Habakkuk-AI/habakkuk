@@ -281,6 +281,8 @@ func TestReadCodex(t *testing.T) {
 	}
 	if got := noteTitles(a); len(got) != 1 || !strings.HasPrefix(got[0], "Corner Bakery takes wholesale orders") {
 		t.Errorf("notes = %v", got)
+	} else if !a.Notes[0].Untrusted {
+		t.Error("Codex wrote its memories itself from past threads: they come in untrusted")
 	}
 	var docs, tracker *MCPServer
 	for _, m := range f.MCP {
@@ -485,6 +487,10 @@ func TestArgKinds(t *testing.T) {
 		{"npx", []string{"-y", "pkg", "8f14e45f-ceea-467a-9575-0b6b5c4e7a91"}, "ppk"},
 		{"npx", []string{"-y", "Secret-Value-Pkg1010"}, "pk"},
 		{"npx", []string{"-y", "pkg@SkLiveM6SecretValue"}, "pk"},
+		{"npx", []string{"-y", "pkg@9a8b7c6d5e4f3a2b1c0d"}, "pk"},
+		{"npx", []string{"-y", "pkg@1.2.3-beta.1"}, "pp"},
+		{"npx", []string{"-y", "pkg@latest"}, "pp"},
+		{"npx", []string{"-y", "pkg@next"}, "pk"},
 		{"npx", []string{"-y", "pkg", "m15secondsecretword"}, "ppk"},
 		{"npx", []string{"--registry-token", "3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c", "-y", "real-pkg"}, "kkpp"},
 		{"pipx", []string{"run", "--spec", "pipxsecretm4value", "pkg"}, "pkkp"},
@@ -512,7 +518,8 @@ func TestArgKinds(t *testing.T) {
 		{"tool", []string{"--api-key=${M7_KEY:-m7defaultsecret}"}, "r"},
 	} {
 		var got strings.Builder
-		for _, k := range (&Found{}).argKinds(c.command, c.args) {
+		kinds, _ := (&Found{}).argKinds(c.command, c.args)
+		for _, k := range kinds {
 			got.WriteByte("prk"[k])
 		}
 		if got.String() != c.want {
@@ -691,6 +698,9 @@ func TestKeyedServerNeedsKeys(t *testing.T) {
 				}
 				return
 			}
+			if !strings.Contains(out.String(), "+ zap: ${MCP_ZAP_URL}") {
+				t.Errorf("the plan shows the remote address oddly:\n%s", out.String())
+			}
 			if !strings.Contains(conf, "${MCP_SHORTFLAG_ARG2}") || !strings.Contains(conf, "${MCP_ZAP_URL}") {
 				t.Errorf("config.yaml:\n%s", conf)
 			}
@@ -818,5 +828,21 @@ func TestSystemVarsNeverToSet(t *testing.T) {
 	f.finish()
 	if slices.Contains(f.Missing, "PATH") || !slices.Contains(f.Missing, "TOOL_KEY") {
 		t.Errorf("missing = %v", f.Missing)
+	}
+}
+
+// A runner given no package is not copied as it is: the command moves to
+// .env with the keys, like any other value.
+func TestRunnerWithoutPackage(t *testing.T) {
+	for _, c := range [][]any{{"npx", []any{"-y"}}, {"pipx", []any{"run"}}, {"uv", []any{"tool"}}} {
+		f := &Found{}
+		s := f.readMCP("r", map[string]any{"command": c[0], "args": c[1]}, map[string]string{}, map[string]bool{})
+		if s == nil || len(s.Keyed) == 0 || s.Command != "${MCP_R_COMMAND}" {
+			t.Errorf("%v = %+v; want it keyed", c, s)
+		}
+	}
+	kinds, noPkg := (&Found{}).argKinds("npx", []string{"-y", "pkg"})
+	if noPkg || len(kinds) != 2 {
+		t.Errorf("npx -y pkg: no package %v", noPkg)
 	}
 }

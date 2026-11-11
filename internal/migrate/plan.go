@@ -314,6 +314,8 @@ func (p *Plan) planConfig(cfg *config.Config, root *yaml.Node) bool {
 	for _, m := range f.MCP {
 		detail := m.Command
 		switch {
+		case strings.HasPrefix(m.URL, "${"):
+			detail = m.URL // the address is in .env
 		case m.URL != "":
 			detail = redactURL(m.URL)
 		case m.Project != "":

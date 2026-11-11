@@ -52,7 +52,7 @@ The imported sessions are history:
 
 - Your agent can search them with `session_search`. Results from them are marked as imported, and the agent is told they're reference material, not instructions. A turn whose search results include imported text counts as having read outside content, so its shell commands and writes outside the workspace ask you first. That stays true if the turn is picked up again after a restart. A search that finds only the agent's own chats doesn't count.
 - The background memory review never reads them, so nothing in them becomes a memory note or changes your profile on its own. Retros leave them out too: an old user's "no, that's wrong" isn't a correction of your agent.
-- A conversation from a group chat, an inbox or a webhook is marked untrusted.
+- A conversation is trusted only when it came from the old agent's terminal or a direct chat in a chat app where a person talks to it (Telegram, Discord, WhatsApp, Slack, Signal, Matrix, SMS, iMessage, Mattermost). Every other one is marked untrusted: group chats, inboxes, webhooks, notification topics such as ntfy, and anything else.
 - They show in `hk sessions`, marked `(imported, read-only)`, and on the dashboard's Sessions page. `hk show ID` and `hk sessions export ID` work on them.
 - No new message is ever added to them. To pick up an old topic, start a new session and ask the agent about it.
 - Retention never prunes them. To remove one, use `hk sessions rm ID`.
@@ -69,7 +69,7 @@ The plan shows how many conversations and messages each agent gets, and how many
 | MCP servers | `mcpServers` in `~/.claude.json`, and Claude Desktop's `claude_desktop_config.json` | `[mcp_servers]` in `config.toml` | `mcp_servers`, plus an `mcp:<name>` toolset on the agent |
 | Skills | `skills/`, following linked skill and category folders | `skills/`, and `~/.agents/skills` | shared skills |
 | Slash commands | `commands/` (`commands/git/commit.md` is `/git:commit`) | `prompts/` | a shared skill each (`git-commit`), saying what it was and how to use `$ARGUMENTS` |
-| Memory | each file in `projects/<project>/memory/` (marked untrusted: Claude Code wrote them from what each project held) | each file in `memories/` | one note each |
+| Memory | each file in `projects/<project>/memory/` (marked untrusted: Claude Code wrote them from what each project held) | each file in `memories/` (marked untrusted: Codex wrote them itself from past threads) | one note each |
 | Model | `model` in `settings.json`, when it's a full model id | `model` and `model_provider` in `config.toml` | the agent's `model` |
 
 Keys and sign-ins never move from a coding tool, not even with `--secrets copy`. The plan names the variables the imported config uses, such as `ANTHROPIC_API_KEY` or a server's token. Set them in `$HABAKKUK_HOME/.env` yourself. Habakkuk can't use a Claude subscription sign-in, so give it an API key with `hk setup model`. If Codex signs in with ChatGPT, the agent gets the ChatGPT sign-in, and you run `hk auth login chatgpt`.
@@ -101,10 +101,10 @@ A key can hide anywhere in a server's setup: a short flag's value, a token in a 
 
 A remote server, one with a URL, is never copied as it is. A local server is copied as it is only when its command is a bare program name or a path, and its arguments, apart from paths and variables, are exactly one of these:
 
-- a runner and one package: `npx`, `uvx` or `bunx`, or `pipx run` or `uv tool run`, followed by one package name, such as `@scope/server` or `server@1.2.0` (a version starts with a digit, or is `latest` or `next`);
+- a runner and one package: `npx`, `uvx` or `bunx`, or `pipx run` or `uv tool run`, followed by one package name, such as `@scope/server` or `server@1.2.0` (a version is digits and dots, with an optional `-` pre-release of letters, digits and dots, or `latest`). A runner with no package after it isn't copied as it is;
 - nothing at all, for a program that isn't a runner.
 
-The only flags allowed, anywhere, are `-y`, `--yes`, `-q`, `--quiet` and `--stdio`, which take no value. Any other flag, and the word after it, means the server isn't copied as it is.
+The only flags allowed, anywhere, are `-y`, `--yes`, `-q`, `--quiet` and `--stdio`, which take no value. Any other flag, and the word after it, means the server isn't copied as it is. The one exception is a flag whose value is a variable, such as `--token ${NOTION_TOKEN}` or `--token=${NOTION_TOKEN}`: it holds no value, so it stays as it is.
 
 A path here is absolute (or starts with `~/`), has no spaces, line breaks, `@` or `:`, and exists on this computer. A variable is an argument written as `${NAME}`, a flag set to one (`--token=${NAME}`), or any flag followed by one (`--token ${NAME}`): it holds no value, so it stays a variable in `config.yaml`, and its value moves the way keys do. A default, as in `${NAME:-value}`, becomes the variable's value when the old agent had none.
 

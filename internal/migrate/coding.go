@@ -555,7 +555,9 @@ func readCodex(dir string, o Options) (*Found, error) {
 	if err := r.commandsIn(filepath.Join(dir, "prompts"), "custom prompt"); err != nil {
 		return nil, err
 	}
-	if err := r.memoryFiles(filepath.Join(dir, "memories"), "codex"); err != nil {
+	// Codex writes these itself from past threads, from whatever those
+	// held: they come in untrusted.
+	if err := r.memoryFrom(filepath.Join(dir, "memories"), true, "codex"); err != nil {
 		return nil, err
 	}
 	if p := o.Project; p != "" {

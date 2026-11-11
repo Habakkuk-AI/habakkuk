@@ -138,8 +138,15 @@ func (l *Library) List(agent string) ([]Skill, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := scan(dir, false, byName); err != nil {
+	own := map[string]Skill{}
+	if err := scan(dir, false, own); err != nil {
 		return nil, err
+	}
+	for n, s := range own {
+		if l.Disabled(s) {
+			continue // held: it does not hide a shared skill of the same name
+		}
+		byName[n] = s
 	}
 	out := make([]Skill, 0, len(byName))
 	for _, s := range byName {
@@ -213,6 +220,7 @@ func (l *Library) get(agent, name string) (Skill, string, error) {
 	for _, x := range l.Extra {
 		roots = append(roots, root{x, true, true})
 	}
+	var held error
 	for _, c := range roots {
 		s, body, err := load(filepath.Join(c.dir, name))
 		if err == nil {
@@ -222,13 +230,21 @@ func (l *Library) get(agent, name string) (Skill, string, error) {
 				if !s.Shared {
 					how = "hk skills approve -agent " + agent + " " + name
 				}
-				return Skill{}, "", fmt.Errorf("skill %q is disabled: it came from outside and is not approved yet (the owner can run %s)", name, how)
+				err := fmt.Errorf("skill %q is disabled: it came from outside and is not approved yet (the owner can run %s)", name, how)
+				if s.Shared {
+					return Skill{}, "", err
+				}
+				held = err // the agent's held copy does not hide a shared skill
+				continue
 			}
 			return s, body, nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return Skill{}, "", err
 		}
+	}
+	if held != nil {
+		return Skill{}, "", held
 	}
 	return Skill{}, "", fmt.Errorf("no skill %q", name)
 }

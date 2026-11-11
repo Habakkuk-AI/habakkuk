@@ -212,6 +212,11 @@ func unixTime(v float64) time.Time {
 var (
 	unvettedSources = []string{"email", "gmail", "webhook", "msgraph_webhook", "api_server", "hook"}
 	directChats     = []string{"", "dm", "direct", "private"}
+	// personSources are the Hermes Agent platforms where a person talks to
+	// the agent directly: its terminal and the chat apps with a sender
+	// allowlist. A session from any other platform is untrusted.
+	personSources = []string{"cli", "local", "tui", "telegram", "discord", "whatsapp", "whatsapp_cloud", "slack", "signal",
+		"matrix", "sms", "bluebubbles", "mattermost"}
 )
 
 // hermesHistory lists the sessions in one home's state.db, with how many
@@ -275,8 +280,35 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 	if mc["message_uid"] {
 		uid = "COALESCE(message_uid, '')"
 	}
+	// The plan's count is what the import will write: each turn once, no
+	// summaries, and not the turns a compaction carried into a child
+	// session from the one it continues.
+	countKey := key
+	byContentSQL := !mc["message_uid"] && !mc["display_order"]
+	if byContentSQL {
+		countKey = "role || char(0) || content || char(0) || CAST(" + col(mc, "timestamp", "0") + " AS TEXT)"
+	}
+	countWhere := shown + ` AND content NOT LIKE '[CONTEXT COMPACTION%' AND content NOT LIKE '[CONTEXT SUMMARY]%'`
+	countSQL := `SELECT session_id, count(DISTINCT ` + countKey + `) FROM messages m WHERE ` + countWhere + ` GROUP BY session_id`
+	if sc["parent_session_id"] {
+		match := "p.message_uid = m.message_uid"
+		if byContentSQL {
+			match = "p.role = m.role AND p.content = m.content"
+			if mc["timestamp"] {
+				match += " AND p.timestamp = m.timestamp"
+			}
+		}
+		if mc["message_uid"] || byContentSQL {
+			countSQL = `WITH RECURSIVE anc(sid, aid) AS (
+				SELECT id, parent_session_id FROM sessions WHERE COALESCE(parent_session_id, '') != ''
+				UNION SELECT anc.sid, s.parent_session_id FROM anc JOIN sessions s ON s.id = anc.aid WHERE COALESCE(s.parent_session_id, '') != '')
+			SELECT session_id, count(DISTINCT ` + countKey + `) FROM messages m WHERE ` + countWhere + `
+				AND NOT EXISTS (SELECT 1 FROM anc JOIN messages p ON p.session_id = anc.aid WHERE anc.sid = m.session_id AND ` + match + `)
+			GROUP BY session_id`
+		}
+	}
 	counts := map[string]int{}
-	rows, err := db.QueryContext(ctx, `SELECT session_id, count(DISTINCT `+key+`) FROM messages WHERE `+shown+` GROUP BY session_id`)
+	rows, err := db.QueryContext(ctx, countSQL)
 	if err != nil {
 		f.skip("the conversations in %s: %v", path, err)
 		return
@@ -333,7 +365,7 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 		}
 		f.conversation(a, &Conversation{
 			ID: a.From + "/" + id, Title: title, Started: unixTime(started), Platform: src, Chat: chat, Thread: thread,
-			Untrusted: slices.Contains(unvettedSources, strings.ToLower(src)) || !slices.Contains(directChats, strings.ToLower(chatType)) || author != "",
+			Untrusted: !slices.Contains(personSources, strings.ToLower(src)) || !slices.Contains(directChats, strings.ToLower(chatType)) || author != "",
 			Count:     counts[id],
 			load: func() ([]session.ImportedMessage, bool, error) {
 				seen := map[string]bool{}
@@ -908,9 +940,9 @@ func transcriptLine(line []byte) (msg session.ImportedMessage, other, ok bool) {
 // metadata, so they are taken out. When the text does not fall apart that
 // way for certain, none of it is taken as the user's words.
 var (
-	reLabelLine = regexp.MustCompile(`^(Conversation info|Sender|Thread starter|Reply chain of current user message|Reply target of current user message|Replied message|Forwarded message context|Forwarded message|Location|Structured object|Untrusted context|Chat history since last reply|Recent chat history|Conversation context|Current message|Context)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$|^[^\n]{1,80}\(untrusted[^)]*\):\s*(⟦[^⟧]*⟧)?\s*$|⟦[^⟧]*ctx⟧`)
+	reLabelLine = regexp.MustCompile(`(?i)^(Conversation info|Sender|Thread starter|Reply chain of current user message|Reply target of current user message|Replied message|Forwarded message context|Forwarded message|Location|Structured object|Untrusted context|Chat history since last reply|Recent chat history|Conversation context|Current message|Context)\b[^\n]*:\s*(⟦[^⟧]*⟧)?\s*$|^[^\n]{1,80}\(untrusted[^)]*\):\s*(⟦[^⟧]*⟧)?\s*$|⟦[^⟧]*ctx⟧`)
 	reStamp     = regexp.MustCompile(`^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}[^\]]*\] *`)
-	reReplying  = regexp.MustCompile(`^\[Replying to: "(?:[^"\\]|\\.)*"\] ?(.*)$`)
+	reReplying  = regexp.MustCompile(`(?i)^\[Replying to: "(?:[^"\\]|\\.)*"\] ?(.*)$`)
 	reMsgHeader = regexp.MustCompile(`^#\S+: ?(.*)$`)
 )
 
@@ -918,7 +950,8 @@ var (
 // counts only with the marker the gateway adds to it.
 func isLabel(line string) bool {
 	line = strings.TrimSpace(line)
-	if strings.HasPrefix(line, "Context") && !strings.Contains(line, "⟦") && !strings.Contains(line, "untrusted") {
+	low := strings.ToLower(line)
+	if strings.HasPrefix(low, "context") && !strings.Contains(line, "⟦") && !strings.Contains(low, "untrusted") {
 		return false
 	}
 	return reLabelLine.MatchString(line)
@@ -934,14 +967,16 @@ func stripInbound(text string) (string, bool) {
 	stamp := reStamp.FindString(t)
 	t = strings.TrimPrefix(t, stamp)
 	// The older envelope: the chat since the last reply under one bracketed
-	// marker, then the message itself under another.
-	if i := strings.Index(t, currentMarker); i >= 0 {
+	// marker, then the message itself under another. The last current
+	// marker counts, so one forged inside the history cannot pass others'
+	// lines off as the user's.
+	low := strings.ToLower(t)
+	if i := strings.LastIndex(low, strings.ToLower(currentMarker)); i >= 0 {
 		return strings.TrimSpace(t[i+len(currentMarker):]), true
 	}
-	if strings.Contains(t, historyMarker) {
+	if strings.Contains(low, strings.ToLower(historyMarker)) {
 		return "", true // the history with no marked message after it
 	}
-	low := strings.ToLower(t)
 	if !strings.ContainsRune(t, '⟦') && !strings.Contains(low, "untrusted") && !strings.Contains(low, "current message") &&
 		!strings.Contains(low, "conversation context") && !strings.Contains(low, "chat history") && !strings.Contains(low, "chat messages") {
 		return text, false
@@ -956,7 +991,7 @@ func stripInbound(text string) (string, bool) {
 			break
 		}
 		found = true
-		if strings.HasPrefix(strings.TrimSpace(lines[0]), "Current message") {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(lines[0])), "current message") {
 			// A reply's block, joined to the user's text by a space on its
 			// last line.
 			last := strings.TrimSpace(lines[len(lines)-1])

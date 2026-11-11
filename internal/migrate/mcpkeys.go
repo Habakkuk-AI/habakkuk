@@ -17,7 +17,9 @@ import (
 //
 //   - a runner and one package: npx, uvx or bunx, or pipx run or uv tool
 //     run, followed by one package name such as @scope/server@1.2 (a
-//     version starts with a digit, or is latest or next);
+//     version is digits and dots with an optional "-" pre-release of
+//     letters, digits and dots, or latest); a runner with no package is not
+//     copied as it is;
 //   - nothing at all, for a program that is not a runner;
 //
 // with, anywhere, only these flags, which take no value: -y, --yes, -q,
@@ -42,7 +44,7 @@ import (
 
 var (
 	reProgram    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-	rePackage    = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|next|[0-9][0-9a-z.+-]*))?$`)
+	rePackage    = regexp.MustCompile(`^@?[a-z0-9][a-z0-9._-]*(/[a-z0-9._-]+)?(@(latest|[0-9]+(\.[0-9]+)*(-[A-Za-z0-9.]+)?))?$`)
 	reRefOnly    = regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
 	reFlagRef    = regexp.MustCompile(`^(--?[A-Za-z][A-Za-z0-9_-]*=)\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
 	reHeader     = regexp.MustCompile(`^((Bearer|Basic|Token)\s+)?\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}$`)
@@ -72,11 +74,13 @@ const (
 	argKeyed // anything else: moves into a variable
 )
 
-// argKinds sorts a local server's arguments (see above).
-func (f *Found) argKinds(command string, args []string) []int {
+// argKinds sorts a local server's arguments (see above). noPackage reports
+// a runner given no package to run.
+func (f *Found) argKinds(command string, args []string) (kinds []int, noPackage bool) {
 	base := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(filepath.Base(command), ".exe"), ".cmd"))
 	sub := runnerSubcmd[base]
 	wantPkg := slices.Contains(pkgRunners, base)
+	runner := wantPkg || len(sub) > 0
 	pkgSeen := false
 	out := make([]int, len(args))
 	for i := 0; i < len(args); i++ {
@@ -111,7 +115,7 @@ func (f *Found) argKinds(command string, args []string) []int {
 			out[i] = argKeyed
 		}
 	}
-	return out
+	return out, runner && !pkgSeen
 }
 
 // readMCP turns one server definition (the same shape in every source:
@@ -169,10 +173,11 @@ func (f *Found) readMCP(raw string, m map[string]any, env map[string]string, use
 		f.secret(variable, v)
 	}
 	if s.Command != "" {
-		if !f.plainCommand(s.Command) {
+		kinds, noPackage := f.argKinds(s.Command, s.Args)
+		if !f.plainCommand(s.Command) || noPackage {
 			s.Command = keyed(prefix+"COMMAND", s.Command)
 		}
-		for i, kind := range f.argKinds(s.Command, s.Args) {
+		for i, kind := range kinds {
 			switch kind {
 			case argRef:
 				if sub := reRefOnly.FindStringSubmatch(s.Args[i]); sub != nil {

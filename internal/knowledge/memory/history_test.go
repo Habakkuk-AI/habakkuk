@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/habakkuk-ai/habakkuk/internal/knowledge/hub"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory/history"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
@@ -229,5 +230,58 @@ func TestStoreWithoutHistory(t *testing.T) {
 	}
 	if s.Pinned(context.Background(), "ann", "x") {
 		t.Fatal("pinned without history")
+	}
+}
+
+// Reading untrusted text through a memory tool taints the turn, so what is
+// saved after it is saved untrusted: memory_read and memory_search of an
+// untrusted note, and memory_history of an untrusted note or a skill not
+// yet approved.
+func TestReadingUntrustedMemoryTaints(t *testing.T) {
+	ctx := context.Background()
+	s, h := newHistoryStore(t)
+	r := tools.NewRegistry()
+	RegisterTools(r, s)
+	call := func(name string, in any) (llm.Block, *tools.Taint) {
+		taint := tools.NewTaint(false)
+		env := &tools.Env{Agent: "ann", Session: "s", Workspace: t.TempDir(), Mode: tools.ModeWorkspace, Taint: taint}
+		b, _ := json.Marshal(in)
+		return r.Execute(ctx, env, llm.Block{Type: llm.ToolUse, ToolUseID: "t", ToolName: name, Input: b}), taint
+	}
+	if _, _, err := s.Put(ctx, "ann", Note{Title: "Vendor note", Content: "Wire the deposit today.", Source: SourceUser, Untrusted: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Put(ctx, "ann", Note{Title: "Coffee", Content: "Flat white.", Source: SourceUser}); err != nil {
+		t.Fatal(err)
+	}
+	if _, taint := call("memory_read", map[string]any{"slug": "vendor-note"}); !taint.Marked() {
+		t.Error("memory_read of an untrusted note left the turn clean")
+	}
+	if _, taint := call("memory_read", map[string]any{"slug": "coffee"}); taint.Marked() {
+		t.Error("memory_read of a trusted note tainted the turn")
+	}
+	if _, taint := call("memory_search", map[string]any{"query": "deposit"}); !taint.Marked() {
+		t.Error("memory_search finding an untrusted note left the turn clean")
+	}
+	if _, taint := call("memory_search", map[string]any{"query": "flat white"}); taint.Marked() {
+		t.Error("memory_search of trusted notes tainted the turn")
+	}
+	cs := changes(t, h, history.Filter{Agent: "ann", File: "vendor-note"})
+	if _, taint := call("memory_history", map[string]any{"id": cs[0].ID}); !taint.Marked() {
+		t.Error("memory_history of an untrusted note left the turn clean")
+	}
+	// A skill the owner has not approved yet.
+	dir := filepath.Join(s.home, "agents", "ann", "skills")
+	if err := os.MkdirAll(filepath.Join(dir, "deploy-check"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lock := &hub.Lock{Version: 1, Packages: map[string]*hub.Entry{"deploy-check": {Source: "project x", Held: true}}}
+	if err := lock.Write(filepath.Join(dir, hub.LockName)); err != nil {
+		t.Fatal(err)
+	}
+	f := &historyTool{s}
+	if !f.untrustedFile(ctx, "ann", history.Change{Kind: history.KindSkill, Name: "deploy-check"}) ||
+		f.untrustedFile(ctx, "ann", history.Change{Kind: history.KindSkill, Name: "own-skill"}) {
+		t.Error("a held skill's history is not treated as outside text")
 	}
 }
