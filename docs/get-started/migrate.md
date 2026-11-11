@@ -368,8 +368,8 @@ It works for Hermes Agent and OpenClaw. Claude Code and Codex don't run in the b
 
 The import plan and `hk migrate finish` both show what of the old agent still runs. They only read, and they look at:
 
-- its processes: the gateway, workers, a scheduler and channel bridges such as Hermes Agent's WhatsApp bridge;
-- its services: systemd user and system units, launchd agents on macOS, and scheduled tasks and Startup folder launchers on Windows;
+- its processes: the gateway, workers, a scheduler, its dashboard and channel bridges such as Hermes Agent's WhatsApp bridge;
+- its services: systemd user and system units, the systemd scopes its workers run in, launchd agents on macOS, and scheduled tasks and Startup folder launchers on Windows;
 - its pid and lock files, so a process still counts when the process list doesn't show it plainly;
 - its own schedules that are still on.
 
@@ -379,37 +379,39 @@ You get one line, for example:
 Hermes Agent is still running: gateway (systemd hermes-gateway), 1 worker, 37 active schedules
 ```
 
+Only your own processes count, never another user's. A process also has to be tied to the home you're moving from. It's tied when its command line or working folder names a path in that home, when its `HERMES_HOME` (or `OPENCLAW_STATE_DIR` or OpenClaw profile) is that home, when it runs a profile of that home, when its pid file is there, when it runs under one of that home's services, or when its parent is tied. A process with no `HERMES_HOME` uses the default home. When a process looks like the old agent but can't be tied to this home, for example because its environment can't be read, it's listed as one that may be the old agent's. It's never stopped for you.
+
 The plan also names each channel both agents would use: the same Telegram, Slack or Discord token, which only one program at a time can poll, or a WhatsApp number that's still linked in the old agent. Token values are never shown, only the channel.
 
 ### What it changes
 
 Once you say yes, `hk migrate finish` does these steps in order:
 
-1. It sets Hermes Agent's own pause switch (its `ESTOP` file), so the old agent starts no new run, even if a process of it comes back later. OpenClaw has no such switch.
+1. It sets Hermes Agent's own pause switch (an `ESTOP` file) in the home and in each profile, so the old agent starts no new run, even if a process of it comes back later. OpenClaw has no such switch.
 2. It stops and disables the old agent's services, so they don't start again at login or after a crash. A system unit needs an administrator, so it prints the `sudo systemctl` command for you to run instead.
-3. It stops the processes that still run. Each one is asked to stop first. If it hasn't ended after ten seconds, it's forced.
+3. It stops the systemd scopes its workers run in, then the processes that still run and are tied to the home. Each process is asked to stop first. If it hasn't ended after ten seconds, it's forced.
 4. It pauses the old agent's schedules in the old agent's own store: `cron/jobs.json` for Hermes Agent, the schedule database for OpenClaw. They're paused, never deleted. Hermes Agent's jobs get the same pause marker its own `hermes cron pause` gives them, and a copy of `jobs.json` is kept as `jobs.json.before-habakkuk`.
 5. It resumes the imported schedules that match the ones the old agent was running. A schedule that was off there stays paused here.
 
-It won't do step 5 while the old agent's scheduler still runs. That happens when a service is supervised by something it can't stop, or when only an administrator can stop it. You'll see what's still running. Stop it, then run `hk migrate finish` again. If you'd rather resume the imported schedules anyway, run `hk migrate finish --force`. A schedule that's on in both agents then runs twice until you stop the old one. Step 4 always waits until the old scheduler is stopped, because a running scheduler can write over the change.
+It won't do step 5 while the old agent's scheduler still runs, or while a process that may be its scheduler runs. That happens when a service is supervised by something it can't stop, when only an administrator can stop it, or when a process can't be tied to the home. You'll see what's still running. Stop it, then run `hk migrate finish` again. It won't do step 5 either when it can't see what runs, for example when the process list can't be read. Check by hand that the old agent has stopped. If you'd rather resume the imported schedules anyway, run `hk migrate finish --force`. A schedule that's on in both agents then runs twice until you stop the old one. Step 4 always waits until the old agent is known to be stopped, because a running scheduler can write over the change.
 
-Every change is written to `$HABAKKUK_HOME/migrate/cutover-<source>.json` as it happens, so a run that stops halfway still has a full record. Running `hk migrate finish` again picks up where it left off, and once everything is done it changes nothing.
+Each change is written to `$HABAKKUK_HOME/migrate/cutover-<source>.json` and flushed to disk before it's made, then marked done. If the record can't be written, the change isn't made and `finish` stops. So a run that stops at any point, even a crash, leaves a record of everything it may have changed. Running `hk migrate finish` again picks up where it left off, and once everything is done it changes nothing.
 
 The WhatsApp session stays linked in the old agent. Its bridge is stopped, so it no longer answers. When you're happy with Habakkuk, unlink the old device from **Linked devices** on your phone.
 
 ### Undo it
 
-`hk migrate rollback` reads the record and undoes it, newest change first:
+`hk migrate rollback` reads the record and undoes it, newest change first, including changes a stopped run left unfinished:
 
 - it pauses the imported schedules again, before the old agent starts;
-- it turns the old agent's schedules back on (a job you paused yourself since then stays paused);
-- it enables and starts its services again, and removes the pause switch it set.
+- it puts each of the old agent's schedules back exactly as it was, field for field. A schedule you changed since `finish` paused it stays as you left it;
+- it puts its services back as they were: it enables only the ones that were enabled and starts only the ones that were running. It also removes the pause switches it set.
 
-A process that ran outside any service, such as a gateway you started in a terminal, can't be started again for you. Rollback prints the command line it had, so you can start it the way you did before. When every step is undone, the record is kept as `cutover-<source>.rolled-back-<time>.json`.
+A process that ran outside any service, such as a gateway you started in a terminal or a worker, can't be started again for you. Rollback lists each one with the command line it had, so you can start it the way you did before. That doesn't hold the rollback open. Each step is marked undone as it's done. When a step can't be undone, the record stays, and running `hk migrate rollback` again tries only what's left. It never starts a service twice. When every step is undone, the record is kept as `cutover-<source>.rolled-back-<time>.json`.
 
 ### hk doctor
 
-`hk doctor` warns when the old agent still runs next to Habakkuk. It reports a problem when the old agent's scheduler runs and a schedule is on in both agents, and when the old agent runs and uses a channel Habakkuk uses too. Each line ends with the fix, `hk migrate finish --from hermes` or `--from openclaw`.
+`hk doctor` warns when the old agent still runs next to Habakkuk. It reports a problem when the old agent's scheduler runs and a schedule is on in both agents. It also reports one when the old agent's gateway, scheduler or WhatsApp bridge runs and uses a channel Habakkuk uses too. Its dashboard alone polls no channel, so it doesn't count for that. Each line ends with the fix, `hk migrate finish --from hermes` or `--from openclaw`.
 
 ## Running it again
 
