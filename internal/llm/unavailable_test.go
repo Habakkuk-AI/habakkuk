@@ -101,15 +101,15 @@ func TestNoKeySetIsNamed(t *testing.T) {
 func TestUnavailableNoticeOncePerOutage(t *testing.T) {
 	r := newRouter(ep("deepseek", &scripted{}, "k"))
 	key := "unavailable:deepseek=billing"
-	if !r.UnavailableNotice(key) {
+	if !r.UnavailableNotice(key, "chat") {
 		t.Fatal("the first notice should be given")
 	}
-	if r.UnavailableNotice(key) {
+	if r.UnavailableNotice(key, "chat") {
 		t.Fatal("the same outage was told twice")
 	}
 	// A notice a day old is given again.
-	r.told[key] = time.Now().Add(-unavailableAgain - time.Minute)
-	if !r.UnavailableNotice(key) {
+	r.told[key+"\x00chat"] = time.Now().Add(-unavailableAgain - time.Minute)
+	if !r.UnavailableNotice(key, "chat") {
 		t.Fatal("a day-old notice should be given again")
 	}
 	// Another provider working doesn't end deepseek's outage.
@@ -117,14 +117,89 @@ func TestUnavailableNoticeOncePerOutage(t *testing.T) {
 	if _, err := r.Send(context.Background(), []Target{{"chatgpt", "gpt"}}, Request{}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if r.UnavailableNotice(key) {
+	if r.UnavailableNotice(key, "chat") {
 		t.Fatal("chatgpt working ended deepseek's outage")
 	}
 	// Deepseek working again does: the next outage is told at once.
 	if _, err := r.Send(context.Background(), []Target{{"deepseek", "flash"}}, Request{}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if !r.UnavailableNotice(key) {
+	if !r.UnavailableNotice(key, "chat") {
 		t.Fatal("after deepseek recovered, a new outage should be told")
+	}
+}
+
+func TestKeysEmptyAndRevokedStayAnOutage(t *testing.T) {
+	// k1 is out of credit, k2 was revoked: both calls name the provider
+	// the same way, never "cooling down".
+	r := newRouter(ep("deepseek", &scripted{results: []error{outOfCredit(), &APIError{Status: 401, Message: "revoked"}}}, "k1", "k2"))
+	var keys []string
+	for range 2 {
+		_, err := r.Send(context.Background(), []Target{{"deepseek", "flash"}}, Request{}, nil)
+		ue := new(UnavailableError)
+		if !errors.As(err, &ue) || !strings.Contains(ue.Message, "deepseek is out of credit") {
+			t.Fatalf("err = %v", err)
+		}
+		keys = append(keys, ue.Key)
+	}
+	if keys[0] != keys[1] {
+		t.Fatalf("keys differ: %q", keys)
+	}
+}
+
+func TestRateLimitedKeyIsNoOutage(t *testing.T) {
+	// k1 is only rate limited and k2 is out of credit: k1 is back in a
+	// minute, so this is retried, whichever key is tried first.
+	for _, results := range [][]error{
+		{&APIError{Status: 429, Message: "slow down"}, outOfCredit()},
+		{outOfCredit(), &APIError{Status: 429, Message: "slow down"}},
+	} {
+		r := newRouter(ep("deepseek", &scripted{results: results}, "k1", "k2"))
+		_, err := r.Send(context.Background(), []Target{{"deepseek", "flash"}}, Request{}, nil)
+		if err == nil || errors.As(err, new(*UnavailableError)) || jobs.IsPermanent(err) {
+			t.Fatalf("results %v: err = %v, want a retryable error", results, err)
+		}
+	}
+}
+
+func TestLoginRefreshFailureIsNoOutage(t *testing.T) {
+	r := newRouter(&Endpoint{Name: "chatgpt", Provider: &scripted{}, Credentials: []Credential{{Name: "login",
+		Token: func(context.Context) (string, error) {
+			return "", errors.New("chatgpt: refresh: 503 Service Unavailable")
+		}}}})
+	_, err := r.Send(context.Background(), []Target{{"chatgpt", "gpt"}}, Request{}, nil)
+	if err == nil || errors.As(err, new(*UnavailableError)) || jobs.IsPermanent(err) {
+		t.Fatalf("err = %v, want a retryable error", err)
+	}
+}
+
+func TestSameProviderTwiceInAChain(t *testing.T) {
+	// Out of credit on one model, a rejected key on the other: billing
+	// names it, whichever comes first.
+	for _, results := range [][]error{
+		{outOfCredit(), &APIError{Status: 401, Message: "no access to this model"}},
+		{&APIError{Status: 401, Message: "no access to this model"}, outOfCredit()},
+	} {
+		r := newRouter(ep("deepseek", &scripted{results: results}, "k"))
+		// Each model needs its own key here, or the first refusal sets
+		// the only key aside; two endpoints of one name can't exist, so
+		// use two keys.
+		r.Endpoints["deepseek"].Credentials = []Credential{{Name: "k1", Key: "k1"}, {Name: "k2", Key: "k2"}}
+		_, err := r.Send(context.Background(), []Target{{"deepseek", "flash"}, {"deepseek", "pro"}}, Request{}, nil)
+		ue := new(UnavailableError)
+		if !errors.As(err, &ue) || ue.Key != "unavailable:deepseek=billing" {
+			t.Fatalf("results %v: err = %v", results, err)
+		}
+	}
+}
+
+func TestUnavailableNoticePerChat(t *testing.T) {
+	r := newRouter()
+	key := "unavailable:deepseek=billing"
+	if !r.UnavailableNotice(key, "chat 100") || !r.UnavailableNotice(key, "chat 200") {
+		t.Fatal("each chat should be told once")
+	}
+	if r.UnavailableNotice(key, "chat 100") || r.UnavailableNotice(key, "chat 200") {
+		t.Fatal("a chat was told twice")
 	}
 }

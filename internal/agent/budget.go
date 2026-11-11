@@ -41,12 +41,15 @@ func (r *Runner) BudgetNotice(be *llm.BudgetError) bool {
 	return r.Budget.Notice(be.Key)
 }
 
-// UnavailableNotice reports whether background work should tell the user
-// that no model could take a call (credit or keys): once per outage, as
-// the router keeps count (llm.Router.UnavailableNotice).
-func (r *Runner) UnavailableNotice(ue *llm.UnavailableError) bool {
-	if n, ok := r.Models.(interface{ UnavailableNotice(key string) bool }); ok {
-		return n.UnavailableNotice(ue.Key)
+// UnavailableNotice reports whether background work should tell the chat
+// named by where that no model could take a call (credit or keys): once
+// per outage and chat, as the router keeps count
+// (llm.Router.UnavailableNotice).
+func (r *Runner) UnavailableNotice(ue *llm.UnavailableError, where string) bool {
+	if n, ok := r.Models.(interface {
+		UnavailableNotice(key, where string) bool
+	}); ok {
+		return n.UnavailableNotice(ue.Key, where)
 	}
 	return true
 }

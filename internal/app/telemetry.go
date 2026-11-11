@@ -144,13 +144,12 @@ func observeJob(m *telemetry.Metrics, kind string, h jobs.Handler) jobs.Handler 
 
 // jobOutcome mirrors what the pool does with a handler's result.
 func jobOutcome(ctx context.Context, j *jobs.Job, err error) string {
-	var perm jobs.Permanent
 	switch {
 	case err == nil:
 		return "done"
 	case ctx.Err() != nil, errors.Is(err, jobs.ErrLeaseLost):
 		return "lost" // shutdown or a lost lease: another run picks it up
-	case errors.As(err, &perm), j.Attempts >= j.MaxAttempts:
+	case jobs.IsPermanent(err), j.Attempts >= j.MaxAttempts:
 		return "failed"
 	}
 	return "retry"

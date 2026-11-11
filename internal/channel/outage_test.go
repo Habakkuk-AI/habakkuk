@@ -32,13 +32,13 @@ func (b *broke) Send(context.Context, []llm.Target, llm.Request, func(llm.Event)
 	}
 }
 
-func (b *broke) UnavailableNotice(key string) bool {
+func (b *broke) UnavailableNotice(key, where string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.told[key] {
+	if b.told[key+" "+where] {
 		return false
 	}
-	b.told[key] = true
+	b.told[key+" "+where] = true
 	return true
 }
 
@@ -99,4 +99,38 @@ func TestOutageToldOncePerScheduleChat(t *testing.T) {
 
 	run("are you there?", false)
 	waitFor(t, "the reply to the user's own message", func() bool { n, _ := failures(); return n == 2 })
+}
+
+// Each chat a schedule reports to is told about the outage once: a second
+// schedule's chat isn't left out because the first was told.
+func TestOutageToldToEachChat(t *testing.T) {
+	r := newRig(t, &config.Channel{AllowFrom: []string{"*"}})
+	ctx := context.Background()
+	b := &broke{told: map[string]bool{}}
+	r.g.Runner.Models = b
+	sess, err := r.g.Runner.NewSession(ctx, "habakkuk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, chat := range []string{"100", "200", "100"} {
+		origin, _ := json.Marshal(Address{Account: "tg", Conversation: chat})
+		if _, err := r.g.Runner.SubmitTurn(ctx, agent.Turn{Session: sess.ID, Text: "check", Origin: origin,
+			Background: true, Source: agent.SourceSchedule}); err != nil {
+			t.Fatal(err)
+		}
+		r.g.Wake()
+	}
+	waitFor(t, "all three runs", func() bool { b.mu.Lock(); defer b.mu.Unlock(); return b.calls == 3 })
+	time.Sleep(200 * time.Millisecond)
+	got := map[string]int{}
+	r.a.mu.Lock()
+	for _, s := range r.a.sent {
+		if strings.Contains(s.Text, "out of credit") {
+			got[s.To.Conversation]++
+		}
+	}
+	r.a.mu.Unlock()
+	if got["100"] != 1 || got["200"] != 1 {
+		t.Fatalf("notices per chat = %v, want one each", got)
+	}
 }

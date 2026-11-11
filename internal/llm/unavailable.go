@@ -31,6 +31,13 @@ func (e *UnavailableError) Permanent() bool { return true }
 // the same providers stay refused, background work says so again after it.
 const unavailableAgain = 24 * time.Hour
 
+// refreshError is a login whose token couldn't be refreshed. It counts as
+// an auth failure for falling back, but never as an outage: the login
+// server may only be down for a moment.
+type refreshError struct{ error }
+
+func (e refreshError) Unwrap() error { return e.error }
+
 // refusals collects, for one Send, the providers that refused the call for
 // credit or a rejected key, in chain order.
 type refusals struct {
@@ -47,10 +54,15 @@ func (f *refusals) add(endpoint string, k ErrorKind) {
 	if f.kind == nil {
 		f.kind = map[string]ErrorKind{}
 	}
-	if _, seen := f.kind[endpoint]; !seen {
+	prev, seen := f.kind[endpoint]
+	if !seen {
 		f.order = append(f.order, endpoint)
 	}
-	f.kind[endpoint] = k
+	// One provider can appear twice in a chain. Billing names it if
+	// either time said so, so the answer doesn't depend on chain order.
+	if prev != ErrBilling {
+		f.kind[endpoint] = k
+	}
 }
 
 // err is the error that ends a Send: an UnavailableError when every model
@@ -88,51 +100,53 @@ func andList(s []string) string {
 }
 
 // noCredentials is the error for an endpoint none of whose credentials can
-// be used now. When every one of them is set aside for the same reason,
-// the error says which (credit or a rejected key) and classifies as that,
-// so the turn's message doesn't call an empty account a rate limit.
+// be used now. When every one of them is set aside for credit or a
+// rejected key, the error says so and classifies that way (billing if any
+// key is out of credit), so an empty account isn't called a rate limit.
+// If any key is set aside for another reason, such as a rate limit, it's
+// the usual cooling-down error, which is retried.
 func (r *Router) noCredentials(ep *Endpoint) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var kind ErrorKind
-	same, configured := true, 0
+	configured, billing, auth := 0, 0, 0
 	for _, c := range ep.Credentials {
 		if c.Key == "" && c.Token == nil {
 			continue
 		}
 		configured++
-		k := r.coolKind[ep.Name+"/"+c.Name]
-		if configured == 1 {
-			kind = k
-		} else if k != kind {
-			same = false
+		switch r.coolKind[ep.Name+"/"+c.Name] {
+		case ErrBilling:
+			billing++
+		case ErrAuth:
+			auth++
 		}
 	}
 	switch {
 	case configured == 0:
 		return &APIError{Status: 401, Message: ep.Name + " has no key or login set"}
-	case same && kind == ErrBilling:
+	case billing+auth < configured:
+		return &APIError{Status: 429, Message: "all credentials cooling down for " + ep.Name}
+	case billing > 0:
 		return &APIError{Status: 402, Message: ep.Name + " is out of credit (its keys are set aside for now)"}
-	case same && kind == ErrAuth:
-		return &APIError{Status: 401, Message: ep.Name + " turned down every key or login (set aside for now)"}
 	}
-	return &APIError{Status: 429, Message: "all credentials cooling down for " + ep.Name}
+	return &APIError{Status: 401, Message: ep.Name + " turned down every key or login (set aside for now)"}
 }
 
 // UnavailableNotice reports whether background work (a schedule, a board
-// card) should tell the user about an outage, named by an
-// UnavailableError's Key, and marks it told. It's true the first time, then
-// again only after a day while the outage lasts. A successful call to any
-// of its providers ends the outage, so the next one is told at once. The
-// record is kept in memory: a restart tells once more.
-func (r *Router) UnavailableNotice(key string) bool {
+// card) should tell the chat named by where about an outage, named by an
+// UnavailableError's Key, and marks it told. Each chat is told the first
+// time, then again only after a day while the outage lasts. A successful
+// call to any of its providers ends the outage, so the next one is told at
+// once. The record is kept in memory: a restart tells once more.
+func (r *Router) UnavailableNotice(key, where string) bool {
 	r.defaults()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if at, ok := r.told[key]; ok && time.Since(at) < unavailableAgain {
+	k := key + "\x00" + where
+	if at, ok := r.told[k]; ok && time.Since(at) < unavailableAgain {
 		return false
 	}
-	r.told[key] = time.Now()
+	r.told[k] = time.Now()
 	return true
 }
 
@@ -141,10 +155,11 @@ func (r *Router) UnavailableNotice(key string) bool {
 func (r *Router) recovered(endpoint string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for key := range r.told {
+	for told := range r.told {
+		key, _, _ := strings.Cut(told, "\x00")
 		for _, part := range strings.Split(strings.TrimPrefix(key, "unavailable:"), ",") {
 			if name, _, _ := strings.Cut(part, "="); name == endpoint {
-				delete(r.told, key)
+				delete(r.told, told)
 				break
 			}
 		}

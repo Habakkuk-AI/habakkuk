@@ -681,8 +681,9 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 		}
 		if jobs.IsPermanent(err) || j.Attempts >= j.MaxAttempts {
 			// No model could take the call (credit or keys): background work
-			// says so once per outage, not on every run.
-			if ue := new(llm.UnavailableError); errors.As(err, &ue) && p.Background && !g.Runner.UnavailableNotice(ue) {
+			// tells each chat once per outage, not on every run.
+			if ue := new(llm.UnavailableError); errors.As(err, &ue) && p.Background &&
+				!g.Runner.UnavailableNotice(ue, to.Account+"\x00"+to.Conversation+"\x00"+to.Thread) {
 				g.Log.Info("model outage already reported; failure not sent", "job", j.ID, "outage", ue.Key)
 				g.clearDraft(ctx, j.ID, *to)
 				return "", err

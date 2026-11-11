@@ -129,7 +129,11 @@ func (r *Router) Send(ctx context.Context, chain []Target, req Request, onEvent 
 		if act.Kind == ErrCanceled || ctx.Err() != nil {
 			return nil, errors.Join(errs...)
 		}
-		refused.add(ep.Name, act.Kind)
+		if errors.As(err, new(refreshError)) {
+			refused.other = true // a login refresh can fail for a passing reason
+		} else {
+			refused.add(ep.Name, act.Kind)
+		}
 		if !act.Fallback {
 			return nil, refused.err(errs)
 		}
@@ -158,8 +162,11 @@ func (r *Router) sendTarget(ctx context.Context, ep *Endpoint, t Target, req Req
 				}
 				// A login that cannot produce a token is an auth failure
 				// (fall back), unless the refresh only hit the network.
+				// It's wrapped as a refresh error so a refresh that failed
+				// for a passing reason (the login server down) is never
+				// taken for an outage.
 				if Classify(err).Kind != ErrNetwork {
-					err = &APIError{Status: 401, Message: c.Name + ": " + err.Error(), Err: err}
+					err = &APIError{Status: 401, Message: c.Name + ": " + err.Error(), Err: refreshError{err}}
 				}
 				lastErr = err
 				continue
@@ -196,6 +203,12 @@ func (r *Router) sendTarget(ctx context.Context, ep *Endpoint, t Target, req Req
 				return nil, err
 			}
 		}
+	}
+	// Every key tried is now set aside: say why for the provider as a
+	// whole, so the answer is the same whichever key failed last and on
+	// later calls (a key set aside for a rate limit makes it no outage).
+	if lastErr != nil && len(r.usableCredentials(ep)) == 0 {
+		return nil, r.noCredentials(ep)
 	}
 	return nil, lastErr
 }
