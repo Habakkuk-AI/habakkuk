@@ -137,9 +137,10 @@ func TestExecRulesOnlyUnderBashShOrDash(t *testing.T) {
 			t.Errorf("%s: saved %+v", name, saved)
 		}
 	}
-	windowsHost = true
-	check("windows host")
-	windowsHost = false
+	if runtime.GOOS == "windows" {
+		check("windows host")
+		return
+	}
 	stub := shellName
 	defer func() { shellName = stub }()
 	if runtime.GOOS != "windows" {
@@ -151,13 +152,13 @@ func TestExecRulesOnlyUnderBashShOrDash(t *testing.T) {
 	}
 	for _, sh := range []string{"bash", "sh", "dash"} {
 		shellName = func() string { return sh }
-		if !posixShell(&Env{}) {
+		if !execRulesAllowed(&Env{}) {
 			t.Errorf("%s: no exec rules", sh)
 		}
 	}
 	for _, sh := range []string{"zsh", "PowerShell", "fish"} {
 		shellName = func() string { return sh }
-		if posixShell(&Env{}) {
+		if execRulesAllowed(&Env{}) {
 			t.Errorf("%s: exec rules", sh)
 		}
 	}

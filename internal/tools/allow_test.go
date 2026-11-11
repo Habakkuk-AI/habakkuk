@@ -95,7 +95,7 @@ func TestRuleValidate(t *testing.T) {
 		{Tool: "exec", Exact: "git log -1", In: "~/code/shop"},
 		{Tool: "exec", Exact: "make test"},
 		{Tool: "write_file", Path: "~/notes"},
-		{Tool: "apply_patch", Path: "/srv/site"},
+		{Tool: "apply_patch", Path: filepath.Join(t.TempDir(), "site")}, // absolute on every system
 	}
 	for _, r := range good {
 		if err := r.Validate(); err != nil {
@@ -125,6 +125,7 @@ func TestRuleValidate(t *testing.T) {
 // An exec rule covers its own line, however it is quoted, in its own
 // folder, and nothing else.
 func TestRuleCoversItsCommandOnly(t *testing.T) {
+	needExecRules(t)
 	ap := &countingApprover{yes: false}
 	other, _ := realPath(t.TempDir()) // a rule's folder is its real path
 	r, env, _ := ruleRig(t, ap,
@@ -158,6 +159,7 @@ func TestRuleCoversItsCommandOnly(t *testing.T) {
 }
 
 func TestRuleCoversChannelTurns(t *testing.T) {
+	needExecRules(t)
 	ap := &countingApprover{yes: false}
 	r, env, _ := ruleRig(t, ap, Rule{Tool: "exec", Exact: "echo hi"})
 	env.Mode = ModeFull // the chat still asks for exec: the rule answers
@@ -275,6 +277,7 @@ func TestRulesNeverCoverTheHardline(t *testing.T) {
 }
 
 func TestAlwaysAllowSavesARule(t *testing.T) {
+	needExecRules(t)
 	ctx := context.Background()
 	ap := &deciding{d: DecisionAlways, by: "7 (Sam)"}
 	r, env, rf := ruleRig(t, ap)
@@ -322,6 +325,7 @@ func TestAlwaysAllowSavesARule(t *testing.T) {
 // Always allow is offered only for a simple command: a program and plain
 // words. Anything the shell would join, expand or move gets none.
 func TestNoAlwaysForCommandsThatAreNotSimple(t *testing.T) {
+	needExecRules(t)
 	_, env, _ := ruleRig(t, nil)
 	for _, cmd := range []string{"echo a && echo b", "echo a; echo b", "echo a | sort", "echo a > f", "cat < f",
 		"echo $HOME", "echo `id`", "echo {a,b}", "ls *.go", "ls n?tes", "ls [a]b", "ls x~", "ls ~root", "(ls)", "ls &",
@@ -458,5 +462,27 @@ func TestBrokenRulesFileCoversNothing(t *testing.T) {
 	saved, err := rf.Saved()
 	if err != nil || len(saved) != 1 || saved[0].ID != "r1" {
 		t.Fatalf("saved %+v, %v", saved, err)
+	}
+}
+
+// On Windows a rule's folder is absolute with a drive letter, a UNC share
+// or a \\?\ prefix; a path rooted on no drive (/srv/site, \\srv\\site), a
+// drive-relative one (C:srv) and a whole drive or share are refused.
+func TestRuleValidateWindowsPaths(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows paths")
+	}
+	for _, p := range []string{`C:\srv\site`, `D:\work\notes`, `\\server\share\site`, `\\?\C:\srv\site`} {
+		if err := (Rule{Tool: "write_file", Path: p}).Validate(); err != nil {
+			t.Errorf("%s: %v", p, err)
+		}
+		if err := (Rule{Tool: "exec", Exact: "git status", In: p}).Validate(); err != nil {
+			t.Errorf("in %s: %v", p, err)
+		}
+	}
+	for _, p := range []string{`/srv/site`, `\srv\site`, `C:srv`, `C:\`, `\\server\share\`, `\\?\C:\`, `srv\site`} {
+		if err := (Rule{Tool: "write_file", Path: p}).Validate(); err == nil {
+			t.Errorf("%s: accepted", p)
+		}
 	}
 }

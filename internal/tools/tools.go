@@ -550,7 +550,7 @@ func decide(ctx context.Context, a Approver, req ApprovalRequest) (Answer, error
 // tainted or guest turn never saves one, whatever the approver said. It
 // applies where it was saved: in this chat, or on this machine.
 func saveRule(env *Env, req ApprovalRequest, by string) string {
-	if req.Rule == nil || !rulesApply(env) {
+	if req.Rule == nil || !rulesApply(env) || (req.Rule.Tool == "exec" && !execRulesAllowed(env)) {
 		return ""
 	}
 	r := *req.Rule

@@ -11,18 +11,29 @@ import (
 	"testing"
 )
 
-// TestMain runs the command-rule tests on every system, as if commands
-// ran in bash: what happens on a Windows host is TestNoExecRulesWithoutBash's.
+// TestMain runs the command-rule tests as if commands ran in bash, so a
+// developer's HABAKKUK_SHELL doesn't change them. On Windows exec rules
+// stay off whatever this says (execRulesAllowed reads runtime.GOOS), so
+// the tests that need them skip there (needExecRules).
 func TestMain(m *testing.M) {
-	windowsHost = false
 	shellName = func() string { return "bash" }
 	os.Exit(m.Run())
+}
+
+// needExecRules skips a test that needs exec rules where they are off:
+// on Windows.
+func needExecRules(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("exec rules are off on Windows")
+	}
 }
 
 // A rule saved in one chat applies there, and to nothing else; a config
 // rule applies wherever rules do; a rule saved on this machine applies to
 // local turns only.
 func TestRulesApplyWhereTheyWereSaved(t *testing.T) {
+	needExecRules(t)
 	ctx := context.Background()
 	ap := &countingApprover{yes: false}
 	r, env, rf := ruleRig(t, ap, Rule{Tool: "exec", Exact: "echo from-config"})
@@ -140,6 +151,7 @@ func TestGuardSeesThroughQuoting(t *testing.T) {
 // What a chat is shown is the rule that is saved: commands that would not
 // show plainly get no rule at all (review finding 4).
 func TestNoRuleForCommandsThatDoNotShowPlainly(t *testing.T) {
+	needExecRules(t)
 	_, env, _ := ruleRig(t, nil)
 	for _, cmd := range []string{"echo `id`", "git status\nrm -rf work", "echo a\r", "echo " + strings.Repeat("a", 300)} {
 		if p := ProposeRule(env, execTool{}, call("exec", map[string]any{"command": cmd})); p != nil {
@@ -269,23 +281,41 @@ func TestRulesFileGuardIgnoresCaseAndLinks(t *testing.T) {
 	}
 }
 
-// On this machine on Windows commands run in PowerShell, which the rules
-// can't judge: no exec rule is offered or applies there, nor in a sandbox.
-// File rules are unaffected.
-func TestNoExecRulesWithoutBash(t *testing.T) {
-	windowsHost = true
-	defer func() { windowsHost = false }()
-	_, env, _ := ruleRig(t, nil)
-	c := call("exec", map[string]any{"command": "git status"})
+// No exec rule is offered, saved or applied on Windows, whatever the shell
+// is said to be, nor in a sandbox anywhere. File rules are unaffected.
+func TestNoExecRulesOnWindowsOrInASandbox(t *testing.T) {
+	ap := &deciding{d: DecisionAlways}
+	r, env, rf := ruleRig(t, ap)
 	ws, _ := realPath(env.Workspace)
-	if p := ProposeRule(env, execTool{}, c); p != nil {
-		t.Fatalf("proposed %+v", p)
-	}
-	if _, ok := matchRule(env, execTool{}, c, []Rule{{Tool: "exec", Exact: "git status", In: ws}}); ok {
-		t.Fatal("an exec rule matched without bash")
-	}
-	if posixShell(&Env{Backend: fakeBackend{}}) {
+	rf.Config = []Rule{{Tool: "exec", Exact: "git status", In: ws}}
+	c := call("exec", map[string]any{"command": "git status"})
+	sandboxed := *env
+	sandboxed.Backend = fakeBackend{}
+	if execRulesAllowed(&sandboxed) {
 		t.Fatal("exec rules in a sandbox, whose programs this machine can't pin")
+	}
+	if runtime.GOOS == "windows" {
+		// shellName says bash here (TestMain): Windows still wins.
+		if execRulesAllowed(env) {
+			t.Fatal("exec rules on Windows")
+		}
+		if p := ProposeRule(env, execTool{}, c); p != nil {
+			t.Fatalf("proposed %+v", p)
+		}
+		if _, ok := matchRule(env, execTool{}, c, rf.Rules()); ok {
+			t.Fatal("a config exec rule matched on Windows")
+		}
+		line := "touch " + filepath.Join(filepath.Dir(rf.Path), "planted.md")
+		r.Execute(context.Background(), env, call("exec", map[string]any{"command": line}))
+		if saved, _ := rf.Saved(); len(saved) != 0 {
+			t.Fatalf("saved %+v", saved)
+		}
+		// Even a rule handed to the approver is not saved.
+		if note := saveRule(env, ApprovalRequest{Rule: &Rule{Tool: "exec", Exact: "git status", In: ws}}, "7"); note != "" {
+			t.Fatalf("saved through saveRule: %q", note)
+		}
+	} else if !execRulesAllowed(env) {
+		t.Fatal("no exec rules on this machine in bash")
 	}
 	dir := filepath.Join(env.Workspace, "notes")
 	os.MkdirAll(dir, 0o755)

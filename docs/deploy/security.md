@@ -109,7 +109,6 @@ These limits are known:
 - **Pre-filled messages.** A link can fill in a message for you to send: `wa.me/...?text=`, `t.me/share/url?text=`, or a bot's `?start=` payload. If you tap it and press send, the text arrives as a plain message you typed, and a rule can answer it. Read a pre-filled message before you send it.
 - **Software already running as you.** Any program running under your account can post to the dashboard's API on loopback (it can read the token from your config) or drive `hk chat` through a fake terminal, and its message is typed. Rules don't defend against software that already runs as you; nothing in Habakkuk can.
 - **Commands in `full` mode.** `full` mode runs commands without asking and doesn't parse them, so a command can write an instruction file there. The file tools always ask.
-- **Hard links on Windows.** Windows doesn't report a file's other names, so the hard-link check runs on macOS and Linux only.
 
 ## Skills and plugins from outside
 

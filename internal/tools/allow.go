@@ -81,22 +81,22 @@ type Rule struct {
 // RuleTools are the file tools a rule can cover, besides exec.
 var RuleTools = []string{"write_file", "edit_file", "apply_patch"}
 
-// windowsHost is set on Windows, where commands on this machine run in
-// PowerShell unless HABAKKUK_SHELL says otherwise.
-var windowsHost = runtime.GOOS == "windows"
-
 // shellName names the shell commands run in on this machine
 // (platform.ScriptShellName); a variable so tests can stand in another.
 var shellName = platform.ScriptShellName
 
-// posixShell reports whether exec rules can be judged for this agent: its
-// commands run on this machine (not in a Docker or SSH sandbox, whose
-// programs this machine can't pin), on macOS or Linux, in bash, sh or dash
+// execRulesAllowed is the one check every path that offers, saves or
+// applies an exec rule goes through (ProposeRule, matchRule, saveRule).
+// Exec rules can be judged only when the agent's commands run on this
+// machine (not in a Docker or SSH sandbox, whose programs this machine
+// can't pin), not on Windows (whatever the shell: paths there use
+// backslashes, which a POSIX shell reads as escapes), in bash, sh or dash
 // (not zsh, which expands a leading =, nor fish, PowerShell or anything
-// HABAKKUK_SHELL names). Elsewhere no exec rule is offered or applies;
-// file rules are unaffected.
-func posixShell(env *Env) bool {
-	if env.Backend != nil || windowsHost {
+// else HABAKKUK_SHELL names). Elsewhere no exec rule is offered, saved or
+// applied; file rules are unaffected. The Windows test reads runtime.GOOS
+// itself, so no setting or test can switch it off.
+func execRulesAllowed(env *Env) bool {
+	if env.Backend != nil || runtime.GOOS == "windows" {
 		return false
 	}
 	switch shellName() {
@@ -152,10 +152,10 @@ func (r Rule) String() string {
 
 // Where says where the rule applies.
 func (r Rule) Where() string {
-	switch {
-	case r.Place == "":
+	switch r.Place {
+	case "":
 		return "everywhere rules apply"
-	case r.Place == PlaceLocal:
+	case PlaceLocal:
 		return "on this machine"
 	}
 	return "in chat " + strings.TrimPrefix(r.Place, "chat:")
@@ -392,7 +392,7 @@ func matchRule(env *Env, t Tool, call llm.Block, rules []Rule) (Rule, bool) {
 		}
 		words, simple := simpleCommand(in.Command)
 		cwd, ok := realPath(env.Resolve(in.Cwd))
-		if !posixShell(env) || !simple || !ok || inProtected(env, cwd) || namesGuarded(env, words, cwd) {
+		if !execRulesAllowed(env) || !simple || !ok || inProtected(env, cwd) || namesGuarded(env, words, cwd) {
 			return Rule{}, false
 		}
 		for _, r := range rules {
@@ -625,7 +625,7 @@ func ProposeRule(env *Env, t Tool, call llm.Block) *Rule {
 		if !simple || !ok || !showsPlainly(cwd) || inProtected(env, cwd) {
 			return nil
 		}
-		if !posixShell(env) {
+		if !execRulesAllowed(env) {
 			return nil
 		}
 		// The program is pinned to the file it is now, or no rule is offered.
@@ -733,8 +733,11 @@ func guardedTarget(env *Env, abs string) string {
 			return name
 		}
 	}
-	if fi, err := os.Stat(abs); err == nil && fi.Mode().IsRegular() && platform.Links(fi) > 1 {
-		return "a file with more than one name (a hard link)"
+	if fi, err := os.Stat(abs); err == nil && fi.Mode().IsRegular() {
+		// Fail closed: a count that can't be read counts as a second name.
+		if n, err := platform.Links(abs); err != nil || n > 1 {
+			return "a file with more than one name (a hard link)"
+		}
 	}
 	return ""
 }
