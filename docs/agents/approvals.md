@@ -190,7 +190,7 @@ Some runs can't get a yes:
 
 - A schedule with no delivery chat has nobody to ask, so the call is denied.
 - A run on an account that's open to everyone (`allow_from: ["*"]`) counts as a guest's turn, so risky calls are refused.
-- A run that has read outside content asks you every time, as does every run of a schedule that wasn't made by a clean message you typed, and every turn that reads a script's output.
+- A run that has read outside content asks you every time, as does every run of a schedule that wasn't made by a clean message you typed, and every turn that reads a script's output. A message you type in a session that started with an untrusted project file (see [Project instruction files](agents.md#project-instruction-files)) isn't clean, so a schedule it makes asks too.
 
 ## Instruction files
 
