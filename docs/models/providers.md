@@ -104,6 +104,10 @@ Habakkuk sorts every error into a class: rate limit, overload, auth, billing, co
 - **Rate limits and auth failures** make Habakkuk rotate to the next key in `keys_env`. Each key has its own cooldown.
 - **Errors another model can fix** send the call down the agent's `fallbacks`, in order.
 
+When every model in the chain turns the call down because it's out of credit or its key or login was rejected, retrying won't help, so the turn stops at once. The reply says which providers and why, for example: "no model could answer: deepseek is out of credit and anthropic is out of credit." A key set aside after one of these errors stays set aside for 30 minutes, and later calls keep naming the real reason.
+
+When that happens to a schedule or other background work, its chat hears about it once, not on every run. You'll hear again only if the same providers are still refused a day later, or after one of them has worked and a new outage starts. A message you send yourself always gets the answer. A restart forgets what you were told, so you may hear once more after one. To keep an agent working through an empty account, give it a fallback on another provider.
+
 For more, see [Architecture: models](../reference/architecture.md#models).
 
 ## Switching models in a chat

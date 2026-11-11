@@ -324,7 +324,7 @@ func (t *turn) finishSubturn(p TurnPayload, err error) error {
 		// Only a sub-turn that will not run again reports; one stopped or
 		// interrupted is not finished.
 		if errors.Is(err, jobs.ErrLeaseLost) || t.ctx.Err() != nil ||
-			(!errors.As(err, new(jobs.Permanent)) && t.job.Attempts < t.job.MaxAttempts) {
+			(!jobs.IsPermanent(err) && t.job.Attempts < t.job.MaxAttempts) {
 			return err
 		}
 	}
