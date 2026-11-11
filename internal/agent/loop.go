@@ -58,6 +58,12 @@ type Spec struct {
 	// ReportHome is off, results or all (home.go).
 	Home       string
 	ReportHome string
+	// Loop ends turns that keep repeating themselves (loopguard.go).
+	Loop LoopLimits
+	// ProjectFiles is on (default when "") or off: whether new
+	// sessions read the workspace's AGENTS.md, CLAUDE.md and .cursorrules
+	// (projectfiles.go).
+	ProjectFiles string
 }
 
 type TurnPayload struct {
@@ -221,6 +227,9 @@ type Runner struct {
 	// Notes puts messages a chat got from outside its own turns before the
 	// next user message of that chat's session (origin.go); nil means none.
 	Notes ChatNotes
+	// ProjectTrust is the owner's record of trusted project instruction
+	// files (projtrust.Store); nil trusts none (projectfiles.go).
+	ProjectTrust ProjectTrust
 	// ToolsPending waits briefly for tool sources a turn's toolsets need
 	// that are still starting (MCP servers connecting in the background)
 	// and names those still not ready; nil means none ever are.
@@ -249,6 +258,7 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 	if r.Snapshot != nil {
 		snap = r.Snapshot(ctx, spec)
 	}
+	snap.Project = r.projectFiles(spec, spec.Workspace)
 	switch {
 	case opts.Onboard:
 		snap.Onboarding = true
@@ -342,6 +352,9 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 		err = t.runCompact()
 	} else {
 		err = t.run(p.Text, p.Media)
+		if err == nil && t.loopStopped && p.Background {
+			err = jobs.Permanent{Err: LoopStopped{Message: t.final}} // the run failed
+		}
 	}
 	err = t.pauseOnBudget(err, p)
 	if j.Kind == KindSubturn {
@@ -350,7 +363,7 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	if err == nil && j.Kind == KindTurn && !p.Compact && !t.paused {
 		r.autoTitle(ctx, sess.ID, spec, p.Text, t.final)
 	}
-	if err == nil && home {
+	if (err == nil || t.loopStopped) && home { // a stopped run still reports why
 		news.Final = t.final
 		r.reportHome(ctx, news)
 	}
@@ -402,7 +415,10 @@ type turn struct {
 	usageAt      int       // its seq, or -1
 	compactTried bool
 
-	paused bool // a spending limit ended the turn (budget.go)
+	paused      bool                     // a spending limit ended the turn (budget.go)
+	guard       *loopGuard               // nil when the loop guard is off (loopguard.go)
+	loopStopped bool                     // the loop guard ended the turn
+	callDur     map[string]time.Duration // how long each call of the last round ran
 }
 
 func (t *turn) run(userText string, media []Attachment) error {
@@ -426,11 +442,26 @@ func (t *turn) run(userText string, media []Attachment) error {
 	if err := t.loadCompaction(recs); err != nil {
 		return err
 	}
+	if g := newLoopGuard(t.spec.Loop); !g.off() {
+		t.guard = g
+		g.replay(recs, t.job.ID)
+	}
+	// The environment comes first: its workspace is the folder this
+	// session works in (a worktree, an editor's project), whose project
+	// files a new session reads.
+	env := t.r.Env(t.spec, t.sess.ID)
+	env.Session, env.Agent = t.sess.ID, t.spec.Name
+	t.equip(env)
 	if !started {
 		if t.r.Sessions.SetTitle(t.ctx, t.sess.ID, title(userText)) != nil {
 			t.r.Log.Warn("set title failed", "session", t.sess.ID)
 		}
 		notes := t.r.takeNotes(t.ctx, t.sess.ID, t.job.ID)
+		if len(t.msgs) == 0 {
+			// A new session in an untrusted project: its instruction
+			// files start the first message, as data (projectfiles.go).
+			notes = untrustedProjectMessage(LoadProjectFiles(t.spec.Dir, env.Workspace, t.spec.ProjectFiles, t.r.ProjectTrust)) + notes
+		}
 		if err := t.append(userMessage(t.stamp(notes+userText+t.r.preamble(t.ctx, t.sess.ID)), media), "", nil); err != nil {
 			return err
 		}
@@ -441,20 +472,26 @@ func (t *turn) run(userText string, media []Attachment) error {
 		t.r.Notes.NotesSeen(t.ctx, t.job.ID)
 	}
 
-	env := t.r.Env(t.spec, t.sess.ID)
-	env.Session, env.Agent = t.sess.ID, t.spec.Name
-	t.equip(env)
 	env.Approvals, env.Reviewer, env.Task = t.spec.Approvals, t.spec.Reviewer, userText
 	if a, ok := t.r.approvers.Load(t.sess.ID); ok {
 		env.Approver = a.(tools.Approver)
 	} else if t.r.Approvers != nil {
 		env.Approver = t.r.Approvers(t.sess.ID)
 	}
+	// Waiting for an approval inside a tool's run is not the tool waiting
+	// (the loop guard's timing).
+	env.Approver, env.Reviewer = tools.TimedApprover(env.Approver), tools.TimedReviewer(env.Reviewer)
 	t.applyPolicy(env)
 	if t.info.Tainted {
 		env.Taint.Mark()
 	}
 	t.restoreTaint(env, recs)
+	if projectTainted(t.msgs) { // the session started with untrusted project files
+		if env.Taint == nil {
+			env.Taint = tools.NewTaint(true)
+		}
+		env.Taint.Mark()
+	}
 	t.limitRules(env, recs)
 	t.r.trackTrust(t.job.ID, env)
 	var pending []string
@@ -533,7 +570,13 @@ func (t *turn) run(userText string, media []Attachment) error {
 			t.final = resp.Message.Text()
 			return nil
 		}
-		results := t.runTools(env, calls, resp.StopReason == llm.StopMaxTokens)
+		results, stop := t.guardRound(calls, t.runTools(env, calls, resp.StopReason == llm.StopMaxTokens))
+		if stop != nil {
+			if err := t.append(llm.Message{Role: llm.User, Blocks: results}, "", nil); err != nil {
+				return err
+			}
+			return t.stopLoop(stop)
+		}
 		results = append(results, t.r.steer(t.ctx, t.sess.ID)...) // after the results, as the APIs require
 		// Tools that tool_search found join the next call.
 		specs = t.moreTools(specs, calls, results)
@@ -564,6 +607,13 @@ func hasMedia(msgs []llm.Message) bool {
 func (t *turn) runTools(env *tools.Env, calls []llm.Block, truncated bool) []llm.Block {
 	results := make([]llm.Block, len(calls))
 	media := make([][]llm.Block, len(calls))
+	durs := make([]time.Duration, len(calls))
+	defer func() {
+		t.callDur = make(map[string]time.Duration, len(calls))
+		for i, c := range calls {
+			t.callDur[c.ToolUseID] = durs[i]
+		}
+	}()
 	var wg sync.WaitGroup
 	for i, c := range calls {
 		if truncated {
@@ -576,7 +626,8 @@ func (t *turn) runTools(env *tools.Env, calls []llm.Block, truncated bool) []llm
 			defer wg.Done()
 			t.r.publishEvent(events.Event{Session: t.sess.ID, Kind: events.ToolStart, Text: c.ToolName + " " + preview(string(c.Input)),
 				ToolID: c.ToolUseID, Tool: c.ToolName, Input: c.Input})
-			res, extra := t.runTool(env, c)
+			res, extra, ran := t.runTool(env, c)
+			durs[i] = ran
 			t.r.publishEvent(events.Event{Session: t.sess.ID, Kind: events.ToolDone, Text: c.ToolName + ": " + preview(res.Text),
 				IsError: res.IsError, ToolID: c.ToolUseID, Tool: c.ToolName})
 			results[i], media[i] = res, extra
@@ -668,6 +719,24 @@ func preview(s string) string {
 		s = s[:120] + "..."
 	}
 	return s
+}
+
+// projectFiles reads the instruction files of the folder a new session
+// works in, and logs which were read and which are trusted.
+func (r *Runner) projectFiles(spec *Spec, folder string) ProjectFiles {
+	p := LoadProjectFiles(spec.Dir, folder, spec.ProjectFiles, r.ProjectTrust)
+	if len(p.Files) > 0 && r.Log != nil {
+		var trusted, untrusted []string
+		for _, f := range p.Files {
+			if f.Trusted {
+				trusted = append(trusted, f.Path)
+			} else {
+				untrusted = append(untrusted, f.Path)
+			}
+		}
+		r.Log.Info("project instruction files read", "agent", spec.Name, "trusted", trusted, "untrusted", untrusted)
+	}
+	return p
 }
 
 // trackTrust lets Untrusted answer for the turn while it runs.

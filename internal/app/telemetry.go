@@ -176,6 +176,8 @@ func (h observedHooks) Fire(ctx context.Context, event, subject string, payload 
 		case agent.HookTurnEnd:
 			h.o.TurnEnd(p.Agent, p.Session, p.Job, p.Final, p.Error)
 		}
+	case agent.LoopGuardPayload:
+		h.o.LoopGuard(p.Agent, p.Check, p.Action)
 	case agent.ToolHookPayload:
 		switch event {
 		case agent.HookToolBefore:

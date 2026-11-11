@@ -28,8 +28,9 @@ const maxProfileChars = 6000
 const profileTools = `Keep it to durable facts and preferences the user has told you, and keep it short: when you learn one, update the section with user_profile_update (details belong in memory notes). It is a snapshot from the start of this session; user_profile_read shows the current file.`
 
 // BuildSystemPrompt assembles an agent's system prompt from its directory:
-// SOUL.md (identity and personality), AGENTS.md (standing instructions) and
-// USER.md (the user profile), then the memory and skill listings in snap. It is computed once per session
+// SOUL.md (identity and personality), AGENTS.md (standing instructions), the
+// workspace's project instruction files in snap and USER.md (the user
+// profile), then the memory and skill listings in snap. It is computed once per session
 // and frozen, so it must not contain anything that changes between turns (no
 // clock, no counters), and the same inputs always give the same bytes.
 func BuildSystemPrompt(agentName, agentDir, workspace string, snap Snapshot) string {
@@ -50,6 +51,7 @@ func BuildSystemPrompt(agentName, agentDir, workspace string, snap Snapshot) str
 		b.WriteString("\n\n# Standing instructions\n\n")
 		b.WriteString(agents)
 	}
+	writeProjectFiles(&b, snap.Project)
 	writeProfile(&b, agentDir, snap)
 	writeMemory(&b, snap)
 	writeSkills(&b, snap)

@@ -40,7 +40,7 @@ func nodeCmd(ctx context.Context, home string, args []string) error {
 	case "pair":
 		return nodePair(ctx, home, args[1:], os.Stdout)
 	case "run":
-		return nodeRun(ctx, args[1:], os.Stdout)
+		return nodeRun(ctx, home, args[1:], os.Stdout)
 	}
 	return fmt.Errorf("unknown node command %q (pair or run)", args[0])
 }
@@ -97,7 +97,7 @@ type nodeState struct {
 }
 
 // nodeRun pairs (with -code) and then serves this machine as a node.
-func nodeRun(ctx context.Context, args []string, w io.Writer) error {
+func nodeRun(ctx context.Context, home string, args []string, w io.Writer) error {
 	fs := flag.NewFlagSet("node run", flag.ExitOnError)
 	server := fs.String("server", "", "the Habakkuk server's URL, e.g. https://habakkuk.example.com")
 	code := fs.String("code", "", "a pairing code from `hk node pair` (first run only)")
@@ -143,7 +143,14 @@ func nodeRun(ctx context.Context, args []string, w io.Writer) error {
 		}
 		*dir = abs
 	}
-	caps := nodes.LocalCaps(nodes.LocalOptions{AllowRun: *allowRun, AllowCamera: *allowCamera, Dir: *dir})
+	// files.put never writes into a Habakkuk home on this machine (its
+	// config, keys, or the owner's trusted project files), however -dir
+	// and links reach it.
+	protected := []string{home}
+	if def, err := os.UserHomeDir(); err == nil {
+		protected = append(protected, filepath.Join(def, ".habakkuk"))
+	}
+	caps := nodes.LocalCaps(nodes.LocalOptions{AllowRun: *allowRun, AllowCamera: *allowCamera, Dir: *dir, Protected: protected})
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	c := &nodes.Client{
 		Server: st.Server, Name: st.Name, Secret: st.Secret, Platform: platform(), Version: version, Caps: caps, Log: log,

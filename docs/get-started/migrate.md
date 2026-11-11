@@ -295,7 +295,7 @@ After this run, `SOUL.md` says the briefs are in `~/.habakkuk/files/workspaces/b
 > [!WARNING]
 > Stop the old agent before `hk serve` starts the same channels. Only one program at a time can poll a Telegram, Discord or Slack bot. And if two agents answer one chat, everyone gets confused.
 
-Schedules come in paused, so nothing runs twice while both agents are installed. The usual time limit for a script schedule is two minutes. An imported one gets ten minutes (or its interval, when an `@every` interval is shorter), because the old agent let scripts run longer. Once the old agent is stopped, resume each schedule. Without `--files copy`, a script schedule still runs the script from the old folder. With it, the script is copied and the schedule runs the copy.
+Schedules come in paused, so nothing runs twice while both agents are installed. The usual time limit for a script schedule is two minutes. An imported one gets ten minutes (or its interval, when an `@every` interval is shorter), because the old agent let scripts run longer. Once the old agent is stopped, resume each schedule yourself, with `hk schedules resume ID` or from the dashboard. An agent can resume one only in a clean message you typed to it, not in a turn that read outside content or came from a schedule, a board card or another program. Without `--files copy`, a script schedule still runs the script from the old folder. With it, the script is copied and the schedule runs the copy.
 
 After the import, read through each agent's `SOUL.md` and `AGENTS.md`. Instructions written for the old agent may name its tools or commands, and Habakkuk doesn't have those.
 

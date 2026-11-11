@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
+	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
 	"github.com/habakkuk-ai/habakkuk/internal/channel/discord"
 	"github.com/habakkuk-ai/habakkuk/internal/channel/matrix"
@@ -223,6 +224,12 @@ func Open(ctx context.Context, home string, log *slog.Logger) (*App, error) {
 	}
 	a.Runner.Snapshot = a.snapshot
 	a.Runner.Policy = a.applyPolicy
+	a.Runner.ProjectTrust = &projtrust.Store{Home: home}
+	// The trust record's folder exists from the start, so the tools' lock
+	// on it compares by identity (any spelling) before anything is trusted.
+	if err := os.MkdirAll(a.Runner.ProjectTrust.(*projtrust.Store).Folder(), 0o700); err != nil {
+		a.Log.Warn("create the trusted project files folder failed", "err", err)
+	}
 	a.Runner.ToolsPending = func(ctx context.Context, toolsets []string) []string {
 		return a.MCP.Pending(ctx, toolsets, MCPTurnWait)
 	}

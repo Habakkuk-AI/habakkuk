@@ -117,9 +117,23 @@ func writeIdentityFile(dir string, data []byte) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	tmp := filepath.Join(dir, IdentityFile+".tmp")
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	// A fresh, exclusive temp name: a link waiting at a fixed one would be
+	// written through.
+	f, err := os.CreateTemp(dir, "."+IdentityFile+".tmp-*")
+	if err != nil {
 		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp) // a no-op after the rename
+	_, werr := f.Write(data)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Chmod(tmp, 0o600)
+	}
+	if werr != nil {
+		return werr
 	}
 	if err := os.Rename(tmp, filepath.Join(dir, IdentityFile)); err != nil {
 		return err

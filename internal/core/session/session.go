@@ -76,7 +76,8 @@ type Record struct {
 	Message llm.Message
 	Model   string
 	Usage   *llm.Usage
-	JobID   string // the turn job that wrote it; makes turn start idempotent
+	JobID   string    // the turn job that wrote it; makes turn start idempotent
+	At      time.Time // when it was written
 }
 
 type Store struct {
@@ -182,7 +183,7 @@ func (s *Store) Append(ctx context.Context, sessionID, jobID string, expectSeq i
 }
 
 func (s *Store) Messages(ctx context.Context, sessionID string) ([]Record, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT seq, role, blocks, model, usage, job_id FROM messages
+	rows, err := s.db.QueryContext(ctx, `SELECT seq, role, blocks, model, usage, job_id, created_at FROM messages
 		WHERE session_id = ? ORDER BY seq`, sessionID)
 	if err != nil {
 		return nil, err
@@ -192,9 +193,11 @@ func (s *Store) Messages(ctx context.Context, sessionID string) ([]Record, error
 	for rows.Next() {
 		var r Record
 		var role, blocks, usage string
-		if err := rows.Scan(&r.Seq, &role, &blocks, &r.Model, &usage, &r.JobID); err != nil {
+		var at int64
+		if err := rows.Scan(&r.Seq, &role, &blocks, &r.Model, &usage, &r.JobID, &at); err != nil {
 			return nil, err
 		}
+		r.At = time.UnixMilli(at)
 		r.Message.Role = llm.Role(role)
 		if err := json.Unmarshal([]byte(blocks), &r.Message.Blocks); err != nil {
 			return nil, fmt.Errorf("message %d: %w", r.Seq, err)

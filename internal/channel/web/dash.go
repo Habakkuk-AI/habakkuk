@@ -106,6 +106,7 @@ func (s *Server) dashRoutes(mux *http.ServeMux) {
 	api("POST /api/realtime/tool", s.realtimeToolCall)
 	api("POST /api/realtime/transcript", s.realtimeTranscript)
 	api("POST /api/realtime/end", s.realtimeEnd)
+	s.pushRoutes(api)
 }
 
 // dashGuard refuses requests a browser marks as coming from another site,

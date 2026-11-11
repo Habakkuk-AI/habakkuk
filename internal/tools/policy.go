@@ -73,6 +73,9 @@ type Policy struct {
 	// scheduled scripts run from.
 	TrustedWrite []string
 	Protected    []string
+	// Locked are folders the file tools never write, in any turn and any
+	// mode: the owner's record of trusted project files.
+	Locked []string
 	// Place is where the turn stands for approval rules (allow.go):
 	// PlaceLocal for this machine (the CLI, the TUI, the dashboard), a
 	// ChatPlace for the owner's chat, and "" for anything else (a guest, an

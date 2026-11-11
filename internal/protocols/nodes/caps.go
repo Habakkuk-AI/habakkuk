@@ -44,6 +44,9 @@ type LocalOptions struct {
 	AllowRun    bool   // offer system.run (a shell)
 	AllowCamera bool   // offer camera.snap
 	Dir         string // files.get and files.put work inside this directory; "" offers neither
+	// Protected are folders files.put never writes, however reached (a
+	// link, another letter case): the Habakkuk homes on this machine.
+	Protected []string
 }
 
 // The platform and tool lookup, replaceable in tests.
@@ -80,7 +83,10 @@ func LocalCaps(o LocalOptions) Caps {
 	if o.Dir != "" {
 		root := o.Dir
 		c[CmdFilesGet] = Func(func(ctx context.Context, args json.RawMessage) (*Result, error) { return filesGet(root, args) })
-		c[CmdFilesPut] = Func(func(ctx context.Context, args json.RawMessage) (*Result, error) { return filesPut(root, args) })
+		protected := o.Protected
+		c[CmdFilesPut] = Func(func(ctx context.Context, args json.RawMessage) (*Result, error) {
+			return filesPut(root, protected, args)
+		})
 	}
 	return c
 }
@@ -474,7 +480,76 @@ func filesGet(root string, args json.RawMessage) (*Result, error) {
 		Files: []File{{Name: filepath.Base(path), Data: data}}}, nil
 }
 
-func filesPut(root string, args json.RawMessage) (*Result, error) {
+// homeMarks are what a Habakkuk home holds besides its config: the agents
+// and trusted-projects folders and its databases.
+var homeMarks = []string{"agents", "projects", "control.db", "transcripts.db", "state.db", "web.db", "usage.db", "nodes.db", "memory.db", "history.db"}
+
+// isHabakkukHome reports whether dir looks like a Habakkuk home: a config
+// (config.yaml or config.yml) beside any of homeMarks, or an agents folder
+// beside any of the others (a home whose config is missing). The node does
+// not know where the gateway it serves keeps its home, and should not be
+// told; recognising any home on this machine covers the gateway's too,
+// whatever HABAKKUK_HOME it runs with.
+func isHabakkukHome(dir string) bool {
+	has := func(name string) bool { _, err := os.Stat(filepath.Join(dir, name)); return err == nil }
+	config := has("config.yaml") || has("config.yml")
+	agents := has("agents")
+	for _, mark := range homeMarks {
+		if mark == "agents" {
+			if config && agents {
+				return true
+			}
+			continue
+		}
+		if has(mark) && (config || agents) {
+			return true
+		}
+	}
+	return false
+}
+
+// underProtected reports whether path (links resolved) is in one of the
+// protected folders, compared as folders, not as strings, or in any
+// Habakkuk home on this machine.
+func underProtected(path string, protected []string) bool {
+	for cur := filepath.Dir(path); ; cur = filepath.Dir(cur) {
+		if isHabakkukHome(cur) {
+			return true
+		}
+		if filepath.Dir(cur) == cur {
+			break
+		}
+	}
+	var infos []os.FileInfo
+	for _, d := range protected {
+		if d == "" {
+			continue
+		}
+		if real, err := filepath.EvalSymlinks(d); err == nil {
+			d = real
+		}
+		if rel, err := filepath.Rel(d, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+		if fi, err := os.Stat(d); err == nil {
+			infos = append(infos, fi)
+		}
+	}
+	for cur := path; ; cur = filepath.Dir(cur) {
+		if fi, err := os.Stat(cur); err == nil {
+			for _, p := range infos {
+				if os.SameFile(fi, p) {
+					return true
+				}
+			}
+		}
+		if filepath.Dir(cur) == cur {
+			return false
+		}
+	}
+}
+
+func filesPut(root string, protected []string, args json.RawMessage) (*Result, error) {
 	var in struct {
 		Path string `json:"path"`
 		Data []byte `json:"data"` // base64
@@ -487,6 +562,9 @@ func filesPut(root string, args json.RawMessage) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	if underProtected(path, protected) {
+		return nil, fmt.Errorf("%s is inside Habakkuk's own folder on this machine, which files.put never writes", in.Path)
+	}
 	data := in.Data
 	if data == nil {
 		data = []byte(in.Text)
@@ -494,15 +572,22 @@ func filesPut(root string, args json.RawMessage) (*Result, error) {
 	if len(data) > MaxFile {
 		return nil, fmt.Errorf("the file is over the %d MB limit", MaxFile>>20)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	rootReal, err := filepath.Abs(root)
+	if err != nil {
 		return nil, err
 	}
-	tmp := path + ".habakkuk-tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return nil, err
+	if r, err := filepath.EvalSymlinks(rootReal); err == nil {
+		rootReal = r
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+	rel, err := filepath.Rel(rootReal, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("%s is outside the directory this node shares", in.Path)
+	}
+	// Written without following a link anywhere on the way: a link put in
+	// the shared folder (at a temp name, or as a folder) cannot lead the
+	// write out of it (putfile_*.go). The protected check runs again just
+	// before the file takes its name.
+	if err := putFile(rootReal, rel, data, func() bool { return underProtected(path, protected) }); err != nil {
 		return nil, err
 	}
 	return &Result{Text: fmt.Sprintf("wrote %s (%d bytes)", in.Path, len(data))}, nil

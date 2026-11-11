@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel/web"
+	"github.com/habakkuk-ai/habakkuk/internal/channel/webpush"
 )
 
 // openWeb prepares the HTTP surface when the config has an http section. It
@@ -31,6 +33,17 @@ func (a *App) openWeb(ctx context.Context, home string) error {
 			return err
 		}
 		s.Hooks[name] = hook
+	}
+	contact := h.PushContact
+	if contact == "" && strings.HasPrefix(h.PublicURL, "https://") {
+		contact = h.PublicURL
+	}
+	s.Push = &webpush.Service{Dir: filepath.Join(home, "push"), Contact: contact, Log: a.Log}
+	// Devices registered under an older dashboard token are forgotten.
+	if n, err := s.Push.CheckToken(s.Token); err != nil {
+		a.Log.Warn("check the web push devices against the dashboard token failed", "err", err)
+	} else if n > 0 {
+		a.Log.Warn("the dashboard token changed, so the devices registered for notifications were forgotten; turn notifications on again on each device", "devices", n)
 	}
 	a.Web = s
 	return nil

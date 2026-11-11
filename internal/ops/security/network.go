@@ -102,6 +102,11 @@ func Network(c *config.Config) []Endpoint {
 		add(Endpoint{Kind: "channel", Name: "channels." + name + " (" + ch.Type + ")", Target: target, When: "while hk serve runs", Enabled: true})
 	}
 
+	if c.HTTP != nil {
+		add(Endpoint{Kind: "channel", Name: "http (web push)", Target: "the push service of each device that turned notifications on (fcm.googleapis.com, web.push.apple.com, ...)",
+			When: "an approval waits, an unseen dashboard reply, a failed schedule; only for devices you registered", Enabled: true})
+	}
+
 	if s := c.Search; s != nil {
 		target := searchHosts[s.Provider]
 		if s.URL != "" {

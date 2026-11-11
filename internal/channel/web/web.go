@@ -27,6 +27,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
+	"github.com/habakkuk-ai/habakkuk/internal/channel/webpush"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 )
@@ -72,6 +73,9 @@ type Server struct {
 	// A2A serves the Agent2Agent protocol at /a2a and the Agent Card at
 	// /.well-known/agent-card.json; it checks its own token. nil is off.
 	A2A http.Handler
+	// Push sends Web Push notifications to devices that turned them on in
+	// the dashboard (push.go); nil is off.
+	Push *webpush.Service
 
 	mu        sync.Mutex
 	inbox     channel.Inbox // set while the supervisor runs the adapter
@@ -120,6 +124,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		ErrorLog:    slog.NewLogLogger(s.Log.Handler(), slog.LevelWarn),
 	}
 	go s.prune(ctx)
+	go s.watchApprovals(ctx)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {
@@ -580,6 +585,7 @@ func (s *Server) Send(ctx context.Context, to channel.Address, text, _ string) e
 		return err
 	}
 	s.hub.notify(to.Conversation, false)
+	s.replyPushed(ctx, to, text)
 	return nil
 }
 

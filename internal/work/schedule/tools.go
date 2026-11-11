@@ -79,7 +79,7 @@ func (t createTool) Run(ctx context.Context, env *tools.Env, input json.RawMessa
 	// set Command, Workdir or the other script fields.
 	// Only a clean turn of the owner's own makes a schedule that approval
 	// rules answer for; one from any other turn runs tainted.
-	sc := Schedule{Agent: env.Agent, Name: in.Name, Spec: in.When, Prompt: in.Prompt, Tainted: env.Untrusted() || env.RulesOff}
+	sc := Schedule{Agent: env.Agent, Name: in.Name, Spec: in.When, Prompt: in.Prompt, Tainted: notOwnersOwn(env)}
 	if (in.Deliver == nil || *in.Deliver) && t.here != nil {
 		sc.DeliverTo = t.here(ctx, env.Session)
 	}
@@ -230,6 +230,13 @@ func (t pauseTool) Run(ctx context.Context, env *tools.Env, input json.RawMessag
 	if err := t.st.owned(ctx, in.ID, env.Agent); err != nil {
 		return "", err
 	}
+	// Whoever paused a schedule (the owner, or an import that leaves
+	// script schedules paused) is the one to resume it: a turn that isn't
+	// a clean one the owner typed (the test schedule_create uses) may
+	// pause but not resume.
+	if !in.Paused && notOwnersOwn(env) {
+		return "", fmt.Errorf("%w: this turn can't resume a paused schedule, because it isn't a clean request the owner typed (it read outside content, or came from elsewhere); tell the user to resume it with hk schedules resume %s or from the dashboard", tools.ErrDenied, in.ID)
+	}
 	if err := t.st.SetEnabled(ctx, in.ID, !in.Paused); err != nil {
 		return "", err
 	}
@@ -238,6 +245,13 @@ func (t pauseTool) Run(ctx context.Context, env *tools.Env, input json.RawMessag
 	}
 	return "Resumed " + in.ID + ".", nil
 }
+
+// notOwnersOwn reports whether a turn isn't a clean one the owner typed:
+// it read outside content (tools.Env.Untrusted), or approval rules are off
+// for its kind (a scheduled or board run, an API request, a sub-agent).
+// A schedule such a turn creates runs tainted, and such a turn can't
+// resume a paused one.
+func notOwnersOwn(env *tools.Env) bool { return env.Untrusted() || env.RulesOff }
 
 // owned stops one agent from changing another agent's schedules.
 func (s *Store) owned(ctx context.Context, id, agentName string) error {

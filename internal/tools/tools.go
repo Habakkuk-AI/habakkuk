@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -359,6 +360,125 @@ func WithCallID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, callIDKey{}, id)
 }
 
+type runTimeKey struct{}
+
+// runTime is one call's timing: how long its Run took, less the time it
+// spent waiting for an approval or a reviewer inside Run.
+type runTime struct {
+	ran    *time.Duration
+	mu     sync.Mutex
+	waited time.Duration
+}
+
+// WithRunTime returns a context under which Execute records how long the
+// tool itself ran: only its Run, not the approval or hooks before it, nor
+// an approval it asks for while it runs (through TimedApprover and
+// TimedReviewer).
+func WithRunTime(ctx context.Context) (context.Context, *time.Duration) {
+	d := new(time.Duration)
+	return context.WithValue(ctx, runTimeKey{}, &runTime{ran: d}), d
+}
+
+// waiting adds time a call spent waiting on someone to its run's timing.
+func waiting(ctx context.Context, d time.Duration) {
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		rt.waited += d
+		rt.mu.Unlock()
+	}
+}
+
+// TimedApprover wraps an approver so time spent waiting for an answer is
+// not counted as the tool's own run time. Nil stays nil. The wrapper keeps
+// the approver's optional interfaces, Decider ("Always allow") and Asker
+// (a terminal's questions), and adds neither when it lacks them, since
+// callers look for them with type assertions.
+func TimedApprover(a Approver) Approver {
+	if a == nil {
+		return nil
+	}
+	if _, ok := a.(interface{ timed() }); ok {
+		return a
+	}
+	t := timedApprover{a}
+	d, isD := a.(Decider)
+	k, isK := a.(Asker)
+	switch {
+	case isD && isK:
+		return timedDeciderAsker{t, timedDecider{t, d}, timedAsker{t, k}}
+	case isD:
+		return timedDecider{t, d}
+	case isK:
+		return timedAsker{t, k}
+	}
+	return t
+}
+
+type timedApprover struct{ Approver }
+
+func (timedApprover) timed() {}
+
+func (t timedApprover) Approve(ctx context.Context, req ApprovalRequest) (bool, error) {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.Approver.Approve(ctx, req)
+}
+
+type timedDecider struct {
+	timedApprover
+	d Decider
+}
+
+func (t timedDecider) Decide(ctx context.Context, req ApprovalRequest) (Answer, error) {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.d.Decide(ctx, req)
+}
+
+type timedAsker struct {
+	timedApprover
+	k Asker
+}
+
+func (t timedAsker) Ask(ctx context.Context, questions []Question) (string, error) {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.k.Ask(ctx, questions)
+}
+
+type timedDeciderAsker struct {
+	timedApprover
+	dec timedDecider
+	ask timedAsker
+}
+
+func (t timedDeciderAsker) Decide(ctx context.Context, req ApprovalRequest) (Answer, error) {
+	return t.dec.Decide(ctx, req)
+}
+
+func (t timedDeciderAsker) Ask(ctx context.Context, questions []Question) (string, error) {
+	return t.ask.Ask(ctx, questions)
+}
+
+// TimedReviewer does the same for an approval reviewer.
+func TimedReviewer(r Reviewer) Reviewer {
+	if r == nil {
+		return nil
+	}
+	if _, ok := r.(timedReviewer); ok {
+		return r
+	}
+	return timedReviewer{r}
+}
+
+type timedReviewer struct{ Reviewer }
+
+func (t timedReviewer) Review(ctx context.Context, req ApprovalRequest) Review {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.Reviewer.Review(ctx, req)
+}
+
 // CallID is the id of the tool call being run, or "". Tools with side
 // effects derive idempotency keys from it.
 func CallID(ctx context.Context) string {
@@ -397,7 +517,18 @@ func (r *Registry) Execute(ctx context.Context, env *Env, call llm.Block) llm.Bl
 	}
 	env.checkpoint(ctx, t, call.Input)
 	before := env.Taint.Marked()
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		rt.waited = 0 // approvals before Run are outside its time already
+		rt.mu.Unlock()
+	}
+	start := time.Now()
 	out, err := t.Run(ctx, env, call.Input)
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		*rt.ran = max(time.Since(start)-rt.waited, 0)
+		rt.mu.Unlock()
+	}
 	if taints(t) {
 		env.Taint.Mark()
 	}
@@ -424,6 +555,14 @@ var ErrDenied = errors.New("denied by permission policy")
 // also gets a note for its result, so the transcript records why it ran.
 func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Block) (string, error) {
 	risk := t.Risk()
+	if risk == RiskWrite {
+		if err := lockedWrite(env, t, call); err != nil {
+			return "", err
+		}
+		if err := instructionWrite(env, t, call); err != nil {
+			return "", err
+		}
+	}
 	var confirm string
 	if ct, ok := t.(ConfirmTool); ok {
 		confirm = ct.Confirm(ctx, env, call.Input)

@@ -27,6 +27,9 @@ func (a *App) openDash() {
 		d.BoardWake = a.Dispatcher.Wake
 	}
 	a.Web.Dash = d
+	if a.Scheduler != nil {
+		a.Scheduler.OnFailure = a.Web.ScheduleFailed // web push
+	}
 }
 
 // DoctorChecks checks what hk doctor checks that a running process can

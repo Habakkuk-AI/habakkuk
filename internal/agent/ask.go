@@ -133,6 +133,7 @@ func (r *Runner) NewSessionAt(ctx context.Context, agentName, workspace string) 
 	if r.Snapshot != nil {
 		snap = r.Snapshot(ctx, spec)
 	}
+	snap.Project = r.projectFiles(spec, workspace)
 	return r.Sessions.Create(ctx, agentName, BuildSystemPrompt(spec.Name, spec.Dir, workspace, snap))
 }
 

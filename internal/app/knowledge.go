@@ -116,7 +116,7 @@ func (a *App) openConsolidation() {
 	a.Consolidate = &consolidate.Consolidator{
 		Mem: a.Memory, Sessions: a.Sessions, Queue: a.Queue, Models: a.Router, Chains: chains,
 		Idle: mc.ReviewIdle, Nightly: nightly, NightlyAt: at, StaleDays: max(mc.StaleDays, 0), Location: loc,
-		Untrusted: a.untrustedSession, Log: a.Log,
+		Untrusted: a.untrustedOrProject, Log: a.Log,
 	}
 	if jc := a.Cfg.Judge; jc != nil {
 		a.Consolidate.Judge, a.Consolidate.SkipBelow = a.judgeFor(jc.Memory), jc.SkipMemoryBelow

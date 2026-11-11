@@ -87,11 +87,25 @@ func versionCmd(ctx context.Context, home string, out io.Writer) error {
 func doctorCmd(ctx context.Context, home string, args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	upgrade := fs.Bool("upgrade-check", false, "only check that this binary can take over $HABAKKUK_HOME; changes nothing")
+	fix := fs.Bool("fix", false, "first apply the safe fixes: config format, missing folders, file permissions, the service file")
 	fs.Parse(args)
 	if *upgrade {
 		return upgradeCheck(ctx, home, os.Stdout)
 	}
-	if err := doctor(ctx, home); err != nil {
+	env := defaultRepairEnv(home)
+	if *fix {
+		fmt.Println("Fixes:")
+		applyRepairs(os.Stdout, planRepairs(env))
+		fmt.Println()
+	}
+	err := doctor(ctx, home)
+	if repairs := planRepairs(env); len(repairs) > 0 {
+		fmt.Println("\nhk doctor --fix can fix these for you:")
+		for _, r := range repairs {
+			fmt.Println("  - " + r.what)
+		}
+	}
+	if err != nil {
 		return err
 	}
 	if cfg, err := config.Load(home); err == nil {
