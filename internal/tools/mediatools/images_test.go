@@ -42,7 +42,12 @@ func pngBytes(t *testing.T, w, h int) []byte {
 // testEnv is a workspace with a blob store, in workspace mode.
 func testEnv(t *testing.T) *tools.Env {
 	t.Helper()
-	dir := t.TempDir()
+	// Saves report the workspace's real path, links and Windows short
+	// names resolved, so the test works in that one too.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	ws := filepath.Join(dir, "ws")
 	if err := os.MkdirAll(ws, 0o755); err != nil {
 		t.Fatal(err)

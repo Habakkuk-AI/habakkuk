@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -289,5 +290,47 @@ func TestScriptOutputTurnIsTainted(t *testing.T) {
 	var p agent.TurnPayload
 	if err := turn.Decode(&p); err != nil || !p.Tainted {
 		t.Fatalf("script-output turn: %+v, %v", p, err)
+	}
+}
+
+// Only a clean turn the owner typed resumes a paused schedule (an
+// imported script schedule arrives paused); any turn may pause one.
+func TestOnlyACleanTurnResumesASchedule(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	reg := tools.NewRegistry()
+	RegisterTools(reg, r.st, nil)
+	sc, err := r.st.Create(ctx, Schedule{Agent: "habakkuk", Name: "sync", Spec: "@every 1h", Prompt: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pause := func(env *tools.Env, paused bool) llm.Block {
+		in, _ := json.Marshal(map[string]any{"id": sc.ID, "paused": paused})
+		return reg.Execute(ctx, env, llm.Block{Type: llm.ToolUse, ToolUseID: "p", ToolName: "schedule_pause", Input: in})
+	}
+	enabled := func() bool {
+		got, err := r.st.Get(ctx, sc.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Enabled
+	}
+	env := func(taint, paused, off bool) *tools.Env {
+		return &tools.Env{Agent: "habakkuk", Mode: tools.ModeFull, Workspace: r.dir, Taint: tools.NewTaint(taint), RulesPaused: paused, RulesOff: off}
+	}
+	for name, e := range map[string]*tools.Env{
+		"read outside content": env(true, false, false),
+		"rules paused":         env(false, true, false),
+		"not typed (a run)":    env(false, false, true),
+	} {
+		if res := pause(e, true); res.IsError || enabled() {
+			t.Fatalf("%s: pausing failed: %s", name, res.Text)
+		}
+		if res := pause(e, false); !res.IsError || !strings.Contains(res.Text, "hk schedules resume "+sc.ID) || enabled() {
+			t.Errorf("%s: resumed the schedule: %s", name, res.Text)
+		}
+	}
+	if res := pause(env(false, false, false), false); res.IsError || !enabled() {
+		t.Fatalf("a clean turn could not resume: %s", res.Text)
 	}
 }

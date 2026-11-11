@@ -15,6 +15,8 @@ import (
 func TestOneOffStatusSettlesWhenTheTurnEnds(t *testing.T) {
 	r := newRig(t)
 	ctx := context.Background()
+	var failures []string
+	r.sch.OnFailure = func(id, name, status string) { failures = append(failures, name+": "+status) }
 	ok, _ := r.st.Create(ctx, Schedule{Agent: "habakkuk", Name: "remind", Spec: "at 2026-11-09 09:30", Prompt: "call mum"})
 	bad, _ := r.st.Create(ctx, Schedule{Agent: "habakkuk", Name: "other", Spec: "at 2026-11-09 09:30", Prompt: "fail"})
 	r.now = r.now.Add(32 * time.Minute)
@@ -68,6 +70,10 @@ func TestOneOffStatusSettlesWhenTheTurnEnds(t *testing.T) {
 	}
 	if s := status(bad.ID); !strings.HasPrefix(s, "failed: ") || !strings.Contains(s, "model refused") {
 		t.Fatalf("status after a failed turn: %q", s)
+	}
+	r.sch.Settle(ctx) // settled already: no second report
+	if len(failures) != 1 || !strings.HasPrefix(failures[0], "other: failed: ") {
+		t.Fatalf("OnFailure heard %q", failures)
 	}
 	list, _ := r.st.List(ctx, "")
 	if out := Format(list, r.st.loc); !strings.Contains(out, "ran once") || strings.Contains(out, "paused") {

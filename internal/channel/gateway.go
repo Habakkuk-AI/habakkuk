@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
+	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 	"github.com/habakkuk-ai/habakkuk/internal/core/state"
@@ -282,9 +283,18 @@ func (g *Gateway) ingest(ctx context.Context, agentName string, atts []Attachmen
 			}
 		}
 		if inbox != "" {
-			path := filepath.Join(inbox, g.now().UTC().Format("20060102-150405")+"-"+name)
-			if err := os.MkdirAll(inbox, 0o700); err == nil && store.WriteFileAtomic(path, data, 0o600) == nil {
-				got.Path = path
+			// Saved only where the inbox really is inside the workspace: a
+			// link named inbox must not lead an attachment elsewhere.
+			ws := &tools.Env{Workspace: filepath.Dir(inbox), Policy: &tools.Policy{Locked: lockedFolders(g.Runner, agentName)}}
+			if err := os.MkdirAll(inbox, 0o700); err == nil {
+				if dir, err := ws.OutputDir(inbox); err == nil {
+					path := filepath.Join(dir, g.now().UTC().Format("20060102-150405")+"-"+name)
+					if store.WriteFileAtomic(path, data, 0o600) == nil {
+						got.Path = path
+					}
+				} else {
+					g.Log.Warn("attachment not saved in the workspace", "err", err)
+				}
 			}
 		}
 		if strings.HasPrefix(got.MediaType, "audio/") {
@@ -671,6 +681,9 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 		}
 		if errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts {
 			msg := g.t(*to, "turn.failed", shorten(err.Error(), 300))
+			if stopped := (agent.LoopStopped{}); errors.As(err, &stopped) {
+				msg = stopped.Message // the loop guard's own message, whole
+			}
 			if derr := g.enqueue(ctx, "dlv_"+j.ID, deliverPayload{To: *to, Text: msg, Draft: j.ID}); derr != nil {
 				g.Log.Error("queue failure notice failed", "err", derr)
 			}
@@ -1120,6 +1133,16 @@ func shorten(s string, n int) string {
 		return string([]rune(s)[:n]) + "..."
 	}
 	return s
+}
+
+// lockedFolders is the owner's trusted project files folder of the home
+// an agent lives in, which no save may reach.
+func lockedFolders(r *agent.Runner, agentName string) []string {
+	spec, ok := r.Agents[agentName]
+	if !ok || spec.Dir == "" {
+		return nil
+	}
+	return []string{(&projtrust.Store{Home: filepath.Dir(filepath.Dir(spec.Dir))}).Folder()}
 }
 
 // typed reports whether a message is plain text the owner just typed, one

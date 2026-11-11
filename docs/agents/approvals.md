@@ -190,7 +190,7 @@ Some runs can't get a yes:
 
 - A schedule with no delivery chat has nobody to ask, so the call is denied.
 - A run on an account that's open to everyone (`allow_from: ["*"]`) counts as a guest's turn, so risky calls are refused.
-- A run that has read outside content asks you every time, as does every run of a schedule that wasn't made by a clean message you typed, and every turn that reads a script's output.
+- A run that has read outside content asks you every time, as does every run of a schedule that wasn't made by a clean message you typed, and every turn that reads a script's output. A message you type in a session that started with an untrusted project file (see [Project instruction files](agents.md#project-instruction-files)) isn't clean, so a schedule it makes asks too.
 
 ## Instruction files
 
@@ -226,7 +226,7 @@ Run `hk security` to list the trusted folders for each agent. [Security](../depl
 
 ## Hooks
 
-A hook is a command of yours that Habakkuk runs when an event happens. You list hooks under `hooks:`. The events are `turn_start`, `turn_end`, `tool_before`, `tool_after`, `message_in`, `message_out`, `session_new` and `schedule_run`. The command gets the event as JSON on stdin, with `HABAKKUK_EVENT` set.
+A hook is a command of yours that Habakkuk runs when an event happens. You list hooks under `hooks:`. The events are `turn_start`, `turn_end`, `tool_before`, `tool_after`, `message_in`, `message_out`, `session_new`, `schedule_run` and `loop_guard`. The command gets the event as JSON on stdin, with `HABAKKUK_EVENT` set.
 
 A `tool_before` hook can block a tool call. If the hook exits non-zero, the call is blocked and the hook's stdout is the reason. A hook that times out or can't start blocks the call too.
 

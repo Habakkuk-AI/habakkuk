@@ -255,8 +255,16 @@ func (t invokeTool) files(ctx context.Context, env *tools.Env, node string, res 
 	if len(res.Files) == 0 {
 		return text
 	}
-	dir := filepath.Join(env.Workspace, "nodes", media.SafeName(node))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// Saved only where nodes/<node>/ really is inside the workspace, never
+	// through a link (tools.Env.OutputDir).
+	dir, err := env.OutputDir(filepath.Join("nodes", media.SafeName(node)))
+	if err == nil {
+		err = os.MkdirAll(dir, 0o755)
+	}
+	if err == nil {
+		dir, err = env.OutputDir(dir)
+	}
+	if err != nil {
 		return text + "\n(could not save the files: " + err.Error() + ")"
 	}
 	stamp := time.Now().UTC().Format("20060102-150405")

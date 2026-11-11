@@ -33,7 +33,8 @@ func TestSkillSaveIsRecorded(t *testing.T) {
 	l, h := historyLibrary(t)
 	r := tools.NewRegistry()
 	RegisterTools(r, l)
-	env := &tools.Env{Agent: "habakkuk", Session: "s9", Workspace: t.TempDir(), Mode: tools.ModeWorkspace, Taint: tools.NewTaint(true)}
+	// A clean turn: a tainted one holds the skill instead (held_test.go).
+	env := &tools.Env{Agent: "habakkuk", Session: "s9", Workspace: t.TempDir(), Mode: tools.ModeWorkspace, Taint: tools.NewTaint(false)}
 	for _, body := range []string{"Step one.", "Step one, then two."} {
 		in, _ := json.Marshal(map[string]string{"name": "brew", "description": "Brew coffee.", "body": body})
 		res := r.Execute(context.Background(), env, llm.Block{Type: llm.ToolUse, ToolUseID: "t", ToolName: "skill_save", Input: in})
@@ -46,7 +47,7 @@ func TestSkillSaveIsRecorded(t *testing.T) {
 		t.Fatal(cs, err)
 	}
 	c := cs[0]
-	if c.Kind != history.KindSkill || c.Name != "brew" || c.Op() != "updated" || c.Tool != "skill_save" || c.Session != "s9" || !c.Tainted {
+	if c.Kind != history.KindSkill || c.Name != "brew" || c.Op() != "updated" || c.Tool != "skill_save" || c.Session != "s9" || c.Tainted {
 		t.Fatalf("%+v", c)
 	}
 	d, _ := h.Diff(context.Background(), c)

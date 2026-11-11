@@ -549,8 +549,14 @@ func (t imageGenerateTool) Run(ctx context.Context, env *tools.Env, input json.R
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(env.Workspace, "images")
+	dir, err := env.OutputDir("images")
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	if dir, err = env.OutputDir(dir); err != nil {
 		return "", err
 	}
 	stamp := time.Now().UTC().Format("20060102-150405")

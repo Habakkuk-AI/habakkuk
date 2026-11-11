@@ -18,7 +18,7 @@ The config file is `$HABAKKUK_HOME/config.yaml`. It's strict YAML, so an unknown
 | `channels` | Chat accounts, keyed by account name | [Channels](../channels/index.md) |
 | `mcp_servers` | MCP servers whose tools agents can use | [MCP servers](../tools/mcp.md) |
 | `mcp_server` | Habakkuk as an MCP server over HTTP (`http`, `allow_send`) | [MCP servers](../tools/mcp.md#habakkuk-as-an-mcp-server) |
-| `http` | The HTTP server: `listen`, `token_env`, `public_url`, `webhooks` | [Dashboard and web chat](../interfaces/dashboard.md) |
+| `http` | The HTTP server: `listen`, `token_env`, `public_url`, `webhooks`, `push_contact` (the `mailto:` address or `https` URL sent with [Web Push](../interfaces/dashboard.md#notifications); default `public_url` when it's `https`) | [Dashboard and web chat](../interfaces/dashboard.md) |
 | `transcription` | Speech-to-text for voice notes and `hk talk`: `provider`, `model`, `prompt` | [Models and providers](../models/speech.md#speech-to-text) |
 | `tts` | Speech for `speak` and voice replies: `provider`, `key_env`, `base_url`, `model`, `voice`, `format`, `instructions`, `max_chars` | [Voice](../tools/voice.md) |
 | `realtime` | Live voice mode in the dashboard: `provider`, `model`, `voice`, `key_env`, `base_url`, `transcription`, `instructions`, `ttl` | [Voice](../tools/voice.md#live-mode-in-the-dashboard) |
@@ -74,10 +74,12 @@ Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded
 | `effort` | | `low`, `medium`, `high`, `xhigh` or `max` |
 | `max_tokens` | 64000 | Output tokens per model call |
 | `max_iterations` | 200 | Model calls per turn |
+| `loop_guard` | `repeat_warn: 3`, `repeat_stop: 5`, `idle_warn: 8`, `idle_stop: 12` | Warn, then stop, a turn that repeats the same failing call or rounds that learn nothing new; `-1` turns a check off ([agents](../agents/agents.md#when-an-agent-goes-round-in-circles)) |
 | `permission` | `workspace` | `read-only`, `ask`, `workspace` or `full` |
 | `approvals` | `human` | `human`, `reviewer` or `reviewer_then_human` |
 | `reviewer_model` | the agent's chain | The approval reviewer's model |
 | `workspace` | | The agent's working folder |
+| `project_files` | `on` | Read the project's `AGENTS.md`, `CLAUDE.md` and `.cursorrules` (up to the git root) into new sessions: `on` or `off`. A file is followed only when its exact content was trusted with `hk projects trust`; an untrusted one makes every command in the session need approval ([agents](../agents/agents.md#project-instruction-files)) |
 | `toolsets` | `core`, `memory`, `skills`, `schedule`, `delegate`, `board` | The tools it gets; a list replaces the default |
 | `web` | `true` | Use the provider's hosted web search and fetch |
 | `compact_at` | 600000 on `anthropic`, else 150000 | Prompt size that triggers compaction; `-1` turns it off |

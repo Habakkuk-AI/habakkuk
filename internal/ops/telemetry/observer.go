@@ -26,6 +26,7 @@ type Metrics struct {
 
 	ToolCalls    *Counter
 	ToolDuration *Histogram
+	LoopGuard    *Counter
 
 	Deliveries        *Counter
 	ChannelConnected  *Gauge
@@ -56,6 +57,7 @@ func NewMetrics() *Metrics {
 
 		ToolCalls:    r.Counter("habakkuk_tool_calls_total", "Tool calls by outcome: ok, error, denied or blocked.", "tool", "outcome"),
 		ToolDuration: r.Histogram("habakkuk_tool_call_duration_seconds", "Wall time of one tool call, approval wait included.", DurationBuckets, "tool"),
+		LoopGuard:    r.Counter("habakkuk_loop_guard_total", "Times the loop guard warned a model that repeated itself, or stopped its turn, by check (repeat or idle) and action (warn or stop).", "agent", "check", "action"),
 
 		Deliveries:        r.Counter("habakkuk_deliveries_total", "Delivery attempts by channel and outcome: sent, retry or failed.", "channel", "outcome"),
 		ChannelConnected:  r.Gauge("habakkuk_channel_connected", "1 while the channel adapter is connected, else 0.", "channel"),
@@ -207,6 +209,11 @@ func (o *Observer) ToolEnd(session, tool, callID, result, outcome string) {
 		err = errors.New(outcome)
 	}
 	st.span.End(err)
+}
+
+// LoopGuard records the loop guard warning a model or stopping a turn.
+func (o *Observer) LoopGuard(agent, check, action string) {
+	o.M.LoopGuard.Inc(agent, check, action)
 }
 
 // ToolOutcome classifies a tool result for the outcome label.

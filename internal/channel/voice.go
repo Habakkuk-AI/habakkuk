@@ -187,10 +187,19 @@ func (t speakTool) Run(ctx context.Context, env *tools.Env, input json.RawMessag
 		return "", err
 	}
 	sum := sha256.Sum256(audio.Data)
-	path := filepath.Join(env.Workspace, "voice", time.Now().UTC().Format("20060102-150405")+"-"+hex.EncodeToString(sum[:4])+audio.Ext)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	// Saved only where voice/ really is inside the workspace, never through
+	// a link (tools.Env.OutputDir).
+	dir, err := env.OutputDir("voice")
+	if err != nil {
 		return "", err
 	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	if dir, err = env.OutputDir(dir); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, time.Now().UTC().Format("20060102-150405")+"-"+hex.EncodeToString(sum[:4])+audio.Ext)
 	if err := store.WriteFileAtomic(path, audio.Data, 0o600); err != nil {
 		return "", err
 	}

@@ -106,11 +106,19 @@ hk rollback [-agent A] [-y] ID [PATH]
 hk models                           list providers and the models each one serves
 hk auth [login|list|logout]         subscription logins (login chatgpt|copilot)
 hk usage [-days N] [-agent A] tokens and cost by model and agent, and spend against the limits
-hk doctor                           check config, credentials and storage; each problem line ends with its fix
+hk doctor [--fix]                   check config, credentials and storage; each problem line ends with its fix
+                                    (--fix first applies the safe ones: config format, missing folders,
+                                    file permissions, a stale service file)
 hk status                           version, serve uptime, channels, queue, recent errors, today's cost
 hk computer view                    how to watch the agents' virtual desktops (computer backend xvfb)
 hk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
                                     print habakkuk.log readably (-f keeps following it)
+hk projects trust [-allow-control] [PATH] | list [-agent A] [PATH] | untrust [PATH]
+                                    trust the exact content of a project's AGENTS.md, CLAUDE.md and
+                                    .cursorrules, so agents follow them; any change untrusts a file;
+                                    trust shows exactly what the agent gets and asks on your terminal
+hk skills held | approve AGENT/NAME   skills an agent saved after reading outside content wait here;
+                                    approve one to put it in use
 hk approvals [list] [-agent A] | rm ID
                                     approval rules: calls an agent makes without asking, from
                                     "Always allow" answers and agents.<name>.allow

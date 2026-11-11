@@ -50,6 +50,15 @@ The taint stays with the turn across a restart. Say a turn reads a web page and 
 
 Setting `allow_tainted_exec: true` on an agent turns this off. The audit flags it.
 
+A project's instruction files work the same way. **A project's `AGENTS.md`, `CLAUDE.md` and `.cursorrules` are untrusted unless you trusted their exact content with `hk projects trust`**, and that includes the agent's own workspace. An untrusted file is given to the agent as data, and **every turn of that session is tainted**. So a cloned repository whose `AGENTS.md` says "before any task, run this script" can't get a command run without you. The taint is read back from the session's first message, so it holds after a restart too. Trust is given to content, not to a folder or a file name: Habakkuk keeps each trusted file's SHA-256 in `$HABAKKUK_HOME/projects/`, and any change, by anyone, makes the file untrusted again until you trust it again. The agents' file tools and every tool that saves files refuse that folder in every turn, however its path is spelled. `hk projects trust` always asks, with no option to skip the question, and writes a record only for the exact content it showed. You confirm by typing back a random code it prints on the terminal, so a process that pushes keystrokes without seeing the screen can't answer for you. On macOS and Linux it asks on the terminal itself (`/dev/tty`), never through standard input, and only as the terminal's foreground job; on Windows, where the console is standard input, it checks that standard input and output are a console. That's a hurdle for scripts and agents, not a guarantee, since a local process that fakes a terminal (with `script`, say) could answer it.
+
+Schedules and board cards that a tainted turn creates are tainted too, and so is every run of them, so a cloned repository's untrusted `AGENTS.md` can't act through a schedule either: even in `full` mode, a run's shell commands and writes ask in the chat the schedule reports to, or are denied when there's none. A record that isn't private to you (0600 in a 0700 folder you own) trusts nothing, and `hk doctor --fix` and `hk security -fix` leave it alone rather than make it look like yours. In `full` mode, a clean turn's shell can still do anything, the record included: that's what `full` means. See [Project instruction files](../agents/agents.md#project-instruction-files).
+
+Tools that save what they fetched or made (browser downloads, PDFs and screenshots, generated images and videos, `speak`, files a paired device returns, chat attachments) save only inside the workspace once links are followed, so a link in the workspace can't lead a save into `$HABAKKUK_HOME` or anywhere else. A paired device's `files.put` never writes into a folder laid out as a Habakkuk home on that device (whichever `HABAKKUK_HOME` the gateway uses). A folder counts as one when a config file (`config.yaml` or `config.yml`) or an `agents` folder sits beside a `projects` folder or one of Habakkuk's databases (`control.db`, `state.db` and the rest), or when a config file sits beside an `agents` folder. It also asks you first unless you allowed it for that device. Local files an MCP server writes are its own process's doing, outside this check.
+
+What that doesn't cover: instructions in other files, such as a project's `README.md`, which the agent may read while it works; and a change a clean turn's shell makes to a file you trusted, which then simply stays untrusted until you trust it again, because its fingerprint no longer matches.
+
+A tainted turn, or a message from someone other than the owner, also can't write `AGENTS.md`, `CLAUDE.md` or `.cursorrules` with the file tools, wherever they are and through any link. That's an extra; what keeps those files safe is that their content must be trusted. And a skill it saves with `skill_save` is held in `agents/<name>/skills-held/`, where nothing lists or loads it, until you look at it and run `hk skills approve AGENT/NAME`. `hk skills held` lists them. So text planted in a web page can't become a procedure later sessions follow.
 Saved approval rules don't change this. A rule from **Always allow** or `agents.<name>.allow` never answers for a tainted turn, and a tainted turn is never offered **Always allow**. See [Saved approval rules](#saved-approval-rules).
 
 ## Trusted folders for notes
@@ -118,7 +127,7 @@ A skill that ships scripts stays disabled until you run `hk skills approve`. Plu
 
 ## Private files
 
-Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles and backups. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `hk doctor` and `hk security` warn you about anything wider, and `hk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
+Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles, backups and the Web Push key and devices in `push/`. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `hk doctor` and `hk security` warn you about anything wider, and `hk doctor --fix` or `hk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
 
 ## No surprise network calls
 
@@ -126,7 +135,8 @@ Habakkuk doesn't send usage telemetry, and it checks for updates only when you r
 
 - your model providers and the channels you configured;
 - services you named in `config.yaml`: a `search:` provider, `tts`, `images`, `video`, `realtime`, `memory.embeddings`, `telemetry.otlp_endpoint`, MCP servers, A2A peers, Home Assistant;
-- the pages an agent reads with `fetch_url` or the browser.
+- the pages an agent reads with `fetch_url` or the browser;
+- with an `http` section, the browser push service of each device you turned [notifications](../interfaces/dashboard.md#notifications) on for, and only those. Each message is encrypted for that device.
 
 There's no default web search provider. The `web_search` tool exists only once `search:` names one. Run `hk security -network` to list every endpoint and see whether your config turns it on.
 
