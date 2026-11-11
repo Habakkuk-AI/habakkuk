@@ -84,7 +84,12 @@ func writeBackupOpts(ctx context.Context, home, path string, o backupOptions) (i
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	f, err := os.OpenFile(path+".tmp", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	// Whatever sits at the temp name goes first, and the new file is made
+	// exclusively, so a link waiting there is never written through.
+	if err := os.Remove(path + ".tmp"); err != nil && !os.IsNotExist(err) {
+		return 0, err
+	}
+	f, err := os.OpenFile(path+".tmp", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return 0, err
 	}

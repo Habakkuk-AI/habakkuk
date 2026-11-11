@@ -465,3 +465,20 @@ func trustNow(t *testing.T, st *projtrust.Store, path string) (projtrust.Entry, 
 	}
 	return st.Trust(path, sum)
 }
+
+// Writing IDENTITY.md never follows a link waiting at a temp name.
+func TestIdentityWriteDoesNotFollowATempLink(t *testing.T) {
+	dir, outside := t.TempDir(), t.TempDir()
+	victim := filepath.Join(outside, "trusted.json")
+	os.WriteFile(victim, []byte("original"), 0o600)
+	os.Symlink(victim, filepath.Join(dir, IdentityFile+".tmp"))
+	if err := writeIdentityFile(dir, []byte("name: Ada\n")); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(victim); string(data) != "original" {
+		t.Fatalf("written through the link: %q", data)
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, IdentityFile)); string(data) != "name: Ada\n" {
+		t.Fatalf("IDENTITY.md = %q", data)
+	}
+}

@@ -252,7 +252,12 @@ func (p *Plan) copyFile(src, dest string, si fs.FileInfo) (int, error) {
 		}
 	}
 	tmp := dest + partSuffix
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	// A leftover (or a link) at the temp name goes first; the new file is
+	// made exclusively, so nothing is written through a link.
+	if err := os.Remove(tmp); err != nil && !os.IsNotExist(err) {
+		return 0, err
+	}
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 	if err != nil {
 		return 0, err
 	}
