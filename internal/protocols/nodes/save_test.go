@@ -57,3 +57,22 @@ func TestFilesPutRefusesTheHabakkukHome(t *testing.T) {
 		t.Errorf("an ordinary put failed: %v", err)
 	}
 }
+
+// A node does not know where the gateway keeps its home: any folder that
+// is laid out as a Habakkuk home is refused, wherever it is.
+func TestFilesPutRefusesAnyHabakkukHome(t *testing.T) {
+	shared := t.TempDir()
+	gw := filepath.Join(shared, "srv", "hk") // the gateway's HABAKKUK_HOME, not the node's default
+	os.MkdirAll(filepath.Join(gw, "agents", "habakkuk"), 0o700)
+	os.WriteFile(filepath.Join(gw, "config.yaml"), []byte("version: 1\n"), 0o600)
+	put := LocalCaps(LocalOptions{Dir: shared})[CmdFilesPut]
+	if _, err := put.Run(context.Background(), []byte(`{"path":"srv/hk/projects/trusted.json","text":"[]"}`)); err == nil {
+		t.Fatal("files.put wrote into a Habakkuk home it was not told about")
+	}
+	if _, err := os.Stat(filepath.Join(gw, "projects")); !os.IsNotExist(err) {
+		t.Fatal("projects/ was created in the home")
+	}
+	if _, err := put.Run(context.Background(), []byte(`{"path":"srv/notes.txt","text":"hi"}`)); err != nil {
+		t.Fatalf("an ordinary put failed: %v", err)
+	}
+}

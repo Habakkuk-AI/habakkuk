@@ -480,9 +480,35 @@ func filesGet(root string, args json.RawMessage) (*Result, error) {
 		Files: []File{{Name: filepath.Base(path), Data: data}}}, nil
 }
 
+// isHabakkukHome reports whether dir looks like a Habakkuk home: a
+// config.yaml beside the agents or projects folder or the control
+// database. The node does not know where the gateway it serves keeps its
+// home, and should not be told; recognising any home on this machine
+// covers the gateway's too, whatever HABAKKUK_HOME it runs with.
+func isHabakkukHome(dir string) bool {
+	if fi, err := os.Stat(filepath.Join(dir, "config.yaml")); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	for _, mark := range []string{"agents", "projects", "control.db"} {
+		if _, err := os.Stat(filepath.Join(dir, mark)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // underProtected reports whether path (links resolved) is in one of the
-// protected folders, compared as folders, not as strings.
+// protected folders, compared as folders, not as strings, or in any
+// Habakkuk home on this machine.
 func underProtected(path string, protected []string) bool {
+	for cur := filepath.Dir(path); ; cur = filepath.Dir(cur) {
+		if isHabakkukHome(cur) {
+			return true
+		}
+		if filepath.Dir(cur) == cur {
+			break
+		}
+	}
 	var infos []os.FileInfo
 	for _, d := range protected {
 		if d == "" {
