@@ -53,3 +53,101 @@ func (t *turn) restoreTaint(env *tools.Env, recs []session.Record) {
 		}
 	}
 }
+
+// limitRules decides whether approval rules may answer for the turn. They
+// answer only for a turn the owner typed just now, in a direct chat or on
+// this machine (TurnInfo.Typed), that is not background work, delegated,
+// or another system's request, and is not tainted. Every other turn
+// (schedules, /goal follow-ups and other turns the gateway queues, notices,
+// board cards, sub-agents, A2A, the API, MCP clients, editors) asks a
+// person (tools.Env.RulesOff). The policy's Place then says where the turn
+// stands, and "" means no rules.
+//
+// Rules are also paused (tools.Env.RulesPaused) when the turn's message
+// carries chat notes (text that reached the chat from elsewhere), when its
+// parent had them paused, and when anything tainted entered the session
+// since the owner's previous message (sessionPaused).
+func (t *turn) limitRules(env *tools.Env, recs []session.Record) {
+	i := t.info
+	if !i.Typed || !i.OwnerMessage() || i.Tainted {
+		env.RulesOff = true
+		return
+	}
+	switch {
+	case t.sub != nil && t.sub.RulesPaused:
+		env.RulesPaused = true
+	case t.r.Notes != nil && t.r.Notes.NotesTaken(t.ctx, t.job.ID):
+		env.RulesPaused = true
+	case t.sessionPaused(recs):
+		env.RulesPaused = true
+	}
+}
+
+// sessionPaused reports whether anything but the owner's own words entered
+// the session since the owner's previous typed message: any turn after it
+// that the owner didn't type (a notice, meeting notes, a background
+// result, a /goal follow-up, a retry), or, in that message's own turn, a
+// tool that can bring outside content in, a hosted search result, a
+// tainted start or a chat note. Records with no job (a Live mode call's
+// transcript) count, and so does a turn whose job can no longer be read.
+func (t *turn) sessionPaused(recs []session.Record) bool {
+	// Walk back from the newest record. Records with no job (a Live mode
+	// call's transcript, written when the call ends) are words that aren't
+	// the owner's typing: they pause, unless they are older than the owner's
+	// previous typed message.
+	seen := map[string]bool{t.job.ID: true}
+	for i := len(recs) - 1; i >= 0; i-- {
+		id := recs[i].JobID
+		if id == t.job.ID {
+			continue
+		}
+		if id == "" {
+			return true
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		typed, tainted := t.jobTrust(id)
+		if !typed || tainted || t.recordsTaint(recs, id) || (t.r.Notes != nil && t.r.Notes.NotesTaken(t.ctx, id)) {
+			// A turn the owner didn't type (a notice, meeting notes, a
+			// result, a follow-up) brought in words that aren't the
+			// owner's; the previous message's own turn counts too: its
+			// tools, and the notes it carried in.
+			return true
+		}
+		return false // the owner's previous message, clean: nothing before it counts
+	}
+	return false
+}
+
+// jobTrust reads how a turn job started: typed by the owner, and whether
+// it started tainted. A job that cannot be read is taken as tainted.
+func (t *turn) jobTrust(id string) (typed, tainted bool) {
+	j, err := t.r.Queue.Get(t.ctx, id)
+	if err != nil || j == nil {
+		return false, true
+	}
+	var p TurnPayload
+	if j.Decode(&p) != nil {
+		return false, true
+	}
+	typed = p.Typed && p.Source == "" && !p.Background && p.Sub == nil
+	tainted = p.Tainted || p.Source == SourceA2A || (p.Sub != nil && p.Sub.Tainted)
+	return typed, tainted
+}
+
+// recordsTaint reports whether the job's records show outside content.
+func (t *turn) recordsTaint(recs []session.Record, id string) bool {
+	for _, rec := range recs {
+		if rec.JobID != id || rec.Message.Role != llm.Assistant {
+			continue
+		}
+		for _, b := range rec.Message.Blocks {
+			if b.Type == llm.Opaque || (b.Type == llm.ToolUse && t.r.Tools != nil && t.r.Tools.MayTaint(b.ToolName)) {
+				return true
+			}
+		}
+	}
+	return false
+}

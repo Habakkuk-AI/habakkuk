@@ -99,7 +99,7 @@ func (t createTool) Run(ctx context.Context, env *tools.Env, input json.RawMessa
 		}
 	}
 	c := Card{Title: in.Title, Body: in.Body, Assignee: in.Assignee, Priority: in.Priority, DependsOn: in.DependsOn,
-		Parent: in.Parent, CreatedBy: env.Agent, CreatorSession: env.Session}
+		Parent: in.Parent, CreatedBy: env.Agent, CreatorSession: env.Session, Tainted: env.Untrusted()}
 	if t.here != nil {
 		c.ReplyTo = t.here(ctx, env.Session)
 	}
@@ -204,6 +204,9 @@ func (t commentTool) Run(ctx context.Context, env *tools.Env, input json.RawMess
 	if err != nil {
 		return "", err
 	}
+	if err := t.d.markIfUntrusted(ctx, env, in.ID); err != nil {
+		return "", err
+	}
 	if err := t.d.Store.Comment(ctx, in.ID, env.Agent, in.Text); err != nil {
 		return "", err
 	}
@@ -228,6 +231,9 @@ func (t completeTool) Run(ctx context.Context, env *tools.Env, input json.RawMes
 		Result string `json:"result"`
 	}](input)
 	if err != nil {
+		return "", err
+	}
+	if err := t.d.markIfUntrusted(ctx, env, in.ID); err != nil {
 		return "", err
 	}
 	if _, err := t.d.Store.Complete(ctx, in.ID, env.Agent, in.Result); err != nil {
@@ -255,6 +261,9 @@ func (t blockTool) Run(ctx context.Context, env *tools.Env, input json.RawMessag
 		Reason string `json:"reason"`
 	}](input)
 	if err != nil {
+		return "", err
+	}
+	if err := t.d.markIfUntrusted(ctx, env, in.ID); err != nil {
 		return "", err
 	}
 	if _, err := t.d.Store.Block(ctx, in.ID, env.Agent, in.Reason); err != nil {
@@ -296,6 +305,9 @@ func (t updateTool) Run(ctx context.Context, env *tools.Env, input json.RawMessa
 		if err := t.d.known(*in.Assignee); err != nil {
 			return "", err
 		}
+	}
+	if err := t.d.markIfUntrusted(ctx, env, in.ID); err != nil {
+		return "", err
 	}
 	c, err := t.d.Store.Update(ctx, in.ID, env.Agent, Update{Assignee: in.Assignee, Priority: in.Priority,
 		Status: Status(in.Status), Note: in.Note})
@@ -361,4 +373,13 @@ func FormatCard(ctx context.Context, st *Store, c *Card, loc *time.Location) str
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// markIfUntrusted marks a card tainted before a turn steered by outside
+// content writes to it (Card.Tainted).
+func (d *Dispatcher) markIfUntrusted(ctx context.Context, env *tools.Env, id string) error {
+	if !env.Untrusted() {
+		return nil
+	}
+	return d.Store.MarkTainted(ctx, id)
 }

@@ -20,14 +20,17 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 	ac := cfg.Agents[agentName]
 	if ac != nil {
 		p.AllowTaintedExec = ac.AllowTaintedExec
-		if p.TrustedWrite, _ = cfg.TrustedWriteDirs(agentName); len(p.TrustedWrite) > 0 {
-			p.Protected = cfg.ProtectedDirs()
-			for _, name := range cfg.AgentNames() { // an agent home configured elsewhere
-				p.Protected = append(p.Protected, cfg.AgentDir(name))
-			}
-		}
+		p.TrustedWrite, _ = cfg.TrustedWriteDirs(agentName)
+	}
+	// Folders that neither a trusted folder nor an approval rule covers.
+	p.Protected, p.Home = cfg.ProtectedDirs(), cfg.Home
+	for _, name := range cfg.AgentNames() { // an agent home configured elsewhere
+		p.Protected = append(p.Protected, cfg.AgentDir(name))
 	}
 	if len(origin) == 0 {
+		// No reply address: the CLI and TUI, but also the API, MCP
+		// clients, editors, A2A and schedules with no chat. applyPolicy
+		// makes it local only for a turn the owner typed here.
 		return p, false
 	}
 	var addr channel.Address
@@ -38,8 +41,17 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 	}
 	external = addr.Trust == channel.TrustExternal
 	ch := cfg.Channels[addr.Account]
+	if ch == nil {
+		// An account the config no longer has: not this machine, and no
+		// chat whose rules could apply.
+		p.Channel, p.Guest = addr.Account, addr.Trust != channel.TrustOwner
+		return p, external
+	}
 	if !ch.MessagingChannel() {
-		return p, external // the local web chat and dashboard
+		if !external {
+			p.Place = tools.PlaceLocal // the local web chat and dashboard
+		}
+		return p, external
 	}
 	p.Channel = addr.Account
 	switch addr.Trust {
@@ -49,6 +61,11 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 		// A turn with no sender behind it (a schedule, /retry): on an
 		// account anyone can talk to, assume a guest asked for it.
 		p.Guest = ch.OpenToAll()
+	}
+	if !p.Guest && !external {
+		// The owner's chat, or a schedule delivering there: rules saved in
+		// this chat apply, and those from the config.
+		p.Place = tools.ChatPlace(addr.Account, addr.Conversation)
 	}
 	if ac != nil {
 		p.Allowed = map[tools.Capability]bool{}
@@ -62,8 +79,15 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 // applyPolicy is the Runner's PolicyFunc.
 func (a *App) applyPolicy(ctx context.Context, spec *agent.Spec, origin json.RawMessage, env *tools.Env) {
 	p, external := TurnPolicy(a.Cfg, spec.Name, origin)
-	if len(p.TrustedWrite) > 0 {
-		p.Protected = append(p.Protected, a.scheduledScriptDirs(ctx)...)
+	p.Protected = append(p.Protected, a.scheduledScriptDirs(ctx)...)
+	info := agent.TurnInfoFrom(ctx)
+	if len(origin) == 0 && info.Local {
+		p.Place = tools.PlaceLocal
+	}
+	if info.Source == agent.SourceA2A {
+		// Another agent's task is outside content: no rule answers for
+		// it (the runner taints the turn too).
+		p.Place = ""
 	}
 	env.Policy = p
 	if external {
@@ -98,4 +122,10 @@ func (a *App) scheduledScriptDirs(ctx context.Context) []string {
 		out = append(out, config.CommandDirs(sc.Command)...)
 	}
 	return out
+}
+
+// Rules are an agent's approval rules: agents.<name>.allow, then the ones
+// saved by "Always allow" in the agent's folder.
+func (a *App) Rules(agentName string) *tools.RuleFile {
+	return &tools.RuleFile{Path: filepath.Join(a.Cfg.AgentDir(agentName), tools.RulesFileName), Config: a.Cfg.AllowRules(agentName)}
 }

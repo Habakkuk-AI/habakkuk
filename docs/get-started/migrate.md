@@ -91,7 +91,7 @@ A project folder is read only when you name it with `--project DIR`. Running the
 
 The project doesn't become the agent's workspace.
 
-A few things stay behind: past coding sessions, subagents, hooks, plugins, output styles, Codex's command rules and its `notify` command. The plan lists the ones it finds.
+A few things stay behind: past coding sessions, subagents, hooks, plugins, output styles, Claude Code's `permissions.allow`, Codex's command rules and its `notify` command. The plan lists the ones it finds. Nothing that let the old tool skip a question becomes an approval rule here: each call asks again until you choose **Always allow**.
 
 When an agent's home and a coding tool are both on your computer, `hk migrate` imports the agent and names the coding tool, so you can run it again with `--from`.
 
@@ -151,6 +151,7 @@ Each OpenClaw agent's workspace folder is already handled. Habakkuk uses it wher
 | Keys kept in OpenClaw's credential store | They are not in `.env` or the config | Put them in `$HABAKKUK_HOME/.env`; the plan names the variables it still needs |
 | Matrix encryption keys | Device keys cannot be copied | Verify the new session from another Matrix client |
 | Board cards, plugins, hooks, `HEARTBEAT.md` | No direct equivalent | `hk board add`, hk plugins, `hooks` in `config.yaml`, `hk schedules add` |
+| Commands and tools the old agent or tool could run without asking (Hermes Agent's `command_allowlist`, OpenClaw's `exec-approvals.json`, Claude Code's `permissions.allow`, Codex's command rules) | Habakkuk's approval rules are exact commands you choose yourself. Those lists are patterns written for another program's checks | Each call asks again. Answer **Always allow** in a chat, or add the exact command to `agents.<name>.allow` in `config.yaml`. See [Always allow](../agents/approvals.md#always-allow) |
 | Other channels (email, iMessage, ...) | Not mapped yet | `hk setup channel`, or the channels guide |
 
 A few more things are left out: schedules and MCP servers that are turned off, one-off schedules whose time has passed, and skills that came with the other agent. The plan lists them at the end.

@@ -133,6 +133,14 @@ func (b *AppBackend) Submit(ctx context.Context, id, text string) error {
 	return nil
 }
 
+func (b *AppBackend) SubmitTyped(ctx context.Context, id, text string) error {
+	if _, err := b.A.Runner.SubmitTyped(ctx, id, text); err != nil {
+		return err
+	}
+	b.wake()
+	return nil
+}
+
 func (b *AppBackend) wake() {
 	if b.A.Runner.Wake != nil {
 		b.A.Runner.Wake()
@@ -292,7 +300,7 @@ func (b *AppBackend) btw(ctx context.Context, id, question string) (string, erro
 	if history := b.renderContext(ctx, id); history != "" {
 		text += "\n\n<main_conversation>\n" + history + "\n</main_conversation>"
 	}
-	return b.A.Runner.Ask(ctx, agent.Turn{Session: side.ID, Text: text + "\n\nQuestion: " + question}, nil)
+	return b.A.Runner.Ask(ctx, agent.Turn{Session: side.ID, Text: text + "\n\nQuestion: " + question, Local: true}, nil)
 }
 
 // renderContext renders what the model sees of a session (the latest

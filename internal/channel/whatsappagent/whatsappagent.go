@@ -9,6 +9,7 @@ package whatsappagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -171,6 +172,38 @@ type message struct {
 	Video    *media `json:"video"`
 	Document *media `json:"document"`
 	Sticker  *media `json:"sticker"`
+	// Context is set on a reply (id: the message it quotes) and on a
+	// forward, as in the Cloud API.
+	Context *struct {
+		ID                  string `json:"id"`
+		Forwarded           bool   `json:"forwarded"`
+		FrequentlyForwarded bool   `json:"frequently_forwarded"`
+	} `json:"context"`
+
+	// bare: the message had no keys beyond from, id, timestamp, type and
+	// text, so nothing (a forward, a reply, an ad referral, a field added
+	// later) qualifies its text.
+	bare bool
+}
+
+// plainKeys are the keys of a message that is text and nothing more.
+var plainKeys = map[string]bool{"from": true, "id": true, "timestamp": true, "type": true, "text": true}
+
+// UnmarshalJSON decodes a message and notes whether it is bare.
+func (m *message) UnmarshalJSON(data []byte) error {
+	type plainMessage message
+	if err := json.Unmarshal(data, (*plainMessage)(m)); err != nil {
+		return err
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	m.bare = true
+	for k := range keys {
+		m.bare = m.bare && plainKeys[k]
+	}
+	return nil
 }
 
 type media struct {
@@ -333,6 +366,10 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 		if msg.Text != nil {
 			m.Text = msg.Text.Body
 		}
+		// Fail closed: Plain only for a message that is text and nothing
+		// more. A forward or a reply carries "context", an ad "referral".
+		m.Forwarded = msg.Context != nil && (msg.Context.Forwarded || msg.Context.FrequentlyForwarded)
+		m.Plain = msg.bare
 	case "image":
 		ref, name = msg.Image, "image.jpg"
 	case "audio":

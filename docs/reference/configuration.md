@@ -89,6 +89,7 @@ Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded
 | `home`, `report_home` | | The agent's home chat (`CHANNEL:CONVERSATION[:THREAD]`) and what is reported there: `results` (default with a home), `all` or `off` ([multi-agent](../agents/multi-agent.md#teams-and-home-chats)) |
 | `budget` | | This agent's spending caps: `daily`, `monthly`, `per_turn` ([limits](../models/usage-and-limits.md#spending-limits)) |
 | `trust`, `channel_allow`, `allow_tainted_exec` | | Lift the extra checks on chat-driven and tainted turns ([security](../deploy/security.md)) |
+| `allow` | none | Approval rules: simple command lines (`exact`, run in the workspace or exactly in `in`) and file tools in a folder (`tool`, `path`) that run without asking, only for a message you typed just now, one to one or on this computer; never in a tainted turn ([approvals](../agents/approvals.md#always-allow)) |
 | `trusted_write_paths` | none | Folders outside the workspace where the file tools may save notes without approval; never commands, scripts or hidden files ([approvals](../agents/approvals.md#trusted-folders-for-notes)) |
 
 ## Channels
@@ -107,6 +108,7 @@ Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded
 | `api_url` | Override the platform API base URL; Signal: the signal-cli daemon |
 | `voice_replies`, `voice_text` | Spoken replies: `off`, `mirror` or `always`, and whether the text is sent too |
 | `progress` | What a chat shows while the agent works: `plain` (default, one short line), `detailed` (a line per tool step; `draft` is its old name) or `off`. Changes apply without a restart ([settings](../channels/settings.md#what-a-chat-shows-while-the-agent-works)) |
+| `stream` | Show the reply while it's written, in one message that becomes the reply (default `true`; Telegram and Slack). Changes apply without a restart ([settings](../channels/settings.md#replies-as-theyre-written)) |
 | `approvals_detail` | What an approval request shows: `summary` (default, plain words) or `full` (also the exact call). Changes apply without a restart ([settings](../channels/settings.md#approval-requests-in-plain-words)) |
 | `reactions` | React to the user's message when a turn starts and ends |
 | `language` | The language of Habakkuk's own messages on this channel |

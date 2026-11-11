@@ -86,6 +86,10 @@ CREATE TABLE asked_approvals (
 	hash         TEXT NOT NULL,
 	created_at   INTEGER NOT NULL
 ) WITHOUT ROWID;
+`}, {Version: 4, SQL: `
+ALTER TABLE drafts ADD COLUMN answer TEXT NOT NULL DEFAULT '';
+`}, {Version: 5, SQL: `
+ALTER TABLE chat_notes ADD COLUMN tainted INTEGER NOT NULL DEFAULT 0;
 `}}
 
 type Store struct {
@@ -341,24 +345,28 @@ func (s *Store) SetConversationAgent(ctx context.Context, key, agent string) err
 }
 
 // Draft is a progress message posted for a turn, kept so a rerun of the
-// turn edits the same message and its delivery can remove it.
+// turn edits the same message and its delivery can remove it, or, when it
+// shows the reply being written, turn it into the reply.
 type Draft struct {
 	Address   string // the chat, as JSON
 	MessageID string
+	// Answer is the reply text the message shows while it is streamed, as
+	// Markdown; empty while it shows progress.
+	Answer string
 }
 
 func (s *Store) SaveDraft(ctx context.Context, turnID string, d Draft) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO drafts (turn_id, address, message_id, created_at) VALUES (?, ?, ?, ?)
-		ON CONFLICT (turn_id) DO UPDATE SET address = excluded.address, message_id = excluded.message_id`,
-		turnID, d.Address, d.MessageID, s.now().UnixMilli())
+	_, err := s.db.ExecContext(ctx, `INSERT INTO drafts (turn_id, address, message_id, answer, created_at) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (turn_id) DO UPDATE SET address = excluded.address, message_id = excluded.message_id, answer = excluded.answer`,
+		turnID, d.Address, d.MessageID, d.Answer, s.now().UnixMilli())
 	return err
 }
 
 // Draft returns the turn's draft, or nil.
 func (s *Store) Draft(ctx context.Context, turnID string) (*Draft, error) {
 	var d Draft
-	err := s.db.QueryRowContext(ctx, `SELECT address, message_id FROM drafts WHERE turn_id = ?`, turnID).
-		Scan(&d.Address, &d.MessageID)
+	err := s.db.QueryRowContext(ctx, `SELECT address, message_id, answer FROM drafts WHERE turn_id = ?`, turnID).
+		Scan(&d.Address, &d.MessageID, &d.Answer)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

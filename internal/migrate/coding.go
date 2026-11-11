@@ -444,6 +444,15 @@ func readClaudeCode(dir string, o Options) (*Found, error) {
 			r.f.leftover("Claude Code's "+d, "no direct equivalent; see hk plugins, the hooks section of config.yaml and agents in config.yaml")
 		}
 	}
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		s := settings
+		if name != "settings.json" {
+			s, _ = readJSONFile(filepath.Join(dir, name))
+		}
+		if l, _ := dig(s, "permissions", "allow").([]any); len(l) > 0 {
+			r.f.allowLeftover("the tools and commands allowed without asking in Claude Code's "+name, a.Name)
+		}
+	}
 	if _, ok := settings["hooks"]; ok {
 		r.f.leftover("the hooks in Claude Code's settings.json", "see the hooks section of config.yaml")
 	}
@@ -586,7 +595,7 @@ func readCodex(dir string, o Options) (*Found, error) {
 		r.f.leftover("Codex's notify command", "see the hooks section of config.yaml")
 	}
 	if exists(filepath.Join(dir, "rules")) {
-		r.f.leftover("Codex's command rules", "set approvals in config.yaml (see the approvals guide)")
+		r.f.allowLeftover("Codex's command rules", r.agent.Name)
 	}
 	return r.f, nil
 }

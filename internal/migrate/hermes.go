@@ -114,6 +114,16 @@ func (r *hermesReader) read() error {
 	r.f.Agents = append(r.f.Agents, a)
 
 	r.model()
+	switch l := r.cfg["command_allowlist"].(type) {
+	case []any:
+		if len(l) > 0 {
+			r.f.allowLeftover(fmt.Sprintf("the commands agent %s ran without asking (command_allowlist)", a.Name), a.Name)
+		}
+	case string:
+		if strings.TrimSpace(l) != "" {
+			r.f.allowLeftover(fmt.Sprintf("the commands agent %s ran without asking (command_allowlist)", a.Name), a.Name)
+		}
+	}
 	if cwd, _ := dig(r.cfg, "terminal", "cwd").(string); filepath.IsAbs(cwd) {
 		a.Workspace = tilde(cwd, r.o.userHome())
 	} else if a.Main {

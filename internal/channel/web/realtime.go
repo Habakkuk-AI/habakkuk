@@ -333,7 +333,7 @@ func (s *Server) realtimeToolCall(w http.ResponseWriter, r *http.Request) {
 	if req.CallID != "" {
 		id = "rt-" + req.CallID // a resent call attaches to the first one's turn
 	}
-	out, status, msg := s.deliverChat(ctx, chatRequest{Conversation: conv, Text: text, Agent: req.Agent, ID: id},
+	out, status, msg := s.deliverChat(ctx, chatRequest{Conversation: conv, Text: text, Agent: req.Agent, ID: id, Spoken: true},
 		"(voice) "+req.Request, nil)
 	if msg != "" {
 		s.rt.restore(conv, lines)

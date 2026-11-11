@@ -69,6 +69,12 @@ func (ch *Channel) ProgressMode() string {
 	return ProgressPlain
 }
 
+// StreamOn reports whether the channel shows replies while they are being
+// written (stream, default true).
+func (ch *Channel) StreamOn() bool {
+	return ch == nil || ch.Stream == nil || *ch.Stream
+}
+
 // How much an approval prompt in a chat shows of the call it asks about.
 const (
 	// ApprovalsSummary (the default) says what the agent wants to do in

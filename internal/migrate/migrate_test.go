@@ -17,6 +17,8 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/app"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
+
+	"gopkg.in/yaml.v3"
 )
 
 var testNow = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
@@ -871,5 +873,64 @@ func TestImportedScriptTimeout(t *testing.T) {
 		if got := importedScriptTimeout(spec); got != want {
 			t.Errorf("%s: %v, want %v", spec, got, want)
 		}
+	}
+}
+
+// A source's list of calls allowed without asking is named as left
+// behind, never imported as an approval rule; the rules you set in
+// config.yaml stay as they are, even with force.
+func TestAllowListsStayBehind(t *testing.T) {
+	home := t.TempDir()
+	old := "version: 1\nproviders:\n  anthropic:\n    preset: anthropic\nagents:\n  habakkuk:\n    model: anthropic/claude-opus-4-6\n    allow:\n      - exact: git status\n"
+	if err := os.WriteFile(filepath.Join(home, "config.yaml"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hermes := fixture(t, Hermes)
+	cfg := readFile(t, filepath.Join(hermes, "config.yaml")) + "\ncommand_allowlist:\n  - rm -rf build\n"
+	if err := os.WriteFile(filepath.Join(hermes, "config.yaml"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	openclaw := fixture(t, OpenClaw)
+	if err := os.WriteFile(filepath.Join(openclaw, "exec-approvals.json"), []byte(`{"version":1,"agents":{"main":{"allowlist":[{"pattern":"/usr/bin/curl"}]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ from, src, want string }{
+		{Hermes, hermes, "the commands agent habakkuk ran without asking (command_allowlist)"},
+		{OpenClaw, openclaw, "the commands allowed without asking (exec-approvals.json)"},
+		{ClaudeCode, fixture(t, ClaudeCode), "the tools and commands allowed without asking in Claude Code's settings.json"},
+		{Codex, fixture(t, Codex), "Codex's command rules"},
+	} {
+		p := mustPlan(t, c.from, c.src, home, true)
+		var l *Leftover
+		for i := range p.Found.Leftovers {
+			if p.Found.Leftovers[i].What == c.want {
+				l = &p.Found.Leftovers[i]
+			}
+		}
+		if l == nil || !strings.Contains(l.Instead, "not imported") || !strings.Contains(l.Instead, ".allow in config.yaml") {
+			t.Errorf("%s: leftovers = %+v; want %q", c.from, p.Found.Leftovers, c.want)
+		}
+		if _, err := p.Apply(context.Background(), false); err != nil {
+			t.Fatal(err)
+		}
+		var got struct {
+			Agents map[string]struct {
+				Allow []map[string]string `yaml:"allow"`
+			} `yaml:"agents"`
+		}
+		if err := yaml.Unmarshal([]byte(readFile(t, filepath.Join(home, "config.yaml"))), &got); err != nil {
+			t.Fatal(err)
+		}
+		for name, a := range got.Agents {
+			if want := name == "habakkuk"; len(a.Allow) != map[bool]int{true: 1}[want] || want && a.Allow[0]["exact"] != "git status" {
+				t.Errorf("%s: agent %s allow = %v", c.from, name, a.Allow)
+			}
+		}
+		_ = filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
+			if err == nil && d.Name() == "approvals.json" {
+				t.Errorf("%s: an approval rule file was written: %s", c.from, path)
+			}
+			return nil
+		})
 	}
 }

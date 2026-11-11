@@ -235,6 +235,8 @@ These are the tool calls waiting for a yes or no in a chat. A call waits there u
 |---|---|
 | `GET /api/approvals` | `{"approvals": [{"id", "to": {"account", "conversation", "thread"}, "session", "tool", "summary", "review", "since"}]}`, oldest first. |
 | `POST /api/approvals/{id}` `{"approve": true}` | Allows (or with `false` denies) the call, exactly as answering in the chat would, and posts "Approved from the dashboard." there. `404` when it is no longer waiting (answered, timed out, or the turn stopped). |
+| `GET /api/approval-rules` | `{"rules": [{"id", "agent", "tool", "exact", "in", "program", "path", "place", "saved_by", "added", "source", "text", "where"}]}`: every agent's approval rules, config ones (`source: "config"`) first. `text` says what the rule covers and `where` where it applies: everywhere (config), on this machine (`place: "local"`) or in one chat (`place: "chat:ACCOUNT:CONVERSATION"`). |
+| `DELETE /api/approval-rules/{agent}/{id}` | Removes a saved rule (`204`). Rules from the config are removed by editing it, so they answer `404`. |
 
 ## Nodes
 

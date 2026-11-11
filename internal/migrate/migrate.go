@@ -520,6 +520,16 @@ func (f *Found) finish() {
 }
 
 // leftover records something that cannot carry over, once.
+// allowLeftover names a source's list of calls its agent could make
+// without asking. It is never imported: Habakkuk's approval rules
+// (agents.<name>.allow, and Always allow in a chat) are exact commands a
+// person chose, while the old lists are patterns another agent's checks
+// were built for. Each call asks again until you decide.
+func (f *Found) allowLeftover(what, agent string) {
+	f.leftover(what, "not imported, so each call asks again; answer Always allow in a chat, or add the exact command to agents."+
+		agent+".allow in config.yaml")
+}
+
 func (f *Found) leftover(what, instead string) {
 	l := Leftover{What: what, Instead: instead}
 	if !slices.Contains(f.Leftovers, l) {
