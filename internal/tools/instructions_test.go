@@ -3,10 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 )
@@ -115,5 +117,40 @@ func TestOutputDirFollowsLinks(t *testing.T) {
 	}
 	if _, err := env.OutputDir("images"); err != nil {
 		t.Error(err)
+	}
+}
+
+// slowApprover answers yes after a while.
+type slowApprover struct{ d time.Duration }
+
+func (a slowApprover) Approve(context.Context, ApprovalRequest) (bool, error) {
+	time.Sleep(a.d)
+	return true, nil
+}
+
+// asksInside asks for approval inside its Run, as send_file and
+// node_invoke do, then fails at once.
+type asksInside struct{}
+
+func (asksInside) Risk() Risk { return RiskRead }
+func (asksInside) Spec() llm.ToolSpec {
+	return llm.ToolSpec{Name: "asks", Schema: json.RawMessage(`{"type":"object"}`)}
+}
+func (asksInside) Run(ctx context.Context, env *Env, _ json.RawMessage) (string, error) {
+	if _, err := env.Approver.Approve(ctx, ApprovalRequest{Tool: "asks"}); err != nil {
+		return "", err
+	}
+	return "", errors.New("failed at once")
+}
+
+// Time spent waiting for an approval inside Run is not the tool's run time.
+func TestRunTimeLeavesOutApprovalsInsideRun(t *testing.T) {
+	r := NewRegistry()
+	r.Register("t", asksInside{})
+	env := &Env{Agent: "a", Workspace: t.TempDir(), Mode: ModeFull, Approver: TimedApprover(slowApprover{150 * time.Millisecond})}
+	ctx, ran := WithRunTime(context.Background())
+	r.Execute(ctx, env, llm.Block{Type: llm.ToolUse, ToolUseID: "1", ToolName: "asks", Input: json.RawMessage(`{}`)})
+	if *ran >= 100*time.Millisecond {
+		t.Fatalf("run time %v includes the approval wait", *ran)
 	}
 }

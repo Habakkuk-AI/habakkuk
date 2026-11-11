@@ -316,11 +316,69 @@ func WithCallID(ctx context.Context, id string) context.Context {
 
 type runTimeKey struct{}
 
+// runTime is one call's timing: how long its Run took, less the time it
+// spent waiting for an approval or a reviewer inside Run.
+type runTime struct {
+	ran    *time.Duration
+	mu     sync.Mutex
+	waited time.Duration
+}
+
 // WithRunTime returns a context under which Execute records how long the
-// tool itself ran: only its Run, not the approval or hooks before it.
+// tool itself ran: only its Run, not the approval or hooks before it, nor
+// an approval it asks for while it runs (through TimedApprover and
+// TimedReviewer).
 func WithRunTime(ctx context.Context) (context.Context, *time.Duration) {
 	d := new(time.Duration)
-	return context.WithValue(ctx, runTimeKey{}, d), d
+	return context.WithValue(ctx, runTimeKey{}, &runTime{ran: d}), d
+}
+
+// waiting adds time a call spent waiting on someone to its run's timing.
+func waiting(ctx context.Context, d time.Duration) {
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		rt.waited += d
+		rt.mu.Unlock()
+	}
+}
+
+// TimedApprover wraps an approver so time spent waiting for an answer is
+// not counted as the tool's own run time. Nil stays nil.
+func TimedApprover(a Approver) Approver {
+	if a == nil {
+		return nil
+	}
+	if _, ok := a.(timedApprover); ok {
+		return a
+	}
+	return timedApprover{a}
+}
+
+type timedApprover struct{ Approver }
+
+func (t timedApprover) Approve(ctx context.Context, req ApprovalRequest) (bool, error) {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.Approver.Approve(ctx, req)
+}
+
+// TimedReviewer does the same for an approval reviewer.
+func TimedReviewer(r Reviewer) Reviewer {
+	if r == nil {
+		return nil
+	}
+	if _, ok := r.(timedReviewer); ok {
+		return r
+	}
+	return timedReviewer{r}
+}
+
+type timedReviewer struct{ Reviewer }
+
+func (t timedReviewer) Review(ctx context.Context, req ApprovalRequest) Review {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.Reviewer.Review(ctx, req)
 }
 
 // CallID is the id of the tool call being run, or "". Tools with side
@@ -360,10 +418,17 @@ func (r *Registry) Execute(ctx context.Context, env *Env, call llm.Block) llm.Bl
 		return res
 	}
 	env.checkpoint(ctx, t, call.Input)
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		rt.waited = 0 // approvals before Run are outside its time already
+		rt.mu.Unlock()
+	}
 	start := time.Now()
 	out, err := t.Run(ctx, env, call.Input)
-	if d, ok := ctx.Value(runTimeKey{}).(*time.Duration); ok {
-		*d = time.Since(start)
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		*rt.ran = max(time.Since(start)-rt.waited, 0)
+		rt.mu.Unlock()
 	}
 	if taints(t) {
 		env.Taint.Mark()

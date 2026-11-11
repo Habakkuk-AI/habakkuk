@@ -59,7 +59,7 @@ type Spec struct {
 	ReportHome string
 	// Loop ends turns that keep repeating themselves (loopguard.go).
 	Loop LoopLimits
-	// ProjectFiles is on (default when ""), trusted or off: whether new
+	// ProjectFiles is on (default when "") or off: whether new
 	// sessions read the workspace's AGENTS.md, CLAUDE.md and .cursorrules
 	// (projectfiles.go).
 	ProjectFiles string
@@ -434,6 +434,9 @@ func (t *turn) run(userText string, media []Attachment) error {
 	} else if t.r.Approvers != nil {
 		env.Approver = t.r.Approvers(t.sess.ID)
 	}
+	// Waiting for an approval inside a tool's run is not the tool waiting
+	// (the loop guard's timing).
+	env.Approver, env.Reviewer = tools.TimedApprover(env.Approver), tools.TimedReviewer(env.Reviewer)
 	t.applyPolicy(env)
 	t.restoreTaint(env, recs)
 	if projectTainted(t.msgs) { // the session started with untrusted project files
