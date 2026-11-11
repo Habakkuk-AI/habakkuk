@@ -68,7 +68,7 @@ func TestSlackButtonsAndPress(t *testing.T) {
 		first["action_id"] == second["action_id"] {
 		t.Fatalf("post = %v", post)
 	}
-	payload := json.RawMessage(`{"type":"block_actions","team":{"id":"TA"},"user":{"id":"U7","name":"ay"},
+	payload := json.RawMessage(`{"type":"block_actions","team":{"id":"TA"},"user":{"id":"U7","name":"sam"},
 		"channel":{"id":"C1"},"message":{"ts":"5.5","thread_ts":"9.9","text":"Approve?"},
 		"actions":[{"value":"fy|n|1","action_ts":"6.6"}]}`)
 	m, ok := a.press(ctx, payload)

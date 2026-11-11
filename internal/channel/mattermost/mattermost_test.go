@@ -111,7 +111,7 @@ func (i *inbox) Connected(d string) {
 
 func TestSocketEventsAndREST(t *testing.T) {
 	fake := &fakeMM{events: []string{
-		event("D", "@ay", map[string]any{"id": "p1", "user_id": "u1", "channel_id": "c-dm", "message": "hello",
+		event("D", "@sam", map[string]any{"id": "p1", "user_id": "u1", "channel_id": "c-dm", "message": "hello",
 			"file_ids": []string{"f1"}, "metadata": map[string]any{"files": []any{map[string]any{"id": "f1", "name": "a.txt", "mime_type": "text/plain"}}}}),
 		event("O", "@bo", map[string]any{"id": "p2", "user_id": "u2", "channel_id": "c-town", "message": "@Habakkuk deploy status?"}, "bot1"),
 		event("O", "@bo", map[string]any{"id": "p3", "user_id": "u2", "channel_id": "c-town", "message": "just chatting"}),
@@ -150,7 +150,7 @@ func TestSocketEventsAndREST(t *testing.T) {
 	if len(msgs) != 3 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Conversation != "c-dm" || !m.Direct || m.Sender != "u1" || m.SenderAlt != "ay" || m.Text != "hello" || len(m.Attachments) != 1 {
+	if m := msgs[0]; m.Conversation != "c-dm" || !m.Direct || m.Sender != "u1" || m.SenderAlt != "sam" || m.Text != "hello" || len(m.Attachments) != 1 {
 		t.Fatalf("dm = %+v", m)
 	}
 	if data, err := msgs[0].Attachments[0].Fetch(ctx); err != nil || string(data) != "FILEDATA" {

@@ -19,7 +19,7 @@ list = [
   'b',
 ]
 inline = { x = 1, "y z" = "w", nested = { k = "v" } }
-site.name = "Corner Bakery"
+site.name = "Bramblecrest Bakery"
 multi = """
 first
 second \
@@ -58,7 +58,7 @@ k = 1
 		"when":       "2026-11-09T12:00:00Z",
 		"list":       []any{"a", "b"},
 		"inline":     map[string]any{"x": int64(1), "y z": "w", "nested": map[string]any{"k": "v"}},
-		"site":       map[string]any{"name": "Corner Bakery"},
+		"site":       map[string]any{"name": "Bramblecrest Bakery"},
 		"multi":      "first\nsecond joined",
 		"raw":        `keep \n as is`,
 		"esc":        "tab\there é \"q\"",

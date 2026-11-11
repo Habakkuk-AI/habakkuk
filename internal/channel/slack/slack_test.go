@@ -378,7 +378,7 @@ func TestBadBotTokenIsFatal(t *testing.T) {
 func TestButtonPressIsAckedBeforeItIsHandled(t *testing.T) {
 	press := func(id, value string) string {
 		return `{"type":"interactive","envelope_id":"` + id + `","payload":{"type":"block_actions","team":{"id":"TA"},
-			"user":{"id":"U7","name":"ay"},"channel":{"id":"D1"},"message":{"ts":"5.5","text":"I'd like to run a command."},
+			"user":{"id":"U7","name":"sam"},"channel":{"id":"D1"},"message":{"ts":"5.5","text":"I'd like to run a command."},
 			"actions":[{"value":"` + value + `","action_ts":"6.6"}]}}`
 	}
 	f := &fakeSlack{ackFirst: "i1", frames: []string{

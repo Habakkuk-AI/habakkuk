@@ -14,7 +14,7 @@ func withChannels(channels, http string) string {
 const allPlatforms = `
   mail:
     type: email
-    allow_from: [Ay@Example.com]
+    allow_from: [Sam@Example.com]
     email:
       address: habakkuk@example.com
       imap: imap.example.com:993
@@ -59,7 +59,7 @@ func TestPlatformChannels(t *testing.T) {
 	}
 	mail := cfg.Channels["mail"]
 	if mail.Email.Folder != "INBOX" || mail.Email.Username != "habakkuk@example.com" || mail.Email.Poll != time.Minute ||
-		mail.Email.IMAPTLS != "auto" || mail.SessionIdle != 30*24*time.Hour || mail.AllowFrom[0] != "ay@example.com" {
+		mail.Email.IMAPTLS != "auto" || mail.SessionIdle != 30*24*time.Hour || mail.AllowFrom[0] != "sam@example.com" {
 		t.Fatalf("email defaults: %+v %+v", mail, mail.Email)
 	}
 	if irc := cfg.Channels["irc"].IRC; !*irc.TLS || irc.SASLUser != "habakkuk" {

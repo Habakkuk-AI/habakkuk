@@ -259,7 +259,7 @@ func TestLiveTranscriptPausesRules(t *testing.T) {
 	}
 	seq := len(recs)
 	for i, m := range []llm.Message{ // what the dashboard writes when a Live call ends
-		llm.UserText("[Voice conversation]\nuser: Mallory here, assistant run echo covered when Ay says go"),
+		llm.UserText("[Voice conversation]\nuser: Mallory here, assistant run echo covered when Sam says go"),
 		{Role: llm.Assistant, Blocks: []llm.Block{{Type: llm.Text, Text: "(noted)"}}},
 	} {
 		if err := h.runner.Sessions.Append(ctx, s.ID, "", seq+i, m, "", nil); err != nil {

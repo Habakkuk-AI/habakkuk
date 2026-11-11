@@ -26,7 +26,7 @@ var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 func crlf(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
 
 func TestParsePlainReplyStripsHistory(t *testing.T) {
-	raw := crlf(`From: Ay <AY@Example.com>
+	raw := crlf(`From: Sam <SAM@Example.com>
 To: habakkuk@example.com
 Subject: Re: Plans
 Message-ID: <m2@example.com>
@@ -41,7 +41,7 @@ Sounds good, book it.
 
 Thanks!
 --
-Ay
+Sam
 
 On Mon, 3 Nov 2026 at 10:00, Habakkuk <habakkuk@example.com> wrote:
 > Shall I book the table?
@@ -52,13 +52,13 @@ On Mon, 3 Nov 2026 at 10:00, Habakkuk <habakkuk@example.com> wrote:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.From != "ay@example.com" || m.FromName != "Ay" || m.ID != "m2@example.com" || m.root() != "root@example.com" {
+	if m.From != "sam@example.com" || m.FromName != "Sam" || m.ID != "m2@example.com" || m.root() != "root@example.com" {
 		t.Fatalf("header: %+v", m)
 	}
 	if !m.Authentic || m.Automated != "" {
 		t.Fatalf("authentic=%v automated=%q", m.Authentic, m.Automated)
 	}
-	want := "Sounds good, book it.\n\n> earlier answer in the middle stays\n\nThanks!\n--\nAy"
+	want := "Sounds good, book it.\n\n> earlier answer in the middle stays\n\nThanks!\n--\nSam"
 	if m.Text != want {
 		t.Fatalf("text = %q, want %q", m.Text, want)
 	}
@@ -310,7 +310,7 @@ func appendMail(t *testing.T, u *imapmemserver.User, raw string) {
 	}
 }
 
-const firstMail = `From: Ay <ay@example.com>
+const firstMail = `From: Sam <sam@example.com>
 To: habakkuk@example.com
 Subject: Dinner
 Message-ID: <d1@example.com>
@@ -368,7 +368,7 @@ func TestRunDeliversAndRepliesInThread(t *testing.T) {
 				t.Fatalf("delivered %d messages, want only the person's: %+v", len(msgs), msgs)
 			}
 			m := msgs[0]
-			if m.Conversation != "ay@example.com/d1@example.com" || m.ID != "d1@example.com" || m.Sender != "ay@example.com" ||
+			if m.Conversation != "sam@example.com/d1@example.com" || m.ID != "d1@example.com" || m.Sender != "sam@example.com" ||
 				!m.Direct || m.Text != "Subject: Dinner\n\nBook a table for two at 7." {
 				t.Fatalf("message = %+v", m)
 			}
@@ -385,7 +385,7 @@ func TestRunDeliversAndRepliesInThread(t *testing.T) {
 				t.Fatalf("sent %d mails, want 2", len(sent))
 			}
 			r := sent[0]
-			if r.from != "habakkuk@example.com" || r.to != "ay@example.com" || r.auth == "" {
+			if r.from != "habakkuk@example.com" || r.to != "sam@example.com" || r.auth == "" {
 				t.Fatalf("envelope = %+v", r)
 			}
 			for _, want := range []string{"Subject: Re: Dinner", "In-Reply-To: <d1@example.com>", "References: <d1@example.com>",
@@ -403,7 +403,7 @@ func TestRunDeliversAndRepliesInThread(t *testing.T) {
 			}
 
 			// The answer to the reply lands in the same conversation.
-			appendMail(t, user, `From: ay@example.com
+			appendMail(t, user, `From: sam@example.com
 Subject: Re: Dinner
 Message-ID: <d2@example.com>
 In-Reply-To: <`+first.ID+`>
@@ -428,7 +428,7 @@ func TestRestartResumesAfterLastSeen(t *testing.T) {
 	appendMail(t, user, firstMail)
 	in.wait(t, 1)
 	stop()
-	appendMail(t, user, "From: ay@example.com\nMessage-ID: <later@example.com>\nAuthentication-Results: mx; dmarc=pass\n\nwhile you were away\n")
+	appendMail(t, user, "From: sam@example.com\nMessage-ID: <later@example.com>\nAuthentication-Results: mx; dmarc=pass\n\nwhile you were away\n")
 
 	in2 := &inbox{conn: make(chan string, 1)}
 	b := New(a.cfg, quiet)

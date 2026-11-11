@@ -279,7 +279,7 @@ func TestReadCodex(t *testing.T) {
 	if got, want := skillNames(a), []string{"release-notes", "standup"}; !slices.Equal(got, want) {
 		t.Errorf("skills = %v, want %v (the built-in .system skills are left out)", got, want)
 	}
-	if got := noteTitles(a); len(got) != 1 || !strings.HasPrefix(got[0], "Corner Bakery takes wholesale orders") {
+	if got := noteTitles(a); len(got) != 1 || !strings.HasPrefix(got[0], "Bramblecrest Bakery takes wholesale orders") {
 		t.Errorf("notes = %v", got)
 	} else if !a.Notes[0].Untrusted {
 		t.Error("Codex wrote its memories itself from past threads: they come in untrusted")

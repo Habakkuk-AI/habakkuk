@@ -175,7 +175,7 @@ func TestGatewayReceivesAndResumesAfterReconnect(t *testing.T) {
 		write(ctx, c,
 			dispatch(1, "READY", `{"session_id":"S1","resume_gateway_url":"`+f.wsURL+`/ws-resume","user":{"id":"99","username":"habakkuk","bot":true}}`),
 			dispatch(2, "GUILD_CREATE", `{"id":"G","threads":[{"id":"500","type":11}]}`),
-			dispatch(3, "MESSAGE_CREATE", `{"id":"m1","channel_id":"D1","type":0,"author":{"id":"7","username":"ay","global_name":"Ay"},"content":"hello"}`),
+			dispatch(3, "MESSAGE_CREATE", `{"id":"m1","channel_id":"D1","type":0,"author":{"id":"7","username":"sam","global_name":"Sam"},"content":"hello"}`),
 			dispatch(4, "MESSAGE_CREATE", `{"id":"m2","channel_id":"C1","guild_id":"G","type":0,"author":{"id":"8","username":"bo"},"member":{"nick":"Bobby"},"content":"<@99> ask <@!12> about it","mentions":[{"id":"99","username":"habakkuk"},{"id":"12","username":"cy"}]}`),
 			dispatch(5, "MESSAGE_CREATE", `{"id":"m3","channel_id":"C1","guild_id":"G","type":0,"author":{"id":"8","username":"bo"},"content":"just chatting"}`),
 			dispatch(6, "MESSAGE_CREATE", `{"id":"m4","channel_id":"C1","guild_id":"G","type":0,"author":{"id":"50","username":"other","bot":true},"content":"bot noise"}`),
@@ -232,7 +232,7 @@ func TestGatewayReceivesAndResumesAfterReconnect(t *testing.T) {
 	if len(in.msgs) != 5 {
 		t.Fatalf("got %d messages: %+v", len(in.msgs), in.msgs)
 	}
-	if m := in.msgs[0]; !m.Direct || m.Conversation != "D1" || m.Sender != "7" || m.SenderName != "Ay" || m.Text != "hello" {
+	if m := in.msgs[0]; !m.Direct || m.Conversation != "D1" || m.Sender != "7" || m.SenderName != "Sam" || m.Text != "hello" {
 		t.Fatalf("dm: %+v", m)
 	}
 	if m := in.msgs[1]; m.Direct || !m.Mentioned || m.Text != "ask @cy about it" || m.SenderName != "Bobby" {

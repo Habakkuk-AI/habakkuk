@@ -103,7 +103,7 @@ Streaming works where Habakkuk can edit messages, which today means Telegram and
 When the agent needs your approval in a chat, it says what it wants to do in everyday words. It also tells you why it's asking and how to answer:
 
 ```text
-I'd like to add a note to decisions.md in your Corner Bakery workspace.
+I'd like to add a note to decisions.md in your Bramblecrest Bakery workspace.
 I'm asking because this conversation included a web page or email, and I check with you before acting on those.
 
 Reply yes or no. Reply details to see the exact command.

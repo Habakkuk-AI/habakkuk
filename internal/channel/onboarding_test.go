@@ -25,7 +25,7 @@ func TestStartOpensTheWelcome(t *testing.T) {
 
 	// A group message never opens the welcome.
 	g := newRig(t, &config.Channel{AllowFrom: []string{"7"}, Groups: "all"})
-	g.g.Handle(context.Background(), Message{Account: "tg", Conversation: "-5", ID: "g1", Sender: "7", SenderName: "Ay", Text: "hello all"})
+	g.g.Handle(context.Background(), Message{Account: "tg", Conversation: "-5", ID: "g1", Sender: "7", SenderName: "Sam", Text: "hello all"})
 	waitFor(t, "group reply", hasText(g.a, "hello all"))
 	g.model.mu.Lock()
 	system = g.model.last.System

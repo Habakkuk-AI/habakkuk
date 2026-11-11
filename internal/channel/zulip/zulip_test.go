@@ -48,7 +48,7 @@ func (f *fakeZulip) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			io.WriteString(w, `{"result":"success","events":[
-{"type":"message","id":0,"flags":[],"message":{"id":100,"sender_id":5,"sender_full_name":"Ay","type":"private","content":"hello","display_recipient":[{"id":5},{"id":9}]}},
+{"type":"message","id":0,"flags":[],"message":{"id":100,"sender_id":5,"sender_full_name":"Sam","type":"private","content":"hello","display_recipient":[{"id":5},{"id":9}]}},
 {"type":"message","id":1,"flags":["mentioned"],"message":{"id":101,"sender_id":6,"sender_full_name":"Bo","type":"stream","stream_id":3,"subject":"plans","content":"@**Habakkuk** see [notes.pdf](/user_uploads/2/ab/notes.pdf)","display_recipient":"general"}},
 {"type":"message","id":2,"flags":[],"message":{"id":102,"sender_id":9,"type":"private","content":"my own","display_recipient":[{"id":5},{"id":9}]}},
 {"type":"message","id":3,"flags":[],"message":{"id":103,"sender_id":5,"type":"private","content":"group dm","display_recipient":[{"id":5},{"id":7},{"id":9}]}},
@@ -128,7 +128,7 @@ func TestZulip(t *testing.T) {
 	if len(msgs) != 3 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Conversation != "dm:5" || !m.Direct || m.Text != "hello" || m.Sender != "5" || m.SenderName != "Ay" {
+	if m := msgs[0]; m.Conversation != "dm:5" || !m.Direct || m.Text != "hello" || m.Sender != "5" || m.SenderName != "Sam" {
 		t.Fatalf("dm = %+v", m)
 	}
 	if m := msgs[1]; m.Conversation != "stream:3" || m.Thread != "plans" || !m.Mentioned || m.Direct ||

@@ -62,7 +62,7 @@ INSERT INTO messages (session_id, role, content, timestamp, display_order, messa
 	('s-a2a', 'user', 'Confirm the flour delivery for Monday.', 1792740001, 1, 'A1'),
 	('s-a2a', 'assistant', 'Confirmed for Monday.', 1792740002, 2, 'A2');
 INSERT INTO messages (session_id, role, content, timestamp) VALUES
-	('s-tg', 'user', 'When does Corner Bakery open on Sundays?', 1792483201),
+	('s-tg', 'user', 'When does Bramblecrest Bakery open on Sundays?', 1792483201),
 	('s-tg', 'assistant', NULL, 1792483202),
 	('s-tg', 'tool', 'Sunday hours: 9 to 3.', 1792483203),
 	('s-tg', 'assistant', char(0) || 'json:[{"type":"text","text":"It opens at 9 on Sundays."},{"type":"image_url","image_url":"x"}]', 1792483204),
@@ -622,11 +622,11 @@ func TestHistoryLeavesNoDatabaseOpen(t *testing.T) {
 // included, is named as skipped with the reason; the others are counted.
 func TestHistoryCountSkipsUnreadable(t *testing.T) {
 	f := &Found{}
-	ok := &Conversation{Agent: "habakkuk", ID: "corner-bakery/1", load: func() ([]session.ImportedMessage, bool, error) {
+	ok := &Conversation{Agent: "habakkuk", ID: "bramblecrest-bakery/1", load: func() ([]session.ImportedMessage, bool, error) {
 		return []session.ImportedMessage{{Role: llm.User, Text: "Two loaves, please."}}, false, nil
 	}}
-	odd := &Conversation{Agent: "habakkuk", ID: "corner-bakery/2", load: func() ([]session.ImportedMessage, bool, error) { panic("an odd message") }}
-	bad := &Conversation{Agent: "habakkuk", ID: "corner-bakery/3", load: func() ([]session.ImportedMessage, bool, error) {
+	odd := &Conversation{Agent: "habakkuk", ID: "bramblecrest-bakery/2", load: func() ([]session.ImportedMessage, bool, error) { panic("an odd message") }}
+	bad := &Conversation{Agent: "habakkuk", ID: "bramblecrest-bakery/3", load: func() ([]session.ImportedMessage, bool, error) {
 		return nil, false, errors.New("database disk image is malformed")
 	}}
 	f.History = []*Conversation{ok, odd, bad}
@@ -635,7 +635,7 @@ func TestHistoryCountSkipsUnreadable(t *testing.T) {
 		t.Errorf("history = %+v", f.History)
 	}
 	skipped := strings.Join(f.Skipped, "\n")
-	for _, want := range []string{"corner-bakery/2 of agent habakkuk: could not be read: an odd message", "corner-bakery/3 of agent habakkuk: database disk image is malformed"} {
+	for _, want := range []string{"bramblecrest-bakery/2 of agent habakkuk: could not be read: an odd message", "bramblecrest-bakery/3 of agent habakkuk: database disk image is malformed"} {
 		if !strings.Contains(skipped, want) {
 			t.Errorf("skipped = %q; want %q", f.Skipped, want)
 		}
@@ -655,7 +655,7 @@ func TestHistoryBadRowSkipsOnlyItself(t *testing.T) {
 CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, timestamp REAL);
 INSERT INTO sessions VALUES ('good', 'cli', 'Bread order', 1792569600), ('badrow', 'cli', 'Odd row', 'yesterday');
 INSERT INTO messages (session_id, role, content, timestamp) VALUES
-	('good', 'user', 'Two loaves for Corner Bakery, please.', 1792569601),
+	('good', 'user', 'Two loaves for Bramblecrest Bakery, please.', 1792569601),
 	('good', 'assistant', 'Ordered two loaves.', 1792569602),
 	('badrow', 'user', 'Anything?', 1792569700);`)
 	db.Close()

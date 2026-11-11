@@ -16,7 +16,7 @@ func TestRegistryRoundTrip(t *testing.T) {
 	if err != nil || len(reg.Remotes) != 0 || reg.Default != "" {
 		t.Fatalf("a missing file is an empty registry: %+v, %v", reg, err)
 	}
-	if err := reg.Add("srv", Remote{Target: "ssh://ay@srv.example.com:2222", Identity: "/k/id", Home: "/var/lib/habakkuk", Bin: "/usr/local/bin/habakkuk"}, false); err != nil {
+	if err := reg.Add("srv", Remote{Target: "ssh://sam@srv.example.com:2222", Identity: "/k/id", Home: "/var/lib/habakkuk", Bin: "/usr/local/bin/habakkuk"}, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.Add("web", Remote{Target: "https://hk.example.com/", TokenEnv: "HK_TOKEN"}, false); err != nil {
@@ -136,11 +136,11 @@ func TestRegistryAddRejects(t *testing.T) {
 
 func TestParseTarget(t *testing.T) {
 	for in, want := range map[string]string{
-		"ssh://ay@srv.example.com":      "ssh://ay@srv.example.com",
-		"ssh://ay@srv.example.com:2222": "ssh://ay@srv.example.com:2222",
-		"ay@srv":                        "ssh://ay@srv",
+		"ssh://sam@srv.example.com":      "ssh://sam@srv.example.com",
+		"ssh://sam@srv.example.com:2222": "ssh://sam@srv.example.com:2222",
+		"sam@srv":                        "ssh://sam@srv",
 		"srv":                           "ssh://srv",
-		"ssh://ay@[::1]:22":             "ssh://ay@[::1]:22",
+		"ssh://sam@[::1]:22":             "ssh://sam@[::1]:22",
 		"ssh://[fe80::1]":               "ssh://[fe80::1]",
 		"https://hk.example.com/":       "https://hk.example.com",
 		"https://hk.example.com/base/":  "https://hk.example.com/base",
@@ -160,15 +160,15 @@ func TestParseTarget(t *testing.T) {
 			t.Errorf("%q does not parse back: %v", want, err)
 		}
 	}
-	tg, _ := ParseTarget("ssh://ay@[::1]:2200")
-	if tg.Kind != SSH || tg.Dest() != "ay@::1" || tg.Port != 2200 {
+	tg, _ := ParseTarget("ssh://sam@[::1]:2200")
+	if tg.Kind != SSH || tg.Dest() != "sam@::1" || tg.Port != 2200 {
 		t.Fatalf("ipv6: %+v dest %q", tg, tg.Dest())
 	}
 	for _, bad := range []string{
 		"http://hk.example.com",          // a token in the clear
 		"https://user:pw@hk.example.com", // credentials in the URL
 		"https://hk.example.com/?token=x",
-		"ssh://ay:pw@srv",
+		"ssh://sam:pw@srv",
 		"ssh://-oProxyCommand=x",
 		"ssh://-x@srv",
 		"ssh://srv:0",

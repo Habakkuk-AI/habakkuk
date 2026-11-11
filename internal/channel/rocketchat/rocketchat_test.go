@@ -55,12 +55,12 @@ func (f *fakeRC) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				c.Write(ctx, websocket.MessageText, []byte(`{"msg":"ready","subs":["sub"]}`))
 				c.Write(ctx, websocket.MessageText, []byte(`{"msg":"ping"}`))
 				for _, ev := range []string{
-					`[{"_id":"m1","rid":"dmroom","msg":"hello","u":{"_id":"u1","username":"ay","name":"Ay"}},{"roomType":"d"}]`,
+					`[{"_id":"m1","rid":"dmroom","msg":"hello","u":{"_id":"u1","username":"sam","name":"Sam"}},{"roomType":"d"}]`,
 					`[{"_id":"m2","rid":"GENERAL","msg":"@habakkuk what's up","tmid":"t1","u":{"_id":"u2","username":"bo"},"mentions":[{"_id":"bot1","username":"habakkuk"}]},{"roomType":"c"}]`,
 					`[{"_id":"m3","rid":"GENERAL","msg":"see file","u":{"_id":"u2","username":"bo"},"attachments":[{"title":"r.pdf","title_link":"/file-upload/f1/r.pdf","type":"file"}]},{"roomType":"c"}]`,
 					`[{"_id":"m4","rid":"GENERAL","msg":"","t":"uj","u":{"_id":"u3","username":"cy"}},{"roomType":"c"}]`,
 					`[{"_id":"m5","rid":"dmroom","msg":"mine","u":{"_id":"bot1","username":"habakkuk"}},{"roomType":"d"}]`,
-					`[{"_id":"m1","rid":"dmroom","msg":"hello edited","editedAt":{"$date":1},"u":{"_id":"u1","username":"ay"}},{"roomType":"d"}]`,
+					`[{"_id":"m1","rid":"dmroom","msg":"hello edited","editedAt":{"$date":1},"u":{"_id":"u1","username":"sam"}},{"roomType":"d"}]`,
 				} {
 					c.Write(ctx, websocket.MessageText, []byte(`{"msg":"changed","collection":"stream-room-messages","id":"id","fields":{"eventName":"__my_messages__","args":`+ev+`}}`))
 				}
@@ -152,7 +152,7 @@ func TestRocketChat(t *testing.T) {
 	if len(msgs) != 3 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Conversation != "dmroom" || !m.Direct || m.Text != "hello" || m.Sender != "u1" || m.SenderAlt != "ay" {
+	if m := msgs[0]; m.Conversation != "dmroom" || !m.Direct || m.Text != "hello" || m.Sender != "u1" || m.SenderAlt != "sam" {
 		t.Fatalf("dm = %+v", m)
 	}
 	if m := msgs[1]; m.Conversation != "GENERAL" || m.Thread != "t1" || !m.Mentioned || m.Direct || m.Text != "what's up" {

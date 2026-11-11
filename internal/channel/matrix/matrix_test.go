@@ -45,15 +45,15 @@ func (f *fakeHS) syncBody(since string) (int, string) {
 	case "":
 		return 200, `{"next_batch":"s1","rooms":{
 			"invite":{
-				"!inv:hs":{"invite_state":{"events":[` + `{"type":"m.room.member","state_key":"@habakkuk:hs","sender":"@ay:hs","content":{"membership":"invite"}}]}},
+				"!inv:hs":{"invite_state":{"events":[` + `{"type":"m.room.member","state_key":"@habakkuk:hs","sender":"@sam:hs","content":{"membership":"invite"}}]}},
 				"!spam:hs":{"invite_state":{"events":[{"type":"m.room.member","state_key":"@habakkuk:hs","sender":"@stranger:hs","content":{"membership":"invite"}}]}}},
-			"join":{"!dm:hs":{"timeline":{"events":[` + ev("$old", "@ay:hs", "m.room.message", `{"msgtype":"m.text","body":"history"}`) + `]}}}}}`
+			"join":{"!dm:hs":{"timeline":{"events":[` + ev("$old", "@sam:hs", "m.room.message", `{"msgtype":"m.text","body":"history"}`) + `]}}}}}`
 	case "s1":
 		return 200, `{"next_batch":"s2","rooms":{"join":{
 			"!dm:hs":{"timeline":{"events":[` +
-			ev("$1", "@ay:hs", "m.room.message", `{"msgtype":"m.text","body":"hello"}`) + `,` +
+			ev("$1", "@sam:hs", "m.room.message", `{"msgtype":"m.text","body":"hello"}`) + `,` +
 			ev("$2", "@habakkuk:hs", "m.room.message", `{"msgtype":"m.text","body":"my own echo"}`) + `,` +
-			ev("$3", "@ay:hs", "m.room.message", `{"msgtype":"m.text","body":"* hello!","m.relates_to":{"rel_type":"m.replace","event_id":"$1"}}`) + `]}},
+			ev("$3", "@sam:hs", "m.room.message", `{"msgtype":"m.text","body":"* hello!","m.relates_to":{"rel_type":"m.replace","event_id":"$1"}}`) + `]}},
 			"!grp:hs":{"summary":{"m.joined_member_count":3},"timeline":{"events":[` +
 			ev("$4", "@bo:hs", "m.room.message", `{"msgtype":"m.text","body":"Habakkuk: what's up","m.mentions":{"user_ids":["@habakkuk:hs"]}}`) + `,` +
 			ev("$5", "@bo:hs", "m.room.message", `{"msgtype":"m.text","body":"just chatting"}`) + `,` +
@@ -61,8 +61,8 @@ func (f *fakeHS) syncBody(since string) (int, string) {
 			ev("$7", "@bo:hs", "m.room.message", `{"msgtype":"m.file","body":"see this","filename":"old.pdf","url":"mxc://old/xyz","m.relates_to":{"rel_type":"m.thread","event_id":"$4"}}`) + `,` +
 			ev("$8", "@bo:hs", "m.room.message", `{"msgtype":"m.text","body":"> <@cy:hs> earlier\n\nHabakkuk hi","formatted_body":"<a href=\"https://matrix.to/#/@habakkuk:hs\">Habakkuk</a> hi","m.relates_to":{"m.in_reply_to":{"event_id":"$x"}}}`) + `]}},
 			"!enc:hs":{"timeline":{"events":[` +
-			ev("$9", "@ay:hs", "m.room.encrypted", `{"algorithm":"m.megolm.v1.aes-sha2","ciphertext":"..."}`) + `,` +
-			ev("$10", "@ay:hs", "m.room.encrypted", `{"algorithm":"m.megolm.v1.aes-sha2","ciphertext":"..."}`) + `]}}}}}`
+			ev("$9", "@sam:hs", "m.room.encrypted", `{"algorithm":"m.megolm.v1.aes-sha2","ciphertext":"..."}`) + `,` +
+			ev("$10", "@sam:hs", "m.room.encrypted", `{"algorithm":"m.megolm.v1.aes-sha2","ciphertext":"..."}`) + `]}}}}}`
 	case "s2":
 		f.s2++
 		switch f.s2 {
@@ -72,7 +72,7 @@ func (f *fakeHS) syncBody(since string) (int, string) {
 			return 401, `{"errcode":"M_UNKNOWN_TOKEN","error":"Token revoked"}`
 		}
 		return 200, `{"next_batch":"s3","rooms":{"join":{"!enc:hs":{"timeline":{"events":[` +
-			ev("$11", "@ay:hs", "m.room.encrypted", `{"algorithm":"m.megolm.v1.aes-sha2"}`) + `]}}}}}`
+			ev("$11", "@sam:hs", "m.room.encrypted", `{"algorithm":"m.megolm.v1.aes-sha2"}`) + `]}}}}}`
 	}
 	return 401, `{"errcode":"M_UNKNOWN_TOKEN","error":"Token revoked"}`
 }
@@ -108,10 +108,10 @@ func (f *fakeHS) handler() http.Handler {
 	}))
 	mux.HandleFunc("/_matrix/client/v3/rooms/{room}/joined_members", auth(func(w http.ResponseWriter, r *http.Request) {
 		if r.PathValue("room") == "!dm:hs" {
-			w.Write([]byte(`{"joined":{"@habakkuk:hs":{},"@ay:hs":{}}}`))
+			w.Write([]byte(`{"joined":{"@habakkuk:hs":{},"@sam:hs":{}}}`))
 			return
 		}
-		w.Write([]byte(`{"joined":{"@habakkuk:hs":{},"@ay:hs":{},"@bo:hs":{}}}`))
+		w.Write([]byte(`{"joined":{"@habakkuk:hs":{},"@sam:hs":{},"@bo:hs":{}}}`))
 	}))
 	mux.HandleFunc("/_matrix/client/v3/rooms/{room}/state/m.room.member/{user}", auth(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"membership":"join","displayname":"Bo"}`))
@@ -204,7 +204,7 @@ func TestSyncReceivesJoinsAndKeepsPosition(t *testing.T) {
 	f, url := newFake(t)
 	statePath := filepath.Join(t.TempDir(), "channels", "matrix-mx.json")
 	a := New(url, "tok", "@habakkuk:hs", statePath)
-	a.Allowed = func(_ context.Context, user string) bool { return user == "@ay:hs" }
+	a.Allowed = func(_ context.Context, user string) bool { return user == "@sam:hs" }
 	in := &inbox{}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -234,7 +234,7 @@ func TestSyncReceivesJoinsAndKeepsPosition(t *testing.T) {
 	for _, m := range msgs {
 		byID[m.ID] = m
 	}
-	if m := byID["$1"]; !m.Direct || m.Conversation != "!dm:hs" || m.Sender != "@ay:hs" || m.Text != "hello" {
+	if m := byID["$1"]; !m.Direct || m.Conversation != "!dm:hs" || m.Sender != "@sam:hs" || m.Text != "hello" {
 		t.Fatalf("dm: %+v", m)
 	}
 	if m := byID["$4"]; m.Direct || !m.Mentioned || m.Text != "what's up" || m.SenderName != "Bo" {

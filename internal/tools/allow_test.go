@@ -36,7 +36,7 @@ func ruleRig(t *testing.T, ap Approver, config ...Rule) (*Registry, *Env, *RuleF
 	t.Helper()
 	r, env := setup(t, ModeWorkspace, ap)
 	rf := &RuleFile{Path: filepath.Join(t.TempDir(), "agent", RulesFileName), Config: config}
-	env.Rules, env.Agent = rf, "corner-bakery"
+	env.Rules, env.Agent = rf, "bramblecrest-bakery"
 	return r, env, rf
 }
 
@@ -287,7 +287,7 @@ func TestAlwaysAllowSavesARule(t *testing.T) {
 		t.Fatalf("first call: %+v", res)
 	}
 	ws, _ := realPath(env.Workspace)
-	if ap.last.Rule == nil || ap.last.Rule.Exact != "echo   'hello world'" || ap.last.Rule.In != ws || ap.last.Agent != "corner-bakery" {
+	if ap.last.Rule == nil || ap.last.Rule.Exact != "echo   'hello world'" || ap.last.Rule.In != ws || ap.last.Agent != "bramblecrest-bakery" {
 		t.Fatalf("offered %+v (agent %q)", ap.last.Rule, ap.last.Agent)
 	}
 	saved, err := rf.Saved()

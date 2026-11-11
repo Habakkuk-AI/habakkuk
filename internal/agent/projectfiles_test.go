@@ -58,7 +58,7 @@ func rels(p ProjectFiles) string {
 // until trusted, CLAUDE.md read once when it links to AGENTS.md.
 func TestProjectFilesWalkToGitRoot(t *testing.T) {
 	base, agentDir := layout(t)
-	repo := filepath.Join(base, "code", "corner-bakery")
+	repo := filepath.Join(base, "code", "bramblecrest-bakery")
 	ws := filepath.Join(repo, "services", "orders")
 	os.MkdirAll(filepath.Join(repo, ".git"), 0o755)
 	write(t, filepath.Join(base, "code", "AGENTS.md"), "above the repo: never read")

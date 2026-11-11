@@ -1,7 +1,7 @@
 {"type":"session","version":3,"id":"0b7c1d2e-main","timestamp":"2026-10-20T08:00:00.000Z","cwd":"/Users/sam/clawd"}
-{"type":"message","id":"m1","timestamp":"2026-10-20T08:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"What time does Corner Bakery open on Sundays?"}],"timestamp":1792483201000}}
+{"type":"message","id":"m1","timestamp":"2026-10-20T08:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"What time does Bramblecrest Bakery open on Sundays?"}],"timestamp":1792483201000}}
 {"type":"message","id":"m2","timestamp":"2026-10-20T08:00:05.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Check the notes."},{"type":"toolCall","id":"c1","name":"read","arguments":{"path":"MEMORY.md"}}]}}
 {"type":"message","id":"m3","timestamp":"2026-10-20T08:00:06.000Z","message":{"role":"toolResult","toolCallId":"c1","content":[{"type":"text","text":"Sunday hours: 9 to 3."}]}}
-{"type":"message","id":"m4","timestamp":"2026-10-20T08:00:09.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Corner Bakery opens at 9 on Sundays and closes at 3."}]}}
+{"type":"message","id":"m4","timestamp":"2026-10-20T08:00:09.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Bramblecrest Bakery opens at 9 on Sundays and closes at 3."}]}}
 not json at all
 {"type":"compaction","id":"k1","summary":"The user asked about opening hours."}

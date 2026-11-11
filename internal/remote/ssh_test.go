@@ -129,13 +129,13 @@ func TestQuoteShell(t *testing.T) {
 }
 
 func TestSSHArgs(t *testing.T) {
-	tg, err := ParseTarget("ssh://ay@srv.example.com:2222")
+	tg, err := ParseTarget("ssh://sam@srv.example.com:2222")
 	if err != nil {
 		t.Fatal(err)
 	}
-	rem := Remote{Target: tg.String(), Identity: "/home/ay/.ssh/id_srv"}
+	rem := Remote{Target: tg.String(), Identity: "/home/sam/.ssh/id_srv"}
 	got := SSHArgs(rem, tg, []string{"status"}, false)
-	want := []string{"-T", "-p", "2222", "-i", "/home/ay/.ssh/id_srv", "-o", "IdentitiesOnly=yes", "--", "ay@srv.example.com"}
+	want := []string{"-T", "-p", "2222", "-i", "/home/sam/.ssh/id_srv", "-o", "IdentitiesOnly=yes", "--", "sam@srv.example.com"}
 	if !slices.Equal(got[:len(got)-1], want) {
 		t.Fatalf("args %q, want %q + command", got, want)
 	}
@@ -188,7 +188,7 @@ func fakeSSHEnv(t *testing.T) string {
 func TestRunSSHForwardsExitCode(t *testing.T) {
 	log := fakeSSHEnv(t)
 	t.Setenv("HK_REMOTE_TEST_EXIT", "3")
-	rem := Remote{Target: "ssh://ay@srv", Home: "~/hk"}
+	rem := Remote{Target: "ssh://sam@srv", Home: "~/hk"}
 	args := []string{"run", "what's $HOME; rm -rf *"}
 	var out, errOut bytes.Buffer
 	code, err := RunSSH(rem, args, false, Stdio{In: strings.NewReader(""), Out: &out, Err: &errOut})
@@ -197,7 +197,7 @@ func TestRunSSHForwardsExitCode(t *testing.T) {
 	}
 	var rec sshRecord
 	readRecord(t, log, &rec)
-	if rec.Args[0] != "-T" || rec.Args[len(rec.Args)-2] != "ay@srv" {
+	if rec.Args[0] != "-T" || rec.Args[len(rec.Args)-2] != "sam@srv" {
 		t.Fatalf("ssh args %q", rec.Args)
 	}
 	words := splitPOSIX(t, rec.Args[len(rec.Args)-1])
@@ -255,7 +255,7 @@ func TestRunSSHRoundTrip(t *testing.T) {
 	log := shellEnv(t, t.TempDir(), home)
 	t.Setenv("HK_REMOTE_TEST_HK_EXIT", "7")
 	args := append([]string{"run", "-agent", "ops"}, nasty...)
-	code, err := RunSSH(Remote{Target: "ssh://ay@srv", Home: "~/hk home"}, args, false,
+	code, err := RunSSH(Remote{Target: "ssh://sam@srv", Home: "~/hk home"}, args, false,
 		Stdio{In: strings.NewReader("piped input"), Out: os.Stdout, Err: os.Stderr})
 	if err != nil || code != 7 {
 		t.Fatalf("code %d, err %v, want 7 from the remote command", code, err)
