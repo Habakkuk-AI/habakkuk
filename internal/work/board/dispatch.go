@@ -251,7 +251,7 @@ func (d *Dispatcher) Handle(ctx context.Context, j *jobs.Job, owner string) (str
 		if errors.Is(err, jobs.ErrLeaseLost) || ctx.Err() != nil {
 			return "", err
 		}
-		if errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts {
+		if jobs.IsPermanent(err) || j.Attempts >= j.MaxAttempts {
 			if berr := d.end(ctx, c.ID, j.ID, "board", "The run failed: "+err.Error()); berr != nil {
 				d.Log.Error("block card failed", "card", c.ID, "err", berr)
 			}

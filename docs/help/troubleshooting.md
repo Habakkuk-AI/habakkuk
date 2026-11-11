@@ -43,7 +43,7 @@ If the problem is with one chat app, look at its channel page too. Each one has 
 |---|---|
 | `provider anthropic: 0/1 keys present` in `hk doctor` | The variable in `keys_env` is not set. Put it in `$HABAKKUK_HOME/.env` (not in `config.yaml`). |
 | `provider chatgpt: NOT LOGGED IN (run hk auth login chatgpt)` | Run the command it names. |
-| Turns fail with an auth or billing error | The key is wrong, revoked or out of credit. With several keys in `keys_env`, Habakkuk rotates to the next one; with `fallbacks`, it tries the next model. |
+| Turns fail with an auth or billing error, or "no model could answer" | The key is wrong, revoked or out of credit. With several keys in `keys_env`, Habakkuk rotates to the next one; with `fallbacks`, it tries the next model. When every model is refused, top up or fix one of them, or add a fallback on another provider. A schedule's chat is told once per outage. See [Providers](../models/providers.md). |
 | `mcp x: MISSING ...` or `not signed in; run hk mcp login x` | Set the variable the server needs, or sign in. |
 
 ## Channels

@@ -232,7 +232,7 @@ func (g *Gateway) reactEnd(ctx context.Context, j *jobs.Job, to *Address, err er
 	switch {
 	case err == nil:
 		g.react(ctx, *to, ReactDone)
-	case errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts:
+	case jobs.IsPermanent(err) || j.Attempts >= j.MaxAttempts:
 		g.react(ctx, *to, ReactFailed)
 	case ctx.Err() != nil || errors.Is(err, jobs.ErrLeaseLost):
 		g.react(ctx, *to, "") // stopped, or resumed later (which reacts again)

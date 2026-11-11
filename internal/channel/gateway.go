@@ -665,7 +665,7 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 	final, err := g.Runner.HandleTurn(ctx, j, owner)
 	g.reactEnd(ctx, j, to, err)
 	endProgress() // no draft edit may follow the reply
-	if err == nil || errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts {
+	if err == nil || jobs.IsPermanent(err) || j.Attempts >= j.MaxAttempts {
 		g.nudged.Delete(j.ID) // the turn will not run again
 		if to != nil {
 			g.forgetAsked(*to) // nor ask again: a later "yes" is an ordinary message
@@ -679,7 +679,15 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 			g.settleStopped(ctx, j, *to)
 			return "", err
 		}
-		if errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts {
+		if jobs.IsPermanent(err) || j.Attempts >= j.MaxAttempts {
+			// No model could take the call (credit or keys): background work
+			// tells each chat once per outage, not on every run.
+			if ue := new(llm.UnavailableError); errors.As(err, &ue) && p.Background &&
+				!g.Runner.UnavailableNotice(ue, to.Account+"\x00"+to.Conversation+"\x00"+to.Thread) {
+				g.Log.Info("model outage already reported; failure not sent", "job", j.ID, "outage", ue.Key)
+				g.clearDraft(ctx, j.ID, *to)
+				return "", err
+			}
 			msg := g.t(*to, "turn.failed", shorten(err.Error(), 300))
 			if stopped := (agent.LoopStopped{}); errors.As(err, &stopped) {
 				msg = stopped.Message // the loop guard's own message, whole

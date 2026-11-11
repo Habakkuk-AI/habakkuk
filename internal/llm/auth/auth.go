@@ -36,11 +36,19 @@ const (
 var Kinds = []string{ChatGPT, Copilot}
 
 // ErrNotLoggedIn means there is no stored login of that kind.
-var ErrNotLoggedIn = errors.New("not logged in")
+var ErrNotLoggedIn error = loginGone("not logged in")
 
 // ErrLoginExpired means the provider refused the stored refresh credential;
 // only a new login helps.
-var ErrLoginExpired = errors.New("login expired or revoked")
+var ErrLoginExpired error = loginGone("login expired or revoked")
+
+// loginGone is a login that only signing in again fixes. Its LoginGone
+// method tells the model router (llm.LoginGone) that the failure isn't a
+// passing one, without that package depending on this one.
+type loginGone string
+
+func (e loginGone) Error() string   { return string(e) }
+func (e loginGone) LoginGone() bool { return true }
 
 // Entry is one stored login. Fields a kind does not use stay empty.
 type Entry struct {
