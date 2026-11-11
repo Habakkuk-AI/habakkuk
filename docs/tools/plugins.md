@@ -119,7 +119,7 @@ skills:
       url: https://skills.example.com/index.json
 ```
 
-Your own registries come first. If `team` and the public directory both list `standup`, `hk skills install standup` installs the one from `team`, and the install prints which registry it used. `hk skills install registry:default/standup` asks for the public one.
+Your own registries come first. If `team` and the public directory both list `standup`, `hk skills install standup` installs the one from `team`, and the install prints which registry it used. `hk skills install registry:default/standup` asks for the public one. If `team` can't be reached, `hk skills install standup` stops with an error instead of taking the public `standup`.
 
 With `default_registry: "off"` and no `registries`, a bare name is refused and `hk skills search` says there is nothing to search. A build can change the default with `-ldflags "-X github.com/habakkuk-ai/habakkuk/internal/config.DefaultRegistryURL=https://..."`.
 

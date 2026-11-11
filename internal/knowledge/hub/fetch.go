@@ -340,6 +340,14 @@ func (f *Fetcher) Lookup(ctx context.Context, kind, registry, name string) (Inde
 		found = true
 		idx, err := f.Index(ctx, r)
 		if err != nil {
+			// Stop at a registry that can't be read: going on would let a
+			// later one, such as the public directory, supply a package of
+			// the same name in place of yours.
+			if registry == "" {
+				return IndexEntry{}, Registry{}, fmt.Errorf("registry %s couldn't be read, so %q wasn't looked up in the registries after it "+
+					"(one of them could list another package of that name): %w; fix it, or install from one registry with registry:REGISTRY/%s",
+					r.Name, name, err, name)
+			}
 			errs = append(errs, err)
 			continue
 		}

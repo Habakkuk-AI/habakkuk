@@ -118,7 +118,7 @@ hk skills approve NAME                               # after reading it
 
 Names come from the public directory at [habakkuk.ai/skills](https://www.habakkuk.ai/skills), which Habakkuk uses as its default registry. It is contacted only when you run `hk skills` or `hk plugins` with `search`, `install` or `update`. To stop using it, set `skills.default_registry: "off"`. See [Registries](../tools/plugins.md#registries).
 
-An installed skill is untrusted until you run `hk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. A skill `hk migrate` brought in from a project folder stays disabled until you run `hk skills approve -agent AGENT NAME`, scripts or not. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
+An installed skill is untrusted until you run `hk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. A skill `hk migrate` brought in from a project folder stays disabled until you run `hk skills approve -agent AGENT NAME`, scripts or not. Every install is hashed and scanned, and one from a registry is also pinned to an exact commit or an https file with a known hash. See [Plugins and outside skills](../tools/plugins.md).
 
 ## The curator
 

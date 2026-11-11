@@ -679,3 +679,29 @@ func TestTreeHashStable(t *testing.T) {
 		t.Fatal("hash ignores content")
 	}
 }
+
+// When the owner's registry can't be read, a bare name doesn't fall through
+// to the public directory: a public package of the same name never stands
+// in for theirs. A named registry still works.
+func TestUnreadableRegistryStopsTheLookup(t *testing.T) {
+	g := newFakeGitHub(t)
+	ctx := context.Background()
+	theirs := map[string]string{"SKILL.md": skillMD("standup", "Someone else's standup", "Public steps.")}
+	g.set("public-1", sha2, theirs)
+	data, _ := json.Marshal(Index{Version: 1, Skills: []IndexEntry{{Name: "standup", Description: "Standup", Source: "github:acme/skills@" + sha2, SHA256: hashOf(t, theirs)}}})
+	g.serve("/public.json", data)
+	team := Registry{Name: "team", URL: g.srv.URL + "/team.json"} // not served: 404
+	public := Registry{Name: "default", URL: g.srv.URL + "/public.json"}
+
+	m := newManager(t, g, team, public)
+	_, err := m.Install(ctx, "standup", Options{})
+	if err == nil || !strings.Contains(err.Error(), "registry team couldn't be read") || !strings.Contains(err.Error(), "registry:REGISTRY/standup") {
+		t.Fatalf("install with the team registry down: %v", err)
+	}
+	if _, serr := os.Stat(filepath.Join(m.Dir, "standup")); !os.IsNotExist(serr) {
+		t.Fatal("the public package was installed in place of the team's")
+	}
+	if res, err := m.Install(ctx, "registry:default/standup", Options{}); err != nil || res[0].Entry.Registry != "default" {
+		t.Fatalf("install from the named public registry: %v %+v", err, res)
+	}
+}
