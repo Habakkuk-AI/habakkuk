@@ -341,14 +341,12 @@ func TestRegistry(t *testing.T) {
 	g := newFakeGitHub(t)
 	g.set("v1", sha1, map[string]string{"SKILL.md": skillMD("pdf-tools", "PDF tools", "P")})
 	// The tree hash the index promises, computed from the same files.
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skillMD("pdf-tools", "PDF tools", "P")), 0o644)
-	sum, _ := TreeHash(dir)
+	sum := hashOf(t, map[string]string{"SKILL.md": skillMD("pdf-tools", "PDF tools", "P")})
 	idx := Index{Version: 1, Skills: []IndexEntry{
-		{Name: "pdf-tools", Description: "Read and fill PDF forms", Source: "github:acme/skills@v1", SHA256: sum, Tags: []string{"documents"}},
-		{Name: "bad-hash", Description: "Hash does not match", Source: "github:acme/skills@v1", SHA256: strings.Repeat("0", 64)},
-		{Name: "calendar", Description: "Plan the week", Source: "github:acme/skills@v1"},
+		{Name: "pdf-tools", Description: "Read and fill PDF forms", Source: "github:acme/skills@" + sha1, SHA256: sum, Tags: []string{"documents"}},
+		{Name: "bad-hash", Description: "Hash does not match", Source: "github:acme/skills@" + sha2, SHA256: strings.Repeat("0", 64)},
 	}}
+	g.set("v2", sha2, map[string]string{"SKILL.md": skillMD("bad-hash", "Not what the index promised", "B")})
 	data, _ := json.Marshal(idx)
 	g.serve("/index.json", data)
 	m := newManager(t, g, Registry{Name: "main", URL: g.srv.URL + "/index.json"})
@@ -365,7 +363,7 @@ func TestRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := res[0].Entry
-	if e.Source != "pdf-tools" || e.Registry != "main" || e.Resolved != "github:acme/skills@v1" || e.Version != sha1 || e.SHA256 != sum {
+	if e.Source != "pdf-tools" || e.Registry != "main" || e.Resolved != "github:acme/skills@"+sha1 || e.Version != sha1 || e.SHA256 != sum {
 		t.Fatalf("entry %+v", e)
 	}
 	if _, err := m.Install(ctx, "bad-hash", Options{}); err == nil || !strings.Contains(err.Error(), "does not match") {
@@ -379,6 +377,232 @@ func TestRegistry(t *testing.T) {
 	}
 	if res, err := m.Update(ctx, "pdf-tools", UpdateOptions{}); err != nil || res[0].Status != "unchanged" {
 		t.Fatalf("update %+v %v", res, err)
+	}
+}
+
+// hashOf is the tree hash of a package holding files.
+func hashOf(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, body := range files {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sum, err := TreeHash(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sum
+}
+
+// An index is someone else's text. An entry must carry the hash of its
+// files and point at a pinned GitHub commit or an https URL, never at a
+// moving ref, a local path or another registry name, and what it installs
+// must be called what the entry is called.
+func TestRegistryEntryRules(t *testing.T) {
+	g := newFakeGitHub(t)
+	files := map[string]string{"SKILL.md": skillMD("pdf-tools", "PDF tools", "P")}
+	g.set("main", sha1, files)
+	sum := hashOf(t, files)
+	// A real folder on this machine that an entry must not be able to copy.
+	local := t.TempDir()
+	os.WriteFile(filepath.Join(local, "SKILL.md"), []byte(skillMD("pdf-tools", "PDF tools", "P")), 0o644)
+	g.serve("/pdf-tools/SKILL.md", []byte(skillMD("pdf-tools", "PDF tools", "P")))
+	// A package that calls itself by the name of something else.
+	other := map[string]string{"SKILL.md": skillMD("github", "Not what it says", "X")}
+	g.set("other", sha2, other)
+
+	pinned := "github:acme/skills@" + sha1
+	for _, c := range []struct {
+		rule   string
+		entry  IndexEntry
+		opt    Options
+		refuse string // "" means the install must succeed
+	}{
+		{rule: "a pinned commit with its hash installs", entry: IndexEntry{Source: pinned, SHA256: sum}},
+		{rule: "an upper-case hash is the same hash", entry: IndexEntry{Source: pinned, SHA256: strings.ToUpper(sum)}},
+		{rule: "an https URL with its hash installs", entry: IndexEntry{Source: g.srv.URL + "/pdf-tools/SKILL.md", SHA256: sum}},
+		{rule: "sha256 is required", entry: IndexEntry{Source: pinned}, refuse: "no sha256"},
+		{rule: "sha256 must be a hash", entry: IndexEntry{Source: pinned, SHA256: "8c1f...e2"}, refuse: "no sha256"},
+		{rule: "a branch is refused", entry: IndexEntry{Source: "github:acme/skills@main", SHA256: sum}, refuse: "full 40-character commit"},
+		{rule: "no ref at all is refused", entry: IndexEntry{Source: "github:acme/skills", SHA256: sum}, refuse: "full 40-character commit"},
+		{rule: "a short commit is refused", entry: IndexEntry{Source: "github:acme/skills@" + sha1[:12], SHA256: sum}, refuse: "full 40-character commit"},
+		{rule: "a browser URL to a branch is refused", entry: IndexEntry{Source: "https://github.com/acme/skills/tree/main", SHA256: sum}, refuse: "full 40-character commit"},
+		{rule: "a local folder is refused", entry: IndexEntry{Source: local, SHA256: sum}, refuse: "must be github:"},
+		{rule: "the home folder is refused", entry: IndexEntry{Source: "~/", SHA256: sum}, refuse: "must be github:"},
+		{rule: "a file: path is refused", entry: IndexEntry{Source: "file:" + local, SHA256: sum}, refuse: "must be github:"},
+		{rule: "another registry name is refused", entry: IndexEntry{Source: "pdf-tools", SHA256: sum}, refuse: "must be github:"},
+		{rule: "a registry: source is refused", entry: IndexEntry{Source: "registry:main/pdf-tools", SHA256: sum}, refuse: "must be github:"},
+		{rule: "plain http to another machine is refused", entry: IndexEntry{Source: "http://skills.example.com/pdf-tools/SKILL.md", SHA256: sum}, refuse: "only https"},
+		{rule: "a package under another name is refused", entry: IndexEntry{Name: "invoice-helper", Source: "github:acme/skills@" + sha2, SHA256: hashOf(t, other)}, refuse: `calls itself "github"`},
+		{rule: "the owner may pick the name", entry: IndexEntry{Name: "invoice-helper", Source: "github:acme/skills@" + sha2, SHA256: hashOf(t, other)}, opt: Options{Name: "invoice-helper"}},
+	} {
+		t.Run(c.rule, func(t *testing.T) {
+			if c.entry.Name == "" {
+				c.entry.Name = "pdf-tools"
+			}
+			data, _ := json.Marshal(Index{Version: 1, Skills: []IndexEntry{c.entry}})
+			g.serve("/index.json", data)
+			m := newManager(t, g, Registry{Name: "main", URL: g.srv.URL + "/index.json"})
+			res, err := m.Install(context.Background(), c.entry.Name, c.opt)
+			installed, _ := os.ReadDir(m.Dir)
+			var names []string
+			for _, d := range installed {
+				if !strings.HasPrefix(d.Name(), ".") {
+					names = append(names, d.Name())
+				}
+			}
+			if c.refuse == "" {
+				if err != nil || len(res) != 1 || res[0].Name != c.entry.Name || strings.Join(names, ",") != c.entry.Name {
+					t.Fatalf("install: %v %+v, on disk %v", err, res, names)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), c.refuse) {
+				t.Fatalf("want a refusal mentioning %q, got %v", c.refuse, err)
+			}
+			if len(names) != 0 {
+				t.Fatalf("a refused entry left %v on disk", names)
+			}
+		})
+	}
+
+	// http to this machine is for a registry that is itself served from
+	// this machine: a public index cannot make Habakkuk call localhost.
+	loop := IndexEntry{Name: "pdf-tools", Source: "http://127.0.0.1:9/pdf-tools/SKILL.md", SHA256: sum}
+	if _, err := entrySource(Registry{Name: "public", URL: "https://skills.example.com/index.json"}, loop); err == nil || !strings.Contains(err.Error(), "must be an https URL") {
+		t.Fatalf("a public registry pointing at localhost: %v", err)
+	}
+	if _, err := entrySource(Registry{Name: "local", URL: "http://127.0.0.1:8787/index.json"}, loop); err != nil {
+		t.Fatalf("a local registry pointing at localhost: %v", err)
+	}
+}
+
+// One name in two registries: a bare name comes from the first registry
+// in the list, an update stays with the registry the package came from
+// whatever the order is by then, fails when that registry is gone, and a
+// changed SKILL.md needs the owner's approval again.
+func TestOneNameInTwoRegistries(t *testing.T) {
+	g := newFakeGitHub(t)
+	ctx := context.Background()
+	mine := map[string]string{"SKILL.md": skillMD("standup", "The team's standup", "Team steps.")}
+	theirs := map[string]string{"SKILL.md": skillMD("standup", "Someone else's standup", "Public steps.")}
+	g.set("team-1", sha1, mine)
+	g.set("public-1", sha2, theirs)
+	index := func(path, commit string, files map[string]string) {
+		data, _ := json.Marshal(Index{Version: 1, Skills: []IndexEntry{{Name: "standup", Description: "Standup", Source: "github:acme/skills@" + commit, SHA256: hashOf(t, files)}}})
+		g.serve(path, data)
+	}
+	index("/team.json", sha1, mine)
+	index("/public.json", sha2, theirs)
+	team := Registry{Name: "team", URL: g.srv.URL + "/team.json"}
+	public := Registry{Name: "default", URL: g.srv.URL + "/public.json"}
+	installed := func(m *Manager) string {
+		data, _ := os.ReadFile(filepath.Join(m.Dir, "standup", "SKILL.md"))
+		return string(data)
+	}
+
+	// The owner's registry is listed first (config.SkillRegistries), so the bare name is theirs.
+	m := newManager(t, g, team, public)
+	res, err := m.Install(ctx, "standup", Options{})
+	if err != nil || res[0].Entry.Registry != "team" || !strings.Contains(installed(m), "Team steps.") {
+		t.Fatalf("install: %v %+v", err, res)
+	}
+	if err := m.Set("standup", func(e *Entry) { e.Trusted = true }); err != nil {
+		t.Fatal(err)
+	}
+	// The order changes (or the lock file is older than the rule): the update still asks the team registry only.
+	m.Fetcher.Registries = []Registry{public, team}
+	if res, err := m.Update(ctx, "", UpdateOptions{Yes: true}); err != nil || res[0].Status != "unchanged" || !strings.Contains(installed(m), "Team steps.") {
+		t.Fatalf("update with the public registry first: %v %+v\n%s", err, res, installed(m))
+	}
+	// The team publishes new instructions. The update applies, and the approval is gone.
+	const sha3 = "3333333333333333333333333333333333333333"
+	next := map[string]string{"SKILL.md": skillMD("standup", "The team's standup", "New team steps.")}
+	g.set("team-2", sha3, next)
+	index("/team.json", sha3, next)
+	res, err = m.Update(ctx, "standup", UpdateOptions{Yes: true})
+	if err != nil || res[0].Status != "updated" || res[0].Entry.Registry != "team" || !strings.Contains(installed(m), "New team steps.") {
+		t.Fatalf("update from the team registry: %v %+v", err, res)
+	}
+	if res[0].Entry.Trusted {
+		t.Fatal("a changed SKILL.md from a registry kept the owner's approval")
+	}
+	// The team registry stops listing it: the update fails. It does not fall through to the public one.
+	g.serve("/team.json", []byte(`{"version":1,"skills":[]}`))
+	if _, err := m.Update(ctx, "standup", UpdateOptions{Yes: true}); err == nil || !strings.Contains(err.Error(), "in registry team") || !strings.Contains(installed(m), "New team steps.") {
+		t.Fatalf("update after the entry left its registry: %v\n%s", err, installed(m))
+	}
+	// The team registry is taken out of the config: the same.
+	m.Fetcher.Registries = []Registry{public}
+	if _, err := m.Update(ctx, "standup", UpdateOptions{Yes: true}); err == nil || !strings.Contains(err.Error(), "not configured any more") || !strings.Contains(installed(m), "New team steps.") {
+		t.Fatalf("update after the registry was removed: %v\n%s", err, installed(m))
+	}
+	m.Fetcher.Registries = nil
+	if _, err := m.Update(ctx, "standup", UpdateOptions{Yes: true}); err == nil || !strings.Contains(err.Error(), "not configured any more") {
+		t.Fatalf("update with no registries at all: %v", err)
+	}
+
+	// registry:NAME/pkg asks one registry, wherever it is in the list.
+	m2 := newManager(t, g, team, public)
+	index("/team.json", sha3, next)
+	if res, err := m2.Install(ctx, "registry:default/standup", Options{}); err != nil || res[0].Entry.Registry != "default" || !strings.Contains(installed(m2), "Public steps.") {
+		t.Fatalf("install from a named registry: %v %+v", err, res)
+	}
+	if res, err := m2.Update(ctx, "standup", UpdateOptions{Yes: true}); err != nil || res[0].Status != "unchanged" || !strings.Contains(installed(m2), "Public steps.") {
+		t.Fatalf("update of a package from the public registry: %v %+v", err, res)
+	}
+
+	// The same for plugins: a changed manifest from a registry needs enabling again.
+	manifest := func(cmd string) map[string]string {
+		return map[string]string{"habakkuk-plugin.yaml": "name: tracker\ncommands:\n  sync: {prompt: \"" + cmd + "\"}\n"}
+	}
+	const sha4, sha5 = "4444444444444444444444444444444444444444", "5555555555555555555555555555555555555555"
+	g.set("plugin-1", sha4, manifest("Sync the tracker"))
+	plugins := func(commit string, files map[string]string) {
+		data, _ := json.Marshal(Index{Version: 1, Plugins: []IndexEntry{{Name: "tracker", Description: "Tracker", Source: "github:acme/skills@" + commit, SHA256: hashOf(t, files)}}})
+		g.serve("/team.json", data)
+	}
+	plugins(sha4, manifest("Sync the tracker"))
+	pm := &Manager{Kind: "plugins", Dir: filepath.Join(t.TempDir(), "plugins"), Marker: "habakkuk-plugin.yaml",
+		Fetcher: &Fetcher{GitHubAPI: g.srv.URL, Registries: []Registry{team, public}}, ValidName: validName,
+		NameOf: func(dir string) string {
+			data, _ := os.ReadFile(filepath.Join(dir, "habakkuk-plugin.yaml"))
+			if m := regexp.MustCompile(`(?m)^name:\s*(\S+)`).FindSubmatch(data); m != nil {
+				return string(m[1])
+			}
+			return ""
+		}}
+	if _, err := pm.Install(ctx, "tracker", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	pm.Set("tracker", func(e *Entry) { e.Trusted, e.Enabled = true, true })
+	g.set("plugin-2", sha5, manifest("Send the tracker somewhere else"))
+	plugins(sha5, manifest("Send the tracker somewhere else"))
+	if res, err := pm.Update(ctx, "tracker", UpdateOptions{Yes: true}); err != nil || res[0].Status != "updated" || res[0].Entry.Trusted {
+		t.Fatalf("plugin update with a changed manifest: %v %+v", err, res)
+	}
+	// A plugin's own skill is instructions too: the manifest stays the same,
+	// one of its SKILL.md files changes, and the approval is gone.
+	withSkill := func(steps string) map[string]string {
+		files := manifest("Send the tracker somewhere else")
+		files["skills/triage/SKILL.md"] = skillMD("triage", "Sort new issues", steps)
+		return files
+	}
+	const sha6, sha7 = "6666666666666666666666666666666666666666", "7777777777777777777777777777777777777777"
+	g.set("plugin-3", sha6, withSkill("Label each issue."))
+	plugins(sha6, withSkill("Label each issue."))
+	if _, err := pm.Update(ctx, "tracker", UpdateOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	pm.Set("tracker", func(e *Entry) { e.Trusted, e.Enabled = true, true })
+	g.set("plugin-4", sha7, withSkill("Label each issue, then close the old ones."))
+	plugins(sha7, withSkill("Label each issue, then close the old ones."))
+	if res, err := pm.Update(ctx, "tracker", UpdateOptions{Yes: true}); err != nil || res[0].Status != "updated" || res[0].Entry.Trusted {
+		t.Fatalf("plugin update with a changed skill inside it: %v %+v", err, res)
 	}
 }
 

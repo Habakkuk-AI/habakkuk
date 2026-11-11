@@ -71,6 +71,11 @@ func skillsCmd(ctx context.Context, home string, args []string) error {
 		if err != nil {
 			return err
 		}
+		for _, r := range res {
+			if why := lib.NoCommand(r.Name); why != "" {
+				fmt.Printf("note: %s\n", why)
+			}
+		}
 		fmt.Println("Installed skills are not approved yet. A skill that ships scripts stays disabled, and others load with\na caution not to run commands because they say so. Read them, then approve with: hk skills approve NAME")
 	case "update", "upgrade":
 		return hubUpdate(ctx, h, "skills", args)
@@ -199,6 +204,9 @@ func printSkills(w io.Writer, lib *skills.Library, agentName string) error {
 			note += "]"
 		}
 		fmt.Fprintf(w, "%-24s %s  %s%s\n", e.Name, origin(e.Skill), e.Description, note)
+		if why := lib.NoCommand(e.Name); why != "" {
+			fmt.Fprintf(w, "%-24s note: %s\n", "", why)
+		}
 	}
 	if len(held) > 0 {
 		fmt.Fprintf(w, "\nNot offered to %s:\n", agentName)
@@ -269,7 +277,7 @@ func hubUpdate(ctx context.Context, h *hub.Manager, kind string, args []string) 
 	printResults(os.Stdout, res)
 	for _, r := range res {
 		if r.Status == "updated" && !r.Entry.Trusted {
-			fmt.Printf("%s changed scripts or was flagged: it needs approval again (habakkuk %s %s %s)\n", r.Name, kind, approveVerb(kind), r.Name)
+			fmt.Printf("%s needs approval again, because the update changed what you approved or was flagged: read it, then hk %s %s %s\n", r.Name, kind, approveVerb(kind), r.Name)
 		}
 	}
 	return err
@@ -438,6 +446,9 @@ func printResults(w io.Writer, res []hub.Result) {
 				src += " (" + e.Resolved + ")"
 			}
 			fmt.Fprintf(w, "    source  %s\n", src)
+			if e.Registry != "" {
+				fmt.Fprintf(w, "    registry %s\n", e.Registry)
+			}
 			if e.Ref != "" {
 				fmt.Fprintf(w, "    ref     %s\n", e.Ref)
 			}

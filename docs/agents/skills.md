@@ -59,7 +59,7 @@ The prompt of each new session lists the description of every skill. The list is
 
 The skill commands work on every chat app, in `hk chat` and in the terminal UI. Some details:
 
-- Habakkuk's own commands and a plugin's commands come first, so a skill named `usage` never takes the place of `/usage`. Run that one with `/skill usage`.
+- Habakkuk's own commands and a plugin's commands come first. A skill named `usage`, `stop` or `remember` never becomes that command, in a chat app, in `hk chat` or in the terminal UI. Run it with `/skill usage`. `hk skills`, `/skills`, an install and the agent's `skill_save` all tell you when a skill's name is taken this way.
 - An underscore works in place of a hyphen (`/daily_brief`), for chat apps whose command names can't hold a hyphen.
 - The command runs the skill for the agent the chat goes to, so two agents can each have their own `/weekly-report`.
 

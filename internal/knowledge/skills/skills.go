@@ -88,6 +88,10 @@ type Library struct {
 	// process environment and PATH.
 	Env      func(name string) bool
 	LookPath func(name string) bool
+	// CommandTaken reports whether "/name" is already a command, so a
+	// skill of that name gets no slash command of its own. Nil means no
+	// name is taken.
+	CommandTaken func(name string) bool
 
 	mu sync.Mutex // serializes this process's writes to the usage file
 }

@@ -1,6 +1,8 @@
 package skills
 
 import (
+	"context"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/frontmatter"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/hub"
+	"github.com/habakkuk-ai/habakkuk/internal/llm"
+	"github.com/habakkuk-ai/habakkuk/internal/tools"
 )
 
 // Every skill shipped in the binary is well formed: its folder is a valid
@@ -258,6 +262,31 @@ func TestTurnSkillsOffAndOn(t *testing.T) {
 	}
 	if err := l.SetOff("Bad Name", true); err == nil {
 		t.Fatal("invalid name accepted")
+	}
+}
+
+// Saving a skill whose name is a command says that /NAME will not run it.
+func TestSkillSaveWarnsAboutACommandName(t *testing.T) {
+	l := &Library{Home: t.TempDir(), CommandTaken: func(name string) bool { return name == "stop" }}
+	r := tools.NewRegistry()
+	RegisterTools(r, l)
+	env := &tools.Env{Agent: "habakkuk", Workspace: t.TempDir(), Mode: tools.ModeWorkspace}
+	save := func(name string) string {
+		in, _ := json.Marshal(map[string]string{"name": name, "description": "A skill.", "body": "Steps."})
+		res := r.Execute(context.Background(), env, llm.Block{Type: llm.ToolUse, ToolUseID: "t", ToolName: "skill_save", Input: in})
+		if res.IsError {
+			t.Fatalf("skill_save %s: %s", name, res.Text)
+		}
+		return res.Text
+	}
+	if out := save("stop"); !strings.Contains(out, "created skill stop") || !strings.Contains(out, "/skill stop") {
+		t.Fatalf("skill_save stop: %q", out)
+	}
+	if out := save("stop"); !strings.Contains(out, "updated skill stop") || !strings.Contains(out, "/skill stop") {
+		t.Fatalf("skill_save stop again: %q", out)
+	}
+	if out := save("report"); strings.Contains(out, "Note:") {
+		t.Fatalf("skill_save report: %q", out)
 	}
 }
 

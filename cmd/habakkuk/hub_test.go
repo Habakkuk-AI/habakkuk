@@ -15,6 +15,22 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/hub"
 )
 
+const standupMD = "---\nname: standup\ndescription: Write a standup.\n---\n\nList yesterday, today, blockers.\n"
+
+// skillFileHash is the tree hash of a skill that is one SKILL.md.
+func skillFileHash(t *testing.T, skillMD string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skillMD), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := hub.TreeHash(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sum
+}
+
 // The CLI commands end to end against a temporary home, with a registry
 // served over HTTP.
 func TestSkillsPluginsAndMCPCommands(t *testing.T) {
@@ -23,10 +39,12 @@ func TestSkillsPluginsAndMCPCommands(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.json":
+			// A registry entry carries the hash of its files. This index is
+			// served from this machine, so its entry may be too.
 			json.NewEncoder(w).Encode(hub.Index{Version: 1, Skills: []hub.IndexEntry{
-				{Name: "standup", Description: "Write a standup", Source: "http://" + r.Host + "/standup/SKILL.md"}}})
+				{Name: "standup", Description: "Write a standup", Source: "http://" + r.Host + "/standup/SKILL.md", SHA256: skillFileHash(t, standupMD)}}})
 		case "/standup/SKILL.md":
-			w.Write([]byte("---\nname: standup\ndescription: Write a standup.\n---\n\nList yesterday, today, blockers.\n"))
+			w.Write([]byte(standupMD))
 		default:
 			http.NotFound(w, r)
 		}
@@ -139,6 +157,16 @@ func TestSkillsDisableEnableAndList(t *testing.T) {
 		t.Fatalf("a held-back skill is listed as offered:\n%s", out)
 	}
 
+	// A skill named like a command is listed with a note that /NAME will not run it.
+	os.MkdirAll(filepath.Join(home, "skills", "stop"), 0o755)
+	os.WriteFile(filepath.Join(home, "skills", "stop", "SKILL.md"), []byte("---\nname: stop\ndescription: Stop the presses.\n---\n\nSteps.\n"), 0o644)
+	if out := list(); !strings.Contains(out, "note: /stop is one of Habakkuk's own commands") || !strings.Contains(out, "/skill stop") {
+		t.Fatalf("no note for a skill named like a command:\n%s", out)
+	}
+	if out := list(); strings.Contains(out, "note: /daily-brief") {
+		t.Fatalf("a note for a free name:\n%s", out)
+	}
+
 	if err := skillsCmd(ctx, home, []string{"disable", "daily-brief"}); err != nil {
 		t.Fatal(err)
 	}
@@ -166,6 +194,8 @@ func TestSkillsDisableEnableAndList(t *testing.T) {
 // With no registry configured, a bare name is looked up in the default
 // registry, and "off" takes it away.
 func TestDefaultRegistryIsUsed(t *testing.T) {
+	const chaserMD = "---\nname: invoice-chaser\ndescription: Chase unpaid invoices.\n---\n\nRemind politely.\n"
+	const teamMD = "---\nname: invoice-chaser\ndescription: Our way of chasing.\n---\n\nCall first.\n"
 	ctx := context.Background()
 	home := t.TempDir()
 	asked := 0
@@ -173,16 +203,24 @@ func TestDefaultRegistryIsUsed(t *testing.T) {
 		switch r.URL.Path {
 		case "/skills/index.json":
 			asked++
-			// The directory's index carries an author, which the engine ignores.
-			w.Write([]byte(`{"version":1,"skills":[{"name":"invoice-chaser","description":"Chase unpaid invoices","author":"Example Author","source":"http://` + r.Host + `/invoice-chaser/SKILL.md","tags":["money"]}],"plugins":[]}`))
+			// The directory's index carries an author, which the engine
+			// ignores, and the hash of each entry's files, which it requires.
+			w.Write([]byte(`{"version":1,"skills":[{"name":"invoice-chaser","description":"Chase unpaid invoices","author":"Example Author","source":"http://` + r.Host + `/invoice-chaser/SKILL.md","sha256":"` + skillFileHash(t, chaserMD) + `","tags":["money"]}],"plugins":[]}`))
 		case "/invoice-chaser/SKILL.md":
-			w.Write([]byte("---\nname: invoice-chaser\ndescription: Chase unpaid invoices.\n---\n\nRemind politely.\n"))
+			w.Write([]byte(chaserMD))
+		case "/team/index.json": // the owner's own registry lists the same name
+			w.Write([]byte(`{"version":1,"skills":[{"name":"invoice-chaser","description":"Our way of chasing","source":"http://` + r.Host + `/team/SKILL.md","sha256":"` + skillFileHash(t, teamMD) + `"}]}`))
+		case "/team/SKILL.md":
+			w.Write([]byte(teamMD))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer srv.Close()
-	// What a build's default would be, pointed at the test server.
+	// What a build's default would be, pointed at the test server. Run from
+	// an empty folder: a folder named like the skill in the current one
+	// would be taken for a local source.
+	t.Chdir(t.TempDir())
 	was := config.DefaultRegistryURL
 	config.DefaultRegistryURL = srv.URL + "/skills/index.json"
 	defer func() { config.DefaultRegistryURL = was }()
@@ -197,6 +235,22 @@ func TestDefaultRegistryIsUsed(t *testing.T) {
 	lock, _ := hub.ReadLock(filepath.Join(home, "skills", hub.LockName))
 	if e := lock.Packages["invoice-chaser"]; e == nil || e.Registry != "default" || asked < 2 {
 		t.Fatalf("lock %+v after %d index requests", e, asked)
+	}
+
+	// The owner's own registry lists the same name: a bare name is theirs,
+	// and an update stays with it.
+	home2 := t.TempDir()
+	os.WriteFile(filepath.Join(home2, "config.yaml"), []byte(config.Template+"\nskills:\n  registries:\n    - {name: team, url: \""+srv.URL+"/team/index.json\"}\n"), 0o600)
+	if err := skillsCmd(ctx, home2, []string{"install", "invoice-chaser"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := skillsCmd(ctx, home2, []string{"update", "-y"}); err != nil {
+		t.Fatal(err)
+	}
+	lock2, _ := hub.ReadLock(filepath.Join(home2, "skills", hub.LockName))
+	got, _ := os.ReadFile(filepath.Join(home2, "skills", "invoice-chaser", "SKILL.md"))
+	if e := lock2.Packages["invoice-chaser"]; e == nil || e.Registry != "team" || !strings.Contains(string(got), "Call first.") {
+		t.Fatalf("a name in the owner's registry and the public one: lock %+v\n%s", e, got)
 	}
 
 	os.WriteFile(filepath.Join(home, "config.yaml"), []byte(config.Template+"\nskills:\n  default_registry: \"off\"\n"), 0o600)

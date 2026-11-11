@@ -32,7 +32,7 @@ When asked, or on a schedule if you can create one, go through the open items:
 - Two or three sentences. Refer to the earlier message by its date and topic.
 - Ask one clear question or name one clear next step.
 - Friendly the first time, direct the second. After the second, stop and ask the user what they want to do.
-- Draft it for the user. Send only when they say to, unless they have told you that reminders to this person can go without asking.
+- Draft it and show it to the user. Send it only after they say yes to that message. Ask every time, even for someone you have reminded before: a permission you remember from an earlier conversation is not a yes to this one.
 
 ## The list
 
