@@ -480,17 +480,28 @@ func filesGet(root string, args json.RawMessage) (*Result, error) {
 		Files: []File{{Name: filepath.Base(path), Data: data}}}, nil
 }
 
-// isHabakkukHome reports whether dir looks like a Habakkuk home: a
-// config.yaml beside the agents or projects folder or the control
-// database. The node does not know where the gateway it serves keeps its
-// home, and should not be told; recognising any home on this machine
-// covers the gateway's too, whatever HABAKKUK_HOME it runs with.
+// homeMarks are what a Habakkuk home holds besides its config: the agents
+// and trusted-projects folders and its databases.
+var homeMarks = []string{"agents", "projects", "control.db", "transcripts.db", "state.db", "web.db", "usage.db", "nodes.db", "memory.db", "history.db"}
+
+// isHabakkukHome reports whether dir looks like a Habakkuk home: a config
+// (config.yaml or config.yml) beside any of homeMarks, or an agents folder
+// beside any of the others (a home whose config is missing). The node does
+// not know where the gateway it serves keeps its home, and should not be
+// told; recognising any home on this machine covers the gateway's too,
+// whatever HABAKKUK_HOME it runs with.
 func isHabakkukHome(dir string) bool {
-	if fi, err := os.Stat(filepath.Join(dir, "config.yaml")); err != nil || !fi.Mode().IsRegular() {
-		return false
-	}
-	for _, mark := range []string{"agents", "projects", "control.db"} {
-		if _, err := os.Stat(filepath.Join(dir, mark)); err == nil {
+	has := func(name string) bool { _, err := os.Stat(filepath.Join(dir, name)); return err == nil }
+	config := has("config.yaml") || has("config.yml")
+	agents := has("agents")
+	for _, mark := range homeMarks {
+		if mark == "agents" {
+			if config && agents {
+				return true
+			}
+			continue
+		}
+		if has(mark) && (config || agents) {
 			return true
 		}
 	}

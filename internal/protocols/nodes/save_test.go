@@ -116,3 +116,37 @@ func TestFilesPutDoesNotWriteThroughLinks(t *testing.T) {
 		t.Fatal("nested put failed")
 	}
 }
+
+// Homes laid out other ways are recognised too: config.yml, and a home
+// whose config is missing but whose agents folder sits beside a database
+// or the trusted-projects folder.
+func TestIsHabakkukHomeLayouts(t *testing.T) {
+	mk := func(files ...string) string {
+		d := t.TempDir()
+		for _, f := range files {
+			if f == "agents" || f == "projects" {
+				os.MkdirAll(filepath.Join(d, f), 0o700)
+			} else {
+				os.WriteFile(filepath.Join(d, f), nil, 0o600)
+			}
+		}
+		return d
+	}
+	for name, c := range map[string]struct {
+		files []string
+		want  bool
+	}{
+		"config.yaml + agents":  {[]string{"config.yaml", "agents"}, true},
+		"config.yml + agents":   {[]string{"config.yml", "agents"}, true},
+		"config.yml + state.db": {[]string{"config.yml", "state.db"}, true},
+		"agents + control.db":   {[]string{"agents", "control.db"}, true},
+		"agents + projects":     {[]string{"agents", "projects"}, true},
+		"agents alone":          {[]string{"agents"}, false},
+		"config.yaml alone":     {[]string{"config.yaml"}, false},
+		"an ordinary project":   {[]string{"go.mod", "README.md"}, false},
+	} {
+		if got := isHabakkukHome(mk(c.files...)); got != c.want {
+			t.Errorf("%s: %v, want %v", name, got, c.want)
+		}
+	}
+}
