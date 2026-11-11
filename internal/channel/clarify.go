@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -131,9 +130,11 @@ func writeChoices(b *strings.Builder, choices []string) {
 // conversation, or a press of one of choices' buttons where the chat has
 // them. It returns "" when nobody answers in time.
 func (g *Gateway) ask(ctx context.Context, to Address, prompt string, choices []string) (string, error) {
-	mu, _ := g.approveMu.LoadOrStore(to.key(), &sync.Mutex{})
-	mu.(*sync.Mutex).Lock()
-	defer mu.(*sync.Mutex).Unlock()
+	release, ok := g.holdChat(ctx, to)
+	if !ok {
+		return "", ctx.Err()
+	}
+	defer release()
 
 	answer := make(chan string, 1)
 	g.questions.Store(to.key(), answer)

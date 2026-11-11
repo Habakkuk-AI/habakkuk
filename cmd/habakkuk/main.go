@@ -138,6 +138,9 @@ Usage:
                                     trust shows exactly what the agent gets and asks on your terminal
   hk skills held | approve AGENT/NAME   skills an agent saved after reading outside content wait here;
                                     approve one to put it in use
+  hk approvals [list] [-agent A] | rm ID
+                                    approval rules: calls an agent makes without asking, from
+                                    "Always allow" answers and agents.<name>.allow
   hk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
   hk expose tailscale [-port 443] [-print] | status | off
@@ -267,6 +270,8 @@ func main() {
 		err = securityCmd(home, args, os.Stdout)
 	case "projects":
 		err = projectsCmd(home, args, os.Stdin, os.Stdout)
+	case "approvals":
+		err = approvalsCmd(home, args, os.Stdout)
 	case "expose":
 		err = exposeCmd(ctx, home, args, os.Stdout, nil)
 	case "auth":
@@ -406,6 +411,7 @@ func chat(ctx context.Context, home string, args []string) error {
 	}
 
 	term := &terminal{in: bufio.NewReader(os.Stdin)}
+	stdinTerminal := isTerminal(os.Stdin)
 	detach := a.Runner.Attach(sid, term)
 	defer detach()
 	evs, unsub := a.Bus.Subscribe(sid)
@@ -426,6 +432,7 @@ func chat(ctx context.Context, home string, args []string) error {
 		case "/exit", "/quit":
 			return nil
 		}
+		prompted := false
 		if name, arg, _ := strings.Cut(line, " "); strings.HasPrefix(name, "/") {
 			// The chat app's commands: /model, /usage, /skills, /skill,
 			// /learn and plugin commands. A prompt command becomes the message.
@@ -439,10 +446,17 @@ func chat(ctx context.Context, home string, args []string) error {
 					fmt.Println(err)
 					continue
 				}
-				line = text
+				line, prompted = text, true
 			}
 		}
-		if _, err := a.Runner.Submit(ctx, sid, line); err != nil {
+		// A line typed at the prompt, on a terminal, is Typed; a skill or
+		// plugin prompt carries file text the owner did not type, and piped
+		// input is a program's.
+		submit := a.Runner.SubmitTyped
+		if prompted || !stdinTerminal {
+			submit = a.Runner.Submit
+		}
+		if _, err := submit(ctx, sid, line); err != nil {
 			return err
 		}
 		pool.wake()

@@ -63,7 +63,7 @@ If the problem is with one chat app, look at its channel page too. Each one has 
 | You see | Cause and fix |
 |---|---|
 | `No answer, so I skipped that step.` | An approval waited 15 minutes. Answer **yes** or **no** sooner, or use an [approval reviewer](../agents/approvals.md#approvals) for routine steps. |
-| `... needs approval and no one is attending this run` | A schedule, sub-agent, webhook or API call needed approval. Give the agent `approvals: reviewer` or `reviewer_then_human`, or a wider `permission`. |
+| `... needs approval and no one is attending this run` | A sub-agent, webhook, API call or a schedule with no delivery chat needed approval. Saved approval rules never answer for these. Give the schedule a chat (`-to CHANNEL:CHAT`) so it can ask you, give the agent `approvals: reviewer` or `reviewer_then_human`, or a wider `permission`. |
 | `... is not allowed in read-only mode` | The agent is `permission: read-only`, which also denies network tools such as the browser. Use `workspace`. |
 | `... is not available to messages from people other than the owner` | The sender is a guest (let in by `allow_from: ["*"]`). Add their id to `allow_from` or pair them. |
 | Commands need approval even in `full` mode | Turns from chat apps and turns that read outside content always need approval for risky calls. Set `trust: full` on the agent to treat your own chat messages like the CLI. See [Security](../deploy/security.md). |

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/events"
@@ -84,6 +85,20 @@ type TurnPayload struct {
 	// Task names that work in one line for home reports.
 	Source string `json:"source,omitempty"`
 	Task   string `json:"task,omitempty"`
+	// Tainted: the work was set up by a turn that had read outside content
+	// (a schedule or board card it created), so this turn starts tainted.
+	Tainted bool `json:"tainted,omitempty"`
+	// Local: the owner typed this on this machine (the CLI, the TUI, hk
+	// talk). A turn with no reply address is not local without it: the
+	// API, MCP clients and editors send none either.
+	Local bool `json:"local,omitempty"`
+	// Typed: the whole message is plain text the owner just sent: a text
+	// message in a direct chat (the gateway sets it), a line typed at the
+	// hk chat or TUI prompt (SubmitTyped), the dashboard's chat input.
+	// Approval rules answer only for such a turn (taint.go). Local does
+	// not imply it: hk run, hk talk, /btw and skill prompts are local but
+	// carry text the owner did not just type.
+	Typed bool `json:"typed,omitempty"`
 }
 
 // Attachment is a file that came with a user message. The bytes live in the
@@ -144,6 +159,12 @@ type Turn struct {
 	Task    string // a one-line name for it
 	// Background: nobody is waiting on this turn (see TurnPayload).
 	Background bool
+	// Tainted: set up by a turn that had read outside content (TurnPayload).
+	Tainted bool
+	// Local: the owner typed it on this machine (TurnPayload.Local).
+	Local bool
+	// Typed: the owner sent it just now in a direct chat (TurnPayload.Typed).
+	Typed bool
 }
 
 // Sender is the model call. *llm.Router implements it; tests use fakes.
@@ -182,6 +203,8 @@ type Runner struct {
 	Policy PolicyFunc
 
 	approvers sync.Map // session id -> tools.Approver
+	trust     sync.Map // turn job id -> func() bool while it runs, true after if it ended untrusted (Untrusted)
+	trustN    atomic.Int64
 	textOnly  sync.Map // session id -> true once the model rejected its media
 	routes    sync.Map // session id -> time of its last turn on the main model (route.go)
 
@@ -252,8 +275,16 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 
 // Submit queues a user message as a turn. The message is written by the turn
 // itself so that it can never interleave with a turn already in progress.
+// Submit queues a message from this machine (hk run, a retry, a skill or
+// plugin prompt): the turn is Local, not Typed.
 func (r *Runner) Submit(ctx context.Context, sessionID, text string) (string, error) {
-	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text})
+	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text, Local: true})
+}
+
+// SubmitTyped queues a line the owner just typed at the hk chat or TUI
+// prompt, nothing added: the turn is Local and Typed.
+func (r *Runner) SubmitTyped(ctx context.Context, sessionID, text string) (string, error) {
+	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text, Local: true, Typed: true})
 }
 
 func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
@@ -268,7 +299,7 @@ func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
 	return r.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: t.ID, Kind: kind, Agent: sess.Agent, SerialKey: t.Session, Priority: 10,
 		Payload: TurnPayload{Session: t.Session, Text: t.Text, Media: t.Media, Origin: t.Origin, Compact: t.Compact, Sub: t.Sub,
-			Source: t.Source, Task: t.Task, Background: t.Background},
+			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted, Local: t.Local, Typed: t.Typed},
 	})
 }
 
@@ -296,8 +327,12 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	ctx = llm.WithCaller(ctx, caller)
 	ctx = withOrigin(ctx, p.Origin)
+	info := TurnInfo{Source: p.Source, Task: p.Task, Local: p.Local, Typed: p.Typed, Background: p.Background || p.Compact,
+		Delegated: p.Sub != nil, Tainted: p.Tainted || p.Source == SourceA2A}
+	ctx = WithTurnInfo(ctx, info)
 	chain, overridden := r.chainFor(ctx, sess.ID, spec)
-	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden}
+	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden, info: info}
+	defer r.settleTrust(j.ID)
 	t.useSub(p.Sub)
 	hook := TurnHookPayload{Event: HookTurnStart, Agent: spec.Name, Session: sess.ID, Job: j.ID, Text: p.Text}
 	r.Fire(ctx, HookTurnStart, spec.Name, hook)
@@ -359,8 +394,11 @@ type turn struct {
 	onFast     bool
 	mainChain  []llm.Target
 	sub        *SubturnSpec // a delegated task's options, or nil
-	msgs       []llm.Message
-	final      string
+	// info says what started the turn (TurnInfo): whether approval rules
+	// may answer for it, and whether it starts tainted.
+	info  TurnInfo
+	msgs  []llm.Message
+	final string
 
 	// Compaction state (compact.go). msgs is always the whole transcript;
 	// the model sees summary plus msgs[base:].
@@ -438,6 +476,9 @@ func (t *turn) run(userText string, media []Attachment) error {
 	// (the loop guard's timing).
 	env.Approver, env.Reviewer = tools.TimedApprover(env.Approver), tools.TimedReviewer(env.Reviewer)
 	t.applyPolicy(env)
+	if t.info.Tainted {
+		env.Taint.Mark()
+	}
 	t.restoreTaint(env, recs)
 	if projectTainted(t.msgs) { // the session started with untrusted project files
 		if env.Taint == nil {
@@ -445,6 +486,8 @@ func (t *turn) run(userText string, media []Attachment) error {
 		}
 		env.Taint.Mark()
 	}
+	t.limitRules(env, recs)
+	t.r.trackTrust(t.job.ID, env)
 	var pending []string
 	if t.r.ToolsPending != nil {
 		pending = t.r.ToolsPending(t.ctx, t.toolsets())
@@ -688,4 +731,50 @@ func (r *Runner) projectFiles(spec *Spec, folder string) ProjectFiles {
 		r.Log.Info("project instruction files read", "agent", spec.Name, "trusted", trusted, "untrusted", untrusted)
 	}
 	return p
+}
+
+// trackTrust lets Untrusted answer for the turn while it runs.
+func (r *Runner) trackTrust(jobID string, env *tools.Env) {
+	r.trust.Store(jobID, env.Untrusted)
+}
+
+// settleTrust keeps, once the turn ends, only whether it ended untrusted.
+// The record is in memory: it is what the turn's deliveries and board
+// result carry right after it, and a few thousand are kept.
+func (r *Runner) settleTrust(jobID string) {
+	v, ok := r.trust.Load(jobID)
+	if !ok {
+		return
+	}
+	f, running := v.(func() bool)
+	if !running {
+		return
+	}
+	if !f() {
+		r.trust.Delete(jobID)
+		return
+	}
+	r.trust.Store(jobID, true)
+	if r.trustN.Add(1) > 5000 {
+		r.trustN.Store(0)
+		r.trust.Range(func(k, v any) bool {
+			if _, done := v.(bool); done && k != jobID {
+				r.trust.Delete(k)
+			}
+			return true
+		})
+	}
+}
+
+// Untrusted reports whether outside content may have steered the turn job
+// jobID (tools.Env.Untrusted): what it delivers to a chat is a tainted
+// note there, and a board card it ran is marked tainted.
+func (r *Runner) Untrusted(jobID string) bool {
+	switch v, _ := r.trust.Load(jobID); f := v.(type) {
+	case func() bool:
+		return f()
+	case bool:
+		return f
+	}
+	return false
 }

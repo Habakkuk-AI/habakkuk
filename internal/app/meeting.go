@@ -30,11 +30,15 @@ func (a *App) openMeetings(home string) {
 		Launch: meeting.ChromeLauncher(bc.Path, *mc.Headless, browser.NewGuard(nil, bc.BlockedURLs, bc.AllowPrivate), a.Log),
 		Model:  a.meetingModel(mc),
 	}
+	// A meeting's notes are what other people said: outside content, in a
+	// chat note and in the turn that hands them over.
 	if a.Gateway != nil {
-		m.Deliver = a.Gateway.Deliver
+		m.Deliver = func(ctx context.Context, id string, to json.RawMessage, text string) error {
+			return a.Gateway.Deliver(agent.WithTainted(ctx), id, to, text)
+		}
 	}
 	m.Notify = func(ctx context.Context, _, session, id, text string) error {
-		if _, err := a.Runner.SubmitTurn(ctx, agent.Turn{ID: "turn_" + id, Session: session, Text: text, Background: true}); err != nil {
+		if _, err := a.Runner.SubmitTurn(ctx, agent.Turn{ID: "turn_" + id, Session: session, Text: text, Background: true, Tainted: true}); err != nil {
 			return err
 		}
 		if a.Runner.Wake != nil {

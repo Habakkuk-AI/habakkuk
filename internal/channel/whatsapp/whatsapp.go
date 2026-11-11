@@ -255,6 +255,10 @@ func convert(cli *whatsmeow.Client, v *events.Message) (channel.Message, bool) {
 	}
 	ci := contextInfo(msg)
 	m.Quote = quote(ci, own, []string{m.Sender, m.SenderAlt}, m.SenderName)
+	m.Forwarded = ci.GetIsForwarded() || ci.GetForwardingScore() > 0
+	// Plain text the sender typed: WhatsApp marks forwards and quotes.
+	m.Plain = (msg.GetConversation() != "" || ext != nil) && len(atts) == 0 && m.Quote == nil && !m.Forwarded &&
+		ci.GetQuotedMessage() == nil
 	if info.IsGroup && own != nil {
 		for _, j := range ci.GetMentionedJID() {
 			if u := userOf(j); u != "" && contains(own, u) {

@@ -119,6 +119,9 @@ hk projects trust [-allow-control] [PATH] | list [-agent A] [PATH] | untrust [PA
                                     trust shows exactly what the agent gets and asks on your terminal
 hk skills held | approve AGENT/NAME   skills an agent saved after reading outside content wait here;
                                     approve one to put it in use
+hk approvals [list] [-agent A] | rm ID
+                                    approval rules: calls an agent makes without asking, from
+                                    "Always allow" answers and agents.<name>.allow
 hk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
 hk expose tailscale [-port 443] [-print] | status | off
@@ -151,6 +154,7 @@ Each command is explained in a guide. This table tells you which one:
 | `serve`, `setup service` | [Run it on a server](../deploy/server.md) |
 | `status`, `logs`, `doctor` | [Observability](../deploy/observability.md) |
 | `security` | [Security](../deploy/security.md) |
+| `approvals` | [Permissions and approvals](../agents/approvals.md#always-allow) |
 | `expose` | [Remote access](../deploy/remote-access.md) |
 | `remote`, `-r` | [Remote CLI](../interfaces/remote-cli.md) |
 | `backup`, `restore` | [Backups and updates](../deploy/backups-and-updates.md) |

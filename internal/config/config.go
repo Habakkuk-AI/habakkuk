@@ -205,6 +205,10 @@ type Channel struct {
 	// while serve runs (hooks.go).
 	Progress        string `yaml:"progress"`
 	ApprovalsDetail string `yaml:"approvals_detail"`
+	// Stream shows the reply while it is being written, in one message
+	// edited as the text arrives, where the platform can edit messages
+	// (default true). Can be changed while serve runs, like progress.
+	Stream *bool `yaml:"stream"`
 	// Reactions marks the user's message with an emoji while a turn runs
 	// and when it ends, where the platform has reactions.
 	Reactions bool `yaml:"reactions"`

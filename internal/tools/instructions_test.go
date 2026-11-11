@@ -38,14 +38,48 @@ func TestTaintedTurnCannotWriteInstructionFiles(t *testing.T) {
 	if res := write(guest, "AGENTS.md"); !res.IsError {
 		t.Fatal("a guest wrote AGENTS.md")
 	}
-	// Other files in a tainted turn, and instruction files in a clean one,
-	// go through as before.
+	// Other files in a tainted turn go through as before. A clean turn may
+	// write an instruction file once a person approves it, even in full
+	// mode (the approvals' rule for instruction files).
 	if res := write(tainted, "report.md"); res.IsError {
 		t.Fatalf("tainted write to report.md: %s", res.Text)
 	}
-	clean := &Env{Agent: "a", Workspace: ws, Mode: ModeFull, Taint: NewTaint(false)}
-	if res := write(clean, "AGENTS.md"); res.IsError {
-		t.Fatalf("clean write: %s", res.Text)
+	yes := &countingApprover{yes: true}
+	clean := &Env{Agent: "a", Workspace: ws, Mode: ModeFull, Taint: NewTaint(false), Approver: yes}
+	if res := write(clean, "AGENTS.md"); res.IsError || yes.asks != 1 {
+		t.Fatalf("clean write, asked %d times: %s", yes.asks, res.Text)
+	}
+}
+
+// The timing wrapper keeps an approver's optional interfaces, and adds
+// none it lacks: "Always allow" and a terminal's questions are found by
+// type assertion.
+func TestTimedApproverKeepsInterfaces(t *testing.T) {
+	type both struct {
+		*deciding
+		Asker
+	}
+	for name, c := range map[string]struct {
+		a              Approver
+		decider, asker bool
+	}{
+		"plain":   {&countingApprover{}, false, false},
+		"decider": {&deciding{}, true, false},
+		"asker": {struct {
+			Approver
+			Asker
+		}{&countingApprover{}, nil}, false, true},
+		"both": {both{&deciding{}, nil}, true, true},
+	} {
+		w := TimedApprover(c.a)
+		_, d := w.(Decider)
+		_, k := w.(Asker)
+		if d != c.decider || k != c.asker {
+			t.Errorf("%s: Decider %v, Asker %v", name, d, k)
+		}
+		if TimedApprover(w) != w {
+			t.Errorf("%s: wrapped twice", name)
+		}
 	}
 }
 

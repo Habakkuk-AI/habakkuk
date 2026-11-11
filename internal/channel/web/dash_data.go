@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
+	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/budget"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/usage"
+	"github.com/habakkuk-ai/habakkuk/internal/tools"
 	"github.com/habakkuk-ai/habakkuk/internal/work/board"
 	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
 )
@@ -866,6 +869,60 @@ func (s *Server) budgetReport(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) approvals(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"approvals": nonNil(s.Gateway.Approvals())})
+}
+
+// ruleView is one approval rule as the dashboard shows it.
+type ruleView struct {
+	tools.Rule
+	Agent string `json:"agent"`
+	Text  string `json:"text"`  // what it covers, in a few words
+	Where string `json:"where"` // where it applies
+}
+
+// approvalRules lists every agent's approval rules: agents.<name>.allow
+// and the ones saved by "Always allow".
+func (s *Server) approvalRules(w http.ResponseWriter, _ *http.Request) {
+	d := s.dash(w)
+	if d == nil {
+		return
+	}
+	out := []ruleView{}
+	for _, name := range d.Config.AgentNames() {
+		for _, r := range dashRules(d.Config, name).Rules() {
+			if r.Source == "" {
+				r.Source = "saved"
+			}
+			out = append(out, ruleView{Rule: r, Agent: name, Text: r.String(), Where: r.Where()})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rules": out})
+}
+
+// approvalRuleDelete removes a saved rule. Rules from config.yaml stay:
+// they are removed by editing it.
+func (s *Server) approvalRuleDelete(w http.ResponseWriter, r *http.Request) {
+	d := s.dash(w)
+	if d == nil {
+		return
+	}
+	name := r.PathValue("agent")
+	if d.Config.Agents[name] == nil {
+		httpError(w, http.StatusNotFound, "unknown agent")
+		return
+	}
+	ok, err := dashRules(d.Config, name).Remove(r.PathValue("id"))
+	switch {
+	case err != nil:
+		httpError(w, http.StatusInternalServerError, err.Error())
+	case !ok:
+		httpError(w, http.StatusNotFound, "no saved rule with that id (rules from config.yaml are removed by editing it)")
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func dashRules(cfg *config.Config, agent string) *tools.RuleFile {
+	return &tools.RuleFile{Path: filepath.Join(cfg.AgentDir(agent), tools.RulesFileName), Config: cfg.AllowRules(agent)}
 }
 
 // approve answers a waiting approval: {"approve": true} allows the call,

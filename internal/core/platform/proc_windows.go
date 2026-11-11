@@ -105,6 +105,28 @@ func Alive(pid int) bool {
 // FileOwner returns -1: Windows files are owned by a SID, not a uid.
 func FileOwner(os.FileInfo) int { return -1 }
 
+// Links returns how many names (hard links) the file at path has, after
+// symlinks, from GetFileInformationByHandle. An error means the count could
+// not be read; callers that guard files treat that as more than one.
+func Links(path string) (uint64, error) {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, err
+	}
+	h, err := windows.CreateFile(p, windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
+		windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = windows.CloseHandle(h) }()
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(h, &info); err != nil {
+		return 0, err
+	}
+	return uint64(info.NumberOfLinks), nil
+}
+
 // DiskUsage reports the bytes available to this user and the total size of
 // the volume holding path.
 func DiskUsage(path string) (free, total uint64, err error) {

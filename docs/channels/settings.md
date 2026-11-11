@@ -50,6 +50,7 @@ What counts as addressing the bot depends on the platform. The table [below](#wh
 | `session_idle` | Start a fresh session after this much silence (default `24h`; the web chat never; `0` never) |
 | `progress` | What a chat shows while the agent works: `plain` (default), `detailed` or `off`. See [below](#what-a-chat-shows-while-the-agent-works) |
 | `approvals_detail` | What an approval request shows: `summary` (default) or `full`. See [below](#approval-requests-in-plain-words) |
+| `stream` | Show the reply while it's being written (default `true`). See [below](#replies-as-theyre-written) |
 | `reactions` | `true` reacts to the user's message when its turn starts and ends (Telegram, Slack, Discord, Nextcloud Talk) |
 | `voice_replies` | `off` (default), `mirror` (answer voice with voice) or `always`; see [Voice](../tools/voice.md#voice-notes-and-spoken-replies-in-chats) |
 | `voice_text` | With voice replies, also send the text (default `true`) |
@@ -85,6 +86,18 @@ After about 20 seconds, the line also says how long the turn has been running. F
 
 Editing a message only works on Telegram and Slack. On every other platform, `plain` and `detailed` show the same thing `off` does. That's the typing indicator where the platform has one, or one "still working" notice after a minute. The terminal, the terminal UI and the dashboard always show each step.
 
+## Replies as they're written
+
+On Telegram and Slack, you see the reply while the agent writes it. It arrives as one message that grows every second or so, with a `▍` at the end while there's more to come. When the agent finishes, that same message becomes the reply. You don't get a second copy.
+
+- **You're notified once,** when the reply starts. If a progress line was showing, the reply gets a new message below it, so it's never hidden above an approval request. On Telegram the progress line is silent, so the reply's message also quotes your question.
+- **Short lines before a tool don't show.** Models often write something like "Let me check" before they use a tool. That isn't the reply, so Habakkuk waits until the text is long enough to read, or has been coming for a moment. If the agent goes on to use a tool anyway, the message goes back to the progress line, and the finished reply arrives as a new message.
+- **Long replies** stream into the first message until it's full. The rest follows as more messages when the reply is done.
+- **Nothing changes after a crash.** If Habakkuk stops mid-reply, the next start finishes the same message. The reply is still sent exactly once.
+- **To turn it off** for a channel, set `stream: false`. Replies then arrive whole, as they did before.
+
+Streaming works where Habakkuk can edit messages, which today means Telegram and Slack. Elsewhere the reply arrives whole when the turn finishes.
+
 ## Approval requests in plain words
 
 When the agent needs your approval in a chat, it says what it wants to do in everyday words. It also tells you why it's asking and how to answer:
@@ -101,16 +114,31 @@ Reply yes or no. Reply details to see the exact command.
 - **Reply `details`** to see the exact command or call. Secrets are removed and long calls are cut short. The approval keeps waiting for your answer.
 - **`approvals_detail: full`** shows the exact call in every request, in a code block. The local web chat does this by default.
 
-On platforms with buttons, you get Approve and Deny as well. For who may answer and what happens across a restart, see [Permissions and approvals](../agents/approvals.md#answering-approvals).
+When the call can get a saved rule, the request also shows the rule **Always allow** would save, in full, and you can reply **always**:
+
+````text
+I'd like to run a command on your computer.
+
+Always allow saves a rule for this chat. I won't ask again before running exactly this command in your workspace:
+```
+git status
+```
+
+Reply yes to allow it once, always to allow it from now on, or no.
+````
+
+The rule is shown whatever `approvals_detail` says. It applies in this chat only, to messages you type here yourself, and only in a one-to-one chat. Email conversations, commands with a backquote or a line break, and very long commands don't get **Always allow**.
+
+On platforms with buttons, you get **Allow once**, **Always allow** and **Deny** as well. When no rule is possible, for example after the agent has read a web page, you get Approve and Deny. For who may answer, what happens across a restart and what a rule never covers, see [Permissions and approvals](../agents/approvals.md#answering-approvals).
 
 ## Changing these without a restart
 
-You can change `progress` and `approvals_detail` while `hk serve` is running. The change takes effect from the next message, and you don't need to restart. Each of the ways below edits `config.yaml` in place. Your comments stay, and the previous file is kept as `config.yaml.bak`.
+You can change `progress`, `approvals_detail` and `stream` while `hk serve` is running. The change takes effect from the next message, and you don't need to restart. Each of the ways below edits `config.yaml` in place. Your comments stay, and the previous file is kept as `config.yaml.bak`.
 
 - **Dashboard.** On the Config page, each chat channel has two controls: "While working, show" and "Approval requests show".
 - **In the chat.** Send `/progress plain|detailed|off` or `/approvals summary|full` to change the channel you're writing in. With no argument, each one shows the current setting. Only the owner can use them.
 - **Terminal.** Run `hk setup channel NAME -progress plain -approvals-detail summary`. `NAME` is the channel's name under `channels:`. When you have only one channel of that type, you can use the type.
-- **By hand.** Edit `config.yaml`. `serve` picks up the change within a few seconds.
+- **By hand.** Edit `config.yaml`. `serve` picks up the change within a few seconds. This is the only way to change `stream` for now.
 
 Every other channel setting still needs a restart. The log tells you so.
 
@@ -133,7 +161,7 @@ Some adapter state is something the platform can't give back: where a mailbox wa
 - **Exactly once where it matters.** Habakkuk derives a turn's job ID from the platform message ID, so a message that's delivered again doesn't run a second time. When a turn finishes, it queues a delivery job with an ID derived from the turn. So if the turn reruns after a crash, it doesn't reply twice. A delivery records each chunk it sends, so a retry resumes at the first chunk that wasn't sent.
 - **Attachments.** Habakkuk downloads photos, files and voice notes (up to 25 MB). It stores them as blobs and copies them to the agent's `workspace/inbox/`, so tools can open them. Images and PDFs also go straight to the model. Voice notes are transcribed through the [`transcription:` provider](../models/speech.md#speech-to-text).
 - **Sending files.** An agent sends files with the `send_file` tool. Each platform's limits apply.
-- **Replies arrive whole.** Habakkuk doesn't stream text into the chat as it's written. During a long turn you see progress: one short line that changes as the work moves on, a typing indicator, or a "still working" notice. See [above](#what-a-chat-shows-while-the-agent-works).
+- **Replies as they're written.** On Telegram and Slack, the reply shows while the agent writes it, and that message becomes the reply. Elsewhere it arrives whole. During a long turn you also see progress: one short line that changes as the work moves on, a typing indicator, or a "still working" notice. See [Replies as they're written](#replies-as-theyre-written) and [what a chat shows while the agent works](#what-a-chat-shows-while-the-agent-works).
 - **Supervision.** Every adapter runs under a supervisor. The supervisor restarts the adapter with backoff. It also tears down a connection that stays silent past its limit.
 
 For the details, see [Architecture: channels](../reference/architecture.md#channels).
