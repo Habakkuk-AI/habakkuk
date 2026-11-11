@@ -10,15 +10,33 @@ import (
 
 // Post, Edit and Delete implement channel.Editor for progress drafts.
 
+// Post sends a message without a notification: progress drafts use it.
 func (a *Adapter) Post(ctx context.Context, to channel.Address, text string) (string, error) {
+	return a.postMessage(ctx, to, text, "", true)
+}
+
+// PostLoud sends a message that notifies, quoting replyTo when set: a reply
+// streamed into the chat starts with it (channel.LoudPoster).
+func (a *Adapter) PostLoud(ctx context.Context, to channel.Address, text, replyTo string) (string, error) {
+	return a.postMessage(ctx, to, text, replyTo, false)
+}
+
+func (a *Adapter) postMessage(ctx context.Context, to channel.Address, text, replyTo string, silent bool) (string, error) {
 	chat, err := a.chatID(to.Conversation)
 	if err != nil {
 		return "", err
 	}
 	params := map[string]any{"chat_id": chat, "text": text, "parse_mode": "HTML",
-		"link_preview_options": map[string]bool{"is_disabled": true}, "disable_notification": true}
+		"link_preview_options": map[string]bool{"is_disabled": true}}
+	if silent {
+		params["disable_notification"] = true
+	}
 	if to.Thread != "" {
 		params["message_thread_id"], _ = strconv.ParseInt(to.Thread, 10, 64)
+	}
+	if replyTo != "" {
+		id, _ := strconv.ParseInt(replyTo, 10, 64)
+		params["reply_parameters"] = map[string]any{"message_id": id, "allow_sending_without_reply": true}
 	}
 	var sent struct {
 		MessageID int64 `json:"message_id"`

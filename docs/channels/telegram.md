@@ -44,6 +44,7 @@ In a group, the bot answers when you mention it or reply to it. That's the `grou
 | Out | Text, photos up to 10 MB, documents up to 50 MB, voice notes |
 | Typing indicator | Yes |
 | Live progress | One short line such as "Checking the web", edited as the work moves on (`progress: plain`, the default); `detailed` shows a line per tool step |
+| Streamed replies | The reply shows while it's written, in one message that becomes the reply (`stream`, on by default). See [Replies as they're written](settings.md#replies-as-theyre-written) |
 | Approval buttons | Approve and Deny buttons under the request |
 | Reactions | With `reactions: true`, on your message when a turn starts and ends |
 | Polls | Native polls (the `poll` tool) |

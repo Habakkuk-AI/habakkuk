@@ -17,13 +17,14 @@ import (
 type Display struct {
 	Progress        string `json:"progress"`         // config.ProgressPlain, ProgressDetailed or ProgressOff
 	ApprovalsDetail string `json:"approvals_detail"` // config.ApprovalsSummary or ApprovalsFull
+	Stream          bool   `json:"stream"`           // show the reply while it is written
 }
 
 // displayOf is a channel's display settings with their defaults. The local
 // web chat is the owner's own screen, beside the dashboard, and keeps the
 // exact call in its approval requests unless it is set otherwise.
 func displayOf(ch *config.Channel) Display {
-	d := Display{Progress: ch.ProgressMode(), ApprovalsDetail: ch.ApprovalsDetailMode()}
+	d := Display{Progress: ch.ProgressMode(), ApprovalsDetail: ch.ApprovalsDetailMode(), Stream: ch.StreamOn()}
 	if ch != nil && !ch.MessagingChannel() && ch.ApprovalsDetail == "" {
 		d.ApprovalsDetail = config.ApprovalsFull
 	}
