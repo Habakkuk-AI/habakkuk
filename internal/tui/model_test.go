@@ -14,7 +14,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/habakkuk-ai/habakkuk/internal/app"
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
+	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/events"
 	"github.com/habakkuk-ai/habakkuk/internal/core/session"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -508,6 +510,45 @@ func TestLocalCommands(t *testing.T) {
 	h.key("enter")
 	if !h.quit {
 		t.Fatal("/quit did not quit")
+	}
+}
+
+// A slash command the UI does not have itself goes to the backend, which
+// knows the app's chat commands and every skill as /<skill-name>.
+func TestUnknownCommandsGoToTheBackend(t *testing.T) {
+	h := newHarness(t, Options{})
+	h.typ("/Weekly-Report for last week")
+	h.key("enter")
+	h.be.mu.Lock()
+	got := strings.Join(h.be.commands, "|")
+	h.be.mu.Unlock()
+	if got != "/weekly-report for last week" {
+		t.Fatalf("backend commands %q", got)
+	}
+	var shown []string
+	for _, e := range h.m.entries {
+		shown = append(shown, e.text)
+	}
+	if all := strings.Join(shown, "\n"); !strings.Contains(all, "/weekly-report for last week") || !strings.Contains(all, "ran /weekly-report") {
+		t.Fatalf("entries:\n%s", all)
+	}
+}
+
+// No skill may take the name of a command the terminal UI runs itself:
+// the app refuses a skill command for every one of them.
+func TestNoSkillTakesATerminalCommand(t *testing.T) {
+	cfg, err := config.Parse([]byte(config.Template))
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := CommandNames()
+	if len(names) < 15 {
+		t.Fatalf("CommandNames: %v", names)
+	}
+	for _, name := range names {
+		if !app.CommandTaken(cfg, strings.TrimPrefix(name, "/")) {
+			t.Errorf("a skill named %s would take the terminal UI's %s; add it to the app's terminalCommands", strings.TrimPrefix(name, "/"), name)
+		}
 	}
 }
 

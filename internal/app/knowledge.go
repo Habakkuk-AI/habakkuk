@@ -33,7 +33,8 @@ func (a *App) openKnowledge(ctx context.Context, home string) error {
 	if mc := a.Cfg.Memory; mc != nil && mc.Embeddings != nil {
 		mem.UseEmbedder(a.embedder(mc.Embeddings), a.Log)
 	}
-	a.Skills = &skills.Library{Home: home, Extra: a.Cfg.PluginSkillDirs()}
+	a.Skills = SkillLibrary(a.Cfg)
+	a.Skills.Home = home
 	if err := a.openMemoryHistory(ctx, home); err != nil {
 		return err
 	}
@@ -305,7 +306,7 @@ func (a *App) snapshot(ctx context.Context, spec *agent.Spec) agent.Snapshot {
 			a.Log.Warn("skills snapshot failed", "agent", spec.Name, "err", err)
 		}
 		for _, s := range list {
-			snap.SkillSet = append(snap.SkillSet, agent.SkillRef{Name: s.Name, Description: s.Description})
+			snap.SkillSet = append(snap.SkillSet, agent.SkillRef{Name: s.Name, Description: s.Description, Bundled: s.Bundled})
 		}
 	}
 	return snap

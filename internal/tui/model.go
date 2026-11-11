@@ -805,8 +805,17 @@ func (m *Model) runCommand(text string) tea.Cmd {
 	arg = strings.TrimSpace(arg)
 	c, ok := lookupCommand(name)
 	if !ok {
-		m.add(&entry{kind: kindNotice, text: "There's no command " + name + ". /help lists them; start a message with // to send it as text."})
-		return nil
+		// Not one of the UI's own: the backend knows the chat commands the
+		// app adds (/skills, /skill, /learn, plugin commands) and every
+		// skill as /<skill-name>.
+		sid, low := m.sess.ID, strings.ToLower(name)
+		if arg != "" {
+			m.add(&entry{kind: kindUser, text: low + " " + arg})
+		}
+		return func() tea.Msg {
+			res, err := m.be.Command(m.ctx, sid, low, arg)
+			return commandMsg{session: sid, name: low, res: res, err: err}
+		}
 	}
 	sid := m.sess.ID
 	switch c.name {

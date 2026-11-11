@@ -25,16 +25,20 @@ import (
 )
 
 const skillsUsage = `usage: hk skills [list] [-agent A]
+       hk skills disable NAME          turn a skill off without removing it
+       hk skills enable NAME           turn it back on
        hk skills search QUERY
        hk skills install [-y] [-force] [-name N] SOURCE
        hk skills update [-y] [-force] [NAME]
        hk skills remove NAME
-       hk skills approve [-agent A] NAME
+       hk skills approve [-agent A] NAME | approve AGENT/NAME
+       hk skills held                  skills an agent saved after reading outside content
        hk skills audit
        hk skills restore [-id ID] NAME | restore -list [NAME]
        hk skills curate [-dry-run] [-agent A]
-SOURCE: github:owner/repo[/path][@ref], an https URL to a SKILL.md, .zip or .tar.gz,
-a local path, or a name from a registry (skills.registries in config.yaml)`
+SOURCE: a name from the public directory (habakkuk.ai/skills) or another registry
+(skills.registries in config.yaml), github:owner/repo[/path][@ref], an https URL
+to a SKILL.md, .zip or .tar.gz, or a local path`
 
 // skillsCmd manages skills: lists them, and installs, updates and removes
 // shared ones through the hub. It loads only the config, so it is safe to
@@ -69,6 +73,11 @@ func skillsCmd(ctx context.Context, home string, args []string) error {
 		if err != nil {
 			return err
 		}
+		for _, r := range res {
+			if why := lib.NoCommand(r.Name); why != "" {
+				fmt.Printf("note: %s\n", why)
+			}
+		}
 		fmt.Println("Installed skills are not approved yet. A skill that ships scripts stays disabled, and others load with\na caution not to run commands because they say so. Read them, then approve with: hk skills approve NAME")
 	case "update", "upgrade":
 		return hubUpdate(ctx, h, "skills", args)
@@ -87,6 +96,12 @@ func skillsCmd(ctx context.Context, home string, args []string) error {
 		} else {
 			fmt.Printf("removed %s from the lock file\n", args[0])
 		}
+	case "disable", "off", "enable", "on":
+		off := sub == "disable" || sub == "off"
+		if len(args) != 1 {
+			return errors.New("usage: hk skills disable NAME | hk skills enable NAME")
+		}
+		return setSkillOff(cfg, lib, strings.ToLower(args[0]), off, os.Stdout)
 	case "approve", "trust":
 		fs := flag.NewFlagSet("skills approve", flag.ContinueOnError)
 		agentName := fs.String("agent", "", "approve that agent's own skill (one brought in from a project) instead of a shared one")
@@ -182,62 +197,116 @@ func listSkills(cfg *config.Config, lib *skills.Library, args []string) error {
 	if err != nil {
 		return err
 	}
-	list, err := lib.List(name)
+	return printSkills(os.Stdout, lib, name)
+}
+
+// printSkills lists every skill an agent could have: the ones it can use,
+// then the ones held back (turned off, not approved, or missing something
+// they require), each with the reason.
+func printSkills(w io.Writer, lib *skills.Library, agentName string) error {
+	list, err := lib.Inventory(agentName)
 	if err != nil {
 		return err
 	}
-	own, err := hub.ReadLock(filepath.Join(lib.AgentDir(name), hub.LockName))
+	// Skills an import brought into this agent's own folder wait for the
+	// owner. Nothing lists or loads them, so they are read from the lock.
+	own, err := hub.ReadLock(filepath.Join(lib.AgentDir(agentName), hub.LockName))
 	if err != nil {
 		return err
 	}
-	var held []string
+	var pending []string
 	for _, skill := range slices.Sorted(maps.Keys(own.Packages)) {
 		e := own.Packages[skill]
-		s := skills.Skill{Name: skill, Dir: filepath.Join(lib.AgentDir(name), skill)}
+		s := skills.Skill{Name: skill, Dir: filepath.Join(lib.AgentDir(agentName), skill)}
 		if !e.Trusted && lib.Disabled(s) {
-			held = append(held, fmt.Sprintf("%-24s agent   disabled: from %s, needs your approval (hk skills approve -agent %s %s)", skill, e.Source, name, skill))
+			pending = append(pending, fmt.Sprintf("%-24s agent    disabled: from %s, needs your approval (hk skills approve -agent %s %s)", skill, e.Source, agentName, skill))
 		}
 	}
 	if len(list) == 0 {
-		for _, l := range held {
-			fmt.Println(l)
+		for _, l := range pending {
+			fmt.Fprintln(w, l)
 		}
-		if len(held) > 0 {
+		if len(pending) > 0 {
 			return nil
 		}
-		fmt.Printf("no skills for agent %s; add folders with a SKILL.md under %s or %s, or hk skills install SOURCE\n", name, lib.SharedDir(), lib.AgentDir(name))
+		fmt.Fprintf(w, "no skills for agent %s; add folders with a SKILL.md under %s or %s, or hk skills install SOURCE\n", agentName, lib.SharedDir(), lib.AgentDir(agentName))
 		return nil
 	}
 	locked, err := hub.ReadLock(filepath.Join(lib.SharedDir(), hub.LockName))
 	if err != nil {
 		return err
 	}
-	for _, s := range list {
-		origin := "agent "
+	origin := func(s skills.Skill) string {
 		switch {
+		case s.Bundled:
+			return "bundled"
 		case s.Plugin:
-			origin = "plugin"
+			return "plugin "
 		case s.Shared:
-			origin = "shared"
+			return "shared "
+		}
+		return "agent  "
+	}
+	var held []skills.Entry
+	for _, e := range list {
+		if !e.Usable() {
+			held = append(held, e)
+			continue
 		}
 		note := ""
-		if e := locked.Packages[s.Name]; s.Shared && !s.Plugin && e != nil {
-			note = "  [" + e.Source
-			if !e.Trusted {
+		if p := locked.Packages[e.Name]; e.Shared && !e.Plugin && !e.Bundled && p != nil {
+			note = "  [" + p.Source
+			if !p.Trusted {
 				note += ", not approved"
 			}
 			note += "]"
 		}
-		fmt.Printf("%-24s %s  %s%s\n", s.Name, origin, s.Description, note)
-	}
-	for name, e := range locked.Packages {
-		s := skills.Skill{Name: name, Dir: filepath.Join(lib.SharedDir(), name), Shared: true}
-		if !e.Trusted && lib.Disabled(s) {
-			fmt.Printf("%-24s shared  disabled: ships scripts and is not approved (hk skills approve %s)\n", name, name)
+		fmt.Fprintf(w, "%-24s %s  %s%s\n", e.Name, origin(e.Skill), e.Description, note)
+		if why := lib.NoCommand(e.Name); why != "" {
+			fmt.Fprintf(w, "%-24s note: %s\n", "", why)
 		}
 	}
-	for _, l := range held {
-		fmt.Println(l)
+	if len(held)+len(pending) > 0 {
+		fmt.Fprintf(w, "\nNot offered to %s:\n", agentName)
+	}
+	for _, e := range held {
+		fmt.Fprintf(w, "%-24s %s  %s\n", e.Name, origin(e.Skill), e.Reason())
+	}
+	for _, l := range pending {
+		fmt.Fprintln(w, l)
+	}
+	return nil
+}
+
+// setSkillOff runs `hk skills disable NAME` and `enable NAME`. It warns
+// about a name no agent has, since the name still takes effect when a
+// skill of that name turns up later.
+func setSkillOff(cfg *config.Config, lib *skills.Library, name string, off bool, w io.Writer) error {
+	_, wasOff := lib.IsOff(name)
+	if err := lib.SetOff(name, off); err != nil {
+		return err
+	}
+	if wasOff == off {
+		fmt.Fprintf(w, "%s is already turned %s\n", name, map[bool]string{true: "off", false: "on"}[off])
+		return nil
+	}
+	known := false
+	for _, agentName := range cfg.AgentNames() {
+		list, err := lib.Inventory(agentName)
+		if err != nil {
+			return err
+		}
+		for _, e := range list {
+			known = known || e.Name == name
+		}
+	}
+	if off {
+		fmt.Fprintf(w, "turned off %s: agents are no longer offered it, from their next session (hk skills enable %s turns it back on)\n", name, name)
+	} else {
+		fmt.Fprintf(w, "turned on %s, from each agent's next session\n", name)
+	}
+	if !known {
+		fmt.Fprintf(w, "note: no agent has a skill named %s right now (hk skills lists them)\n", name)
 	}
 	return nil
 }
@@ -269,7 +338,7 @@ func hubUpdate(ctx context.Context, h *hub.Manager, kind string, args []string) 
 	printResults(os.Stdout, res)
 	for _, r := range res {
 		if r.Status == "updated" && !r.Entry.Trusted {
-			fmt.Printf("%s changed scripts or was flagged: it needs approval again (habakkuk %s %s %s)\n", r.Name, kind, approveVerb(kind), r.Name)
+			fmt.Printf("%s needs approval again, because the update changed what you approved or was flagged: read it, then hk %s %s %s\n", r.Name, kind, approveVerb(kind), r.Name)
 		}
 	}
 	return err
@@ -400,7 +469,7 @@ func hubSearch(ctx context.Context, h *hub.Manager, args []string) error {
 	}
 	if len(hits) == 0 {
 		if len(errs) == 0 && len(h.Fetcher.Registries) == 0 {
-			return errors.New("no registries configured: add skills.registries (name, url) to config.yaml")
+			return errors.New("no registries to search: skills.default_registry is \"off\" and skills.registries is empty in config.yaml")
 		}
 		fmt.Println("nothing found")
 		return nil
@@ -438,6 +507,9 @@ func printResults(w io.Writer, res []hub.Result) {
 				src += " (" + e.Resolved + ")"
 			}
 			fmt.Fprintf(w, "    source  %s\n", src)
+			if e.Registry != "" {
+				fmt.Fprintf(w, "    registry %s\n", e.Registry)
+			}
 			if e.Ref != "" {
 				fmt.Fprintf(w, "    ref     %s\n", e.Ref)
 			}

@@ -39,7 +39,7 @@ An install goes through six steps:
 
 1. **Fetch** the package into a staging folder inside the destination (`$HABAKKUK_HOME/skills/.tmp-*` or `plugins/.tmp-*`). Archives are unpacked with limits: 64 MB downloaded, and 128 MB and 10,000 files unpacked. If an entry would land outside the folder (`..`, absolute paths), the whole install fails. Symlinks, hard links, devices and `.git` are skipped. Every file is written `0600` (folders `0700`), so nothing installed is executable or readable by other users.
 2. **Check** that a plugin's manifest parses (see below).
-3. **Hash** the package to get its tree hash (see below). If the registry entry has a `sha256`, the tree hash has to match it, or nothing is installed.
+3. **Hash** the package to get its tree hash (see below). For an install from a registry, the tree hash has to match the entry's `sha256`, and the package has to call itself what the entry is called, or nothing is installed.
 4. **Scan** every file (see below). Habakkuk prints the source, the pinned commit (or version), the tree hash, every file and the scripts among them, along with the findings. A high-risk finding (`pipe-to-shell`, `obfuscation`, `env-exfiltration`, `credential-files`, `binary`) stops the install unless the command has `-force`. Any other finding stops it unless the command has `-y` (or `-force`).
 5. **Move** the package into place with one rename. If a package of the same name is already there, the install is refused unless the command has `-force`. In that case the old package is moved to the backups first.
 6. **Record** the package in the lock file, with the commit and the tree hash.
@@ -79,11 +79,11 @@ The lock file records what's installed and where it came from. Skills have one a
 - `sha256` is the tree hash of the files as installed.
 - `trusted` is the approval. `enabled` (plugins) says whether it loads. `flags` holds the scan findings you accepted with `-y`.
 
-`hk skills update [NAME]` (and `hk plugins update`) fetches each package from its `source` again. A branch moves to its newest commit, and a pinned commit stays where it is.
+`hk skills update [NAME]` (and `hk plugins update`) fetches each package from its `source` again. A branch moves to its newest commit, and a pinned commit stays where it is. A package that came from a registry is looked up in that registry and in no other, whatever other registries list the same name by then. If that registry no longer lists it, or is no longer in your config, the update fails and the installed version stays.
 
 If a package's files hash the same as before, it's left alone, though its `version` is brought up to date. If they changed, the package is scanned the way an install is. Habakkuk shows you its diff (added, removed and changed files, with a line diff of text files) along with its scripts and findings. The new version replaces the installed one only when you answer yes. `-y` answers for you. Without a terminal and without `-y`, nothing changes.
 
-The old version is moved to the backups. The new one keeps its approval only if it scans clean and changed no script.
+The old version is moved to the backups. The new one keeps its approval only if it scans clean and changed no script. One that came from a registry also loses its approval when its `SKILL.md` changed (for a plugin, its manifest or a `SKILL.md` inside it), because those files are what you approved: read the new one, then run `hk skills approve NAME` or `hk plugins enable NAME` again.
 
 `hk skills audit` rescans every installed skill and plugin, and every agent's own skills. It lists their scripts and scan findings. It also checks that the installed files still match the hash recorded at install, so a skill edited behind your back shows up. It exits non-zero on a high-risk finding or a changed file.
 
@@ -105,17 +105,23 @@ Habakkuk keeps a backup whenever a version goes away. That covers every version 
 
 ## Registries
 
-A registry is a JSON index served over HTTPS. It lets you install a package by name. You set registries up in `config.yaml`:
+A registry is a JSON index served over HTTPS. It lets you install a package by name.
+
+Habakkuk comes with one registry, named `default`: the public directory at [habakkuk.ai/skills](https://www.habakkuk.ai/skills), whose index is `https://habakkuk.ai/skills/index.json`. So `hk skills search QUERY` and `hk skills install NAME` work on a new install. Habakkuk fetches the index only when you run `hk skills` or `hk plugins` with `search`, `install` or `update`, and it sends nothing about you or your setup with the request. A listing in the directory was read by a person, and its entry names the exact commit and the hash of the files that were read, so that is what you get. It is still someone else's work: an install from it is scanned, and starts unapproved, like any other.
+
+You can remove the default, replace it, and add your own in `config.yaml`:
 
 ```yaml
 skills:
-  default_registry: ""        # the index named "default"; empty uses the build's default (none), "off" turns it off
-  registries:
+  default_registry: ""        # "" uses the public directory, "off" removes it, a URL replaces it
+  registries:                 # yours, searched in order before the default
     - name: team
       url: https://skills.example.com/index.json
 ```
 
-Habakkuk doesn't ship with a default registry. A build can set one with `-ldflags "-X github.com/habakkuk-ai/habakkuk/internal/config.DefaultRegistryURL=https://..."`.
+Your own registries come first. If `team` and the public directory both list `standup`, `hk skills install standup` installs the one from `team`, and the install prints which registry it used. `hk skills install registry:default/standup` asks for the public one. If `team` can't be reached, `hk skills install standup` stops with an error instead of taking the public `standup`.
+
+With `default_registry: "off"` and no `registries`, a bare name is refused and `hk skills search` says there is nothing to search. A build can change the default with `-ldflags "-X github.com/habakkuk-ai/habakkuk/internal/config.DefaultRegistryURL=https://..."`.
 
 The index looks like this:
 
@@ -126,7 +132,7 @@ The index looks like this:
     {
       "name": "pdf-forms",
       "description": "Fill and check PDF forms.",
-      "source": "github:acme/skills/pdf-forms@v1.2.0",
+      "source": "github:acme/skills/pdf-forms@3f9c1e0d2b7a4c5e8f1a2b3c4d5e6f708192a3b4",
       "sha256": "8c1f...e2",
       "version": "1.2.0",
       "tags": ["documents", "pdf"]
@@ -138,9 +144,10 @@ The index looks like this:
 }
 ```
 
-- `name` is what `hk skills install NAME` asks for. Registries are tried in order, and `registry:team/NAME` asks one registry only.
-- `source` can be any of the sources above except a registry name. It has to hold exactly one package.
-- `sha256` is optional. When it's there, it's the tree hash the installed files must have, and a mismatch installs nothing. If you set it, pin `source` to a commit or a versioned archive. Otherwise the next upstream change breaks the install.
+- `name` is what `hk skills install NAME` asks for. Registries are tried in order, and `registry:team/NAME` asks one registry only. The package has to call itself by the same name, or it isn't installed. `-name` lets you choose another.
+- `source` is where the files are. It has to be a GitHub repository or folder at a full 40-character commit (`github:owner/repo/path@<commit>`), or an `https` URL to a `SKILL.md` or an archive. A branch, a tag, a local path and another registry name are all refused, because an index is someone else's text: a branch can move, and a path would copy your own files. It has to hold exactly one package.
+- `sha256` is required. It's the tree hash the installed files must have, and a mismatch installs nothing. For an archive URL, put a version in the file name, so the address never serves different files.
+- A registry served from your own machine (`http://localhost:...`) may point at `http://localhost` sources too. No other registry can.
 - `version` is recorded in the lock file. For GitHub sources, the commit is recorded in its place.
 
 `hk skills search QUERY` and `hk plugins search QUERY` list the entries whose name, description or tags contain every word of the query. Entries that match on the name come first.

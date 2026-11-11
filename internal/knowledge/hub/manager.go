@@ -157,6 +157,12 @@ func (m *Manager) Install(ctx context.Context, raw string, opt Options) ([]Resul
 			if p.name, err = m.pickName(p.dir, rel, src, opt.Name); err != nil {
 				return err
 			}
+			// A registry lists a package under one name. One that calls
+			// itself something else would land under a name the user never
+			// asked for, and could take the place of another package.
+			if got.Registry != "" && opt.Name == "" && p.name != got.Name {
+				return fmt.Errorf("registry %s lists this %s as %q, but it calls itself %q; not installed (pass -name to pick the name yourself)", got.Registry, m.noun(), got.Name, p.name)
+			}
 			if slices.ContainsFunc(pkgs, func(q staged) bool { return q.name == p.name }) {
 				return fmt.Errorf("%s holds two %ss named %q", raw, m.noun(), p.name)
 			}
@@ -285,8 +291,12 @@ func findPackages(root, marker string) ([]string, error) {
 
 // Update fetches each named package (every locked one when name is "")
 // from its recorded source again and replaces it when its files changed.
-// The old version is backed up. A package stays trusted only when the new
-// version scans clean.
+// The old version is backed up. A package from a registry is looked up in
+// the registry it came from and in no other. A package stays trusted only
+// when the new version scans clean and changed no script; one from a
+// registry also loses its approval when its marker file (SKILL.md, the
+// plugin manifest) or a SKILL.md inside it changed, since those are what
+// the owner approved.
 func (m *Manager) Update(ctx context.Context, name string, opt UpdateOptions) ([]Result, error) {
 	var results []Result
 	err := m.locked(func(lock *Lock) error {
@@ -317,7 +327,7 @@ func (m *Manager) Update(ctx context.Context, name string, opt UpdateOptions) ([
 func (m *Manager) update(ctx context.Context, name string, e *Entry, opt UpdateOptions) (Result, error) {
 	old := clone(e)
 	before := *e
-	src, err := ParseSource(e.Source)
+	src, err := m.updateSource(e)
 	if err != nil {
 		return Result{}, err
 	}
@@ -390,11 +400,37 @@ func (m *Manager) update(ctx context.Context, name string, e *Entry, opt UpdateO
 	if err != nil {
 		return Result{}, err
 	}
+	// The instructions the owner read: the package's marker file, and any
+	// SKILL.md further down (a plugin's own skills).
+	markerChanged := slices.ContainsFunc(changes, func(c Change) bool {
+		return c.Path == m.Marker || c.Path == "SKILL.md" || strings.HasSuffix(c.Path, "/SKILL.md")
+	})
 	e.SHA256, e.Updated, e.Flags = hash, m.now().UTC(), Summaries(findings)
-	e.Trusted = e.Trusted && len(findings) == 0 && !scriptChanged
+	e.Trusted = e.Trusted && len(findings) == 0 && !scriptChanged && (e.Registry == "" || !markerChanged)
 	r.Entry, r.Findings, r.Status = *e, findings, "updated"
 	r.Files, r.Scripts, r.Changes = files, preview.Scripts, changes
 	return r, nil
+}
+
+// updateSource is where an update fetches a package from again. One that
+// came from a registry is looked up in that registry only: a bare name
+// would otherwise be taken from whichever registry lists it first today,
+// and another registry's package of the same name would replace it.
+func (m *Manager) updateSource(e *Entry) (Source, error) {
+	if e.Registry == "" {
+		return ParseSource(e.Source)
+	}
+	name := strings.TrimPrefix(strings.TrimSpace(e.Source), "registry:")
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	if !reRegName.MatchString(name) {
+		return Source{}, fmt.Errorf("the lock file records registry %s but no entry name (source %q)", e.Registry, e.Source)
+	}
+	if !m.Fetcher.HasRegistry(e.Registry) {
+		return Source{}, fmt.Errorf("it was installed from registry %s, which is not configured any more: add the registry back, or remove the %s and install it again from where you want it", e.Registry, m.noun())
+	}
+	return Source{Kind: KindRegistry, Name: name, Registry: e.Registry}, nil
 }
 
 // Remove moves a package to the backups (so it can be restored) and drops

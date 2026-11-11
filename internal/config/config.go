@@ -1007,13 +1007,20 @@ agents:
 #   apply: propose          # propose | safe (skill and memory changes applied at once, undoable)
 #   deliver: ""             # CHANNEL:CHAT, none, or empty for the agent's home chat
 #
-# Skills from outside: hk skills install github:owner/repo[/path][@ref],
-# an https URL, a local path, or a name from a registry index. The curator
-# merges near-duplicate skills agents wrote and archives unused ones (with
-# backups; hk skills restore NAME). Plugins (hk plugins install,
-# enable) add MCP servers, skills, hooks and commands without editing this
-# file; see docs/tools/plugins.md. hk mcp catalog lists ready-made MCP servers.
+# Skills. Habakkuk ships with a set of its own (hk skills lists them);
+# turn one off with hk skills disable NAME or the list below, or all of
+# them with bundled: false. More come from outside: hk skills install NAME
+# takes a name from the public directory at habakkuk.ai/skills (hk skills
+# search QUERY), or github:owner/repo[/path][@ref], an https URL or a local
+# path. The curator merges near-duplicate skills agents wrote and archives
+# unused ones (with backups; hk skills restore NAME). Plugins (hk plugins
+# install, enable) add MCP servers, skills, hooks and commands without
+# editing this file; see docs/tools/plugins.md. hk mcp catalog lists
+# ready-made MCP servers.
 # skills:
+#   bundled: true           # false turns off every skill that ships with Habakkuk
+#   disabled: []            # skill names to turn off, wherever they come from
+#   default_registry: ""    # "off" stops using the public directory; a URL replaces it
 #   registries:
 #     - {name: team, url: "https://skills.example.com/index.json"}
 #   curate: weekly          # off | daily | weekly | monthly

@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -47,6 +48,45 @@ func TestPromptCommandRunsAsATurn(t *testing.T) {
 	waitFor(t, "turn reply", hasText(r.a, "[Skill report] do the thing"))
 	if !Reserved("/retry") || !Reserved("/new") || Reserved("/standup") {
 		t.Fatal("reserved names")
+	}
+}
+
+// A command that depends on the agent (a skill as /<skill-name>) is asked
+// for last: after the app's commands and the gateway's own, and a name
+// nothing knows goes to the agent as ordinary text.
+func TestAgentCommandComesLast(t *testing.T) {
+	r := newRig(t, &config.Channel{AllowFrom: []string{"7"}})
+	ctx := context.Background()
+	r.g.Commands = map[string]AppCommand{"/usage": {Help: "/usage: tokens and cost", Run: func(context.Context, string, string) string {
+		return "12 calls, $0.40"
+	}}}
+	var asked []string
+	r.g.AgentCommand = func(agentName, name string) (AppCommand, bool) {
+		asked = append(asked, agentName+" "+name)
+		if name != "/weekly-report" {
+			return AppCommand{}, false
+		}
+		return AppCommand{Prompt: func(_ context.Context, _, arg string) (string, error) {
+			return "[Skill weekly-report] " + arg, nil
+		}}, true
+	}
+	r.g.Handle(ctx, dm("m1", "/Weekly-Report for last week"))
+	waitFor(t, "the skill ran as a turn", hasText(r.a, "[Skill weekly-report] for last week"))
+	// The app's command and the gateway's own never reach AgentCommand.
+	r.g.Handle(ctx, dm("m2", "/usage"))
+	waitFor(t, "app command", hasText(r.a, "12 calls, $0.40"))
+	r.g.Handle(ctx, dm("m3", "/status"))
+	r.g.Handle(ctx, dm("m4", "/retry"))
+	// A name nothing knows is a message for the agent.
+	r.g.Handle(ctx, dm("m5", "/tmp/report.txt is empty, why?"))
+	waitFor(t, "an unknown slash word reaches the model", hasText(r.a, "/tmp/report.txt is empty, why?"))
+	for _, a := range asked {
+		if strings.Contains(a, "/usage") || strings.Contains(a, "/status") || strings.Contains(a, "/retry") {
+			t.Fatalf("a real command was offered to AgentCommand: %v", asked)
+		}
+	}
+	if len(asked) < 2 || asked[0] != "habakkuk /weekly-report" {
+		t.Fatalf("asked %v", asked)
 	}
 }
 
