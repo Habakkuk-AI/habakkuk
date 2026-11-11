@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
@@ -45,6 +46,63 @@ func TestTurnOriginCarriesSenderTrust(t *testing.T) {
 	r.g.Handle(context.Background(), guest)
 	if got := originTrust(t, r, guest); got != TrustGuest {
 		t.Fatalf("sender let in by *: trust %q, want guest", got)
+	}
+}
+
+// A command that starts a turn (a skill run as /<skill-name>, /skill, a
+// plugin's prompt command, /retry) carries who sent it, like an ordinary
+// message: the owner's runs as the owner's and a guest's as a guest's.
+func TestCommandTurnsCarrySenderTrust(t *testing.T) {
+	r := newRig(t, &config.Channel{AllowFrom: []string{"7", "*"}})
+	ctx := context.Background()
+	r.g.AgentCommand = func(_, name string) (AppCommand, bool) {
+		if name != "/weekly-report" {
+			return AppCommand{}, false
+		}
+		return AppCommand{Prompt: func(_ context.Context, _, arg string) (string, error) {
+			return "[Skill weekly-report] " + arg, nil
+		}}, true
+	}
+	r.g.Commands = map[string]AppCommand{"/skill": {Prompt: func(_ context.Context, _, arg string) (string, error) {
+		return "[Skill " + arg + "]", nil
+	}}}
+	trustOf := func(prefix string, m Message) string {
+		t.Helper()
+		id := prefix + strings.TrimPrefix(TurnID(m), "turn_")
+		var trust string
+		waitFor(t, "the turn of "+m.Text+" from "+m.Sender, func() bool {
+			j, err := r.q.Get(ctx, id)
+			if err != nil || j == nil {
+				return false
+			}
+			var p agent.TurnPayload
+			var a Address
+			if j.Decode(&p) != nil || json.Unmarshal(p.Origin, &a) != nil {
+				return false
+			}
+			trust = a.Trust
+			return true
+		})
+		return trust
+	}
+	for i, text := range []string{"/weekly-report for last week", "/skill report", "/retry"} {
+		prefix := "cmd_"
+		if text == "/retry" {
+			prefix = "retry_"
+			// /retry needs a message that has been answered.
+			waitFor(t, "an earlier turn's reply", hasText(r.a, "[Skill report]"))
+		}
+		owner := dm(fmt.Sprintf("o%d", i), text)
+		r.g.Handle(ctx, owner)
+		if got := trustOf(prefix, owner); got != TrustOwner {
+			t.Errorf("%s from the owner: trust %q, want owner", text, got)
+		}
+		guest := dm(fmt.Sprintf("g%d", i), text)
+		guest.Sender = "9"
+		r.g.Handle(ctx, guest)
+		if got := trustOf(prefix, guest); got != TrustGuest {
+			t.Errorf("%s from a guest: trust %q, want guest", text, got)
+		}
 	}
 }
 

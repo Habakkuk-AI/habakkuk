@@ -109,8 +109,9 @@ hk retro [-agent A] [-days N] [-dry-run]
 hk retro list [-agent A] | show ID | apply ID N [N...] | reject ID N
                                     past retros; approve or reject their proposals
 hk skills [-agent A]                list the skills an agent can use
+hk skills disable|enable NAME       turn a skill off, or back on, without removing it
 hk skills [search|install|update|remove|approve|restore|curate]
-                                    skills from GitHub, URLs, paths and registries (hk skills help)
+                                    skills from the public directory, GitHub, URLs and paths (hk skills help)
 hk plugins [list|search|install|enable|disable|update|remove|restore]
                                     plugins: MCP servers, skills, hooks and commands (docs/tools/plugins.md)
 hk checkpoints [-agent A]           list workspace snapshots taken before turns changed files
@@ -220,7 +221,7 @@ You can send these in every chat channel, in the web chat and in `hk chat`. Send
 | `/remember <text>`, `/forget <what>` | Save a memory word for word; remove one |
 | `/memory`, `/undo-memory <id>` | The latest changes to memory, profile, identity and skills; undo one |
 | `/retro`, `/retro apply N [N...]`, `/retro reject N` | Look back over the agent's last week now; approve or reject the latest retro's proposals (owner only) |
-| `/skills`, `/skill NAME [request]`, `/learn <topic, URL or path>` | List skills, run one, or have the agent write a new one |
+| `/skills`, `/<skill-name> [request]`, `/skill NAME [request]`, `/learn <topic, URL or path>` | List skills, run one (each skill is a command of its own), or have the agent write a new one |
 | `/fork`, `/rewind [N]` | Carry on in a copy of the conversation, optionally without your last N messages |
 | `/title [text]` | Show or set the conversation's title |
 | `/subagents [stop ID]` (`/tasks`) | List or stop the sub-agent tasks running for this conversation |

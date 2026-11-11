@@ -24,7 +24,8 @@ func TestPromptSnapshotContents(t *testing.T) {
 		Memories: []MemoryRef{{Title: "Coffee preference", Slug: "coffee-preference"}, {Title: "Home city", Slug: "home-city", Untrusted: true}},
 		MemTotal: 2,
 		Skills:   true,
-		SkillSet: []SkillRef{{"weekly-report", "Write the weekly report."}, {"deploy", "Ship the app."}, {"bare", ""}},
+		SkillSet: []SkillRef{{Name: "weekly-report", Description: "Write the weekly report."}, {Name: "deploy", Description: "Ship the app."}, {Name: "bare"},
+			{Name: "a-bundled-one", Description: "Ships with the program.", Bundled: true}},
 	}
 	p := BuildSystemPrompt("habakkuk", dir, "/ws", snap)
 	for _, want := range []string{
@@ -32,7 +33,8 @@ func TestPromptSnapshotContents(t *testing.T) {
 		"# Memory", "memory_search", "memory_save",
 		"- Coffee preference (coffee-preference)\n- Home city (home-city) [untrusted]",
 		"# Skills", "skill_view",
-		"- bare: (no description)\n- deploy: Ship the app.\n- weekly-report: Write the weekly report.",
+		// The user's own skills by name, then the ones that ship with the program.
+		"- bare: (no description)\n- deploy: Ship the app.\n- weekly-report: Write the weekly report.\n- a-bundled-one: Ships with the program.",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing %q:\n%s", want, p)
@@ -92,11 +94,11 @@ func TestPromptIsDeterministic(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte("You are Habakkuk."), 0o600)
 	a := Snapshot{
 		Memory: true, Memories: []MemoryRef{{Title: "B", Slug: "b"}, {Title: "A", Slug: "a"}}, MemTotal: 2,
-		Skills: true, SkillSet: []SkillRef{{"zeta", "z"}, {"alpha", "a"}, {"mid", "m"}},
+		Skills: true, SkillSet: []SkillRef{{Name: "zeta", Description: "z"}, {Name: "alpha", Description: "a"}, {Name: "mid", Description: "m"}},
 	}
 	// Same skills in another order (directory listing order is not stable).
 	b := a
-	b.SkillSet = []SkillRef{{"mid", "m"}, {"zeta", "z"}, {"alpha", "a"}}
+	b.SkillSet = []SkillRef{{Name: "mid", Description: "m"}, {Name: "zeta", Description: "z"}, {Name: "alpha", Description: "a"}}
 	first := BuildSystemPrompt("habakkuk", dir, "/ws", a)
 	for range 5 {
 		if got := BuildSystemPrompt("habakkuk", dir, "/ws", b); got != first {

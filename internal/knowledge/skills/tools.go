@@ -141,8 +141,12 @@ func (t saveTool) Run(ctx context.Context, env *tools.Env, input json.RawMessage
 	if err != nil {
 		return "", err
 	}
-	if created {
-		return fmt.Sprintf("created skill %s in %s", s.Name, s.Dir), nil
+	note := ""
+	if why := t.l.NoCommand(s.Name); why != "" {
+		note = ". Note: " + why + "."
 	}
-	return fmt.Sprintf("updated skill %s in %s (previous version kept as %s)", s.Name, s.Dir, BackupName), nil
+	if created {
+		return fmt.Sprintf("created skill %s in %s%s", s.Name, s.Dir, note), nil
+	}
+	return fmt.Sprintf("updated skill %s in %s (previous version kept as %s)%s", s.Name, s.Dir, BackupName, note), nil
 }

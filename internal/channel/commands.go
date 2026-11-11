@@ -158,12 +158,21 @@ func (c *Call) needState() bool {
 }
 
 // submit queues text as a turn of the conversation's session, as an
-// ordinary message would be. id makes a redelivered command run once.
+// ordinary message would be: the turn's origin says whether the owner or
+// a guest sent the command, so a skill run with /<skill-name> gets the
+// sender's rights and no others. id makes a redelivered command run once.
 func (c *Call) submit(ctx context.Context, conv *Conversation, id, text string) bool {
 	if !c.Msg.Direct && c.Msg.SenderName != "" {
 		text = c.Msg.SenderName + ": " + text
 	}
-	origin, _ := json.Marshal(c.To)
+	from := c.To
+	if c.Msg.Account != "" { // a message carried the command: say who sent it
+		from.Trust = TrustGuest
+		if c.G.owner(ctx, c.Channel, c.Msg) {
+			from.Trust = TrustOwner
+		}
+	}
+	origin, _ := json.Marshal(from)
 	if _, err := c.G.Runner.SubmitTurn(ctx, agent.Turn{ID: id, Session: conv.SessionID, Text: text, Origin: origin}); err != nil {
 		c.G.Log.Error("queue turn failed", "err", err)
 		c.Reply(c.T("cmd.take_failed"))

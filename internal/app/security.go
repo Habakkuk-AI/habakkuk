@@ -59,7 +59,7 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 	case channel.TrustGuest:
 		p.Guest = true
 	case "":
-		// A turn with no sender behind it (a schedule, /retry): on an
+		// A turn with no sender behind it (a schedule, a goal carried on): on an
 		// account anyone can talk to, assume a guest asked for it.
 		p.Guest = ch.OpenToAll()
 	}

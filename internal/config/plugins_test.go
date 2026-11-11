@@ -190,13 +190,40 @@ workers:`, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if regs := cfg.SkillRegistries(); len(regs) != 1 || regs[0].Name != "team" {
+	// The owner's registries come first, then the public directory, so a
+	// name both list is taken from the owner's.
+	if regs := cfg.SkillRegistries(); len(regs) != 2 || regs[0].Name != "team" || regs[1].Name != "default" || regs[1].URL != DefaultRegistryURL {
 		t.Fatalf("registries %+v", regs)
+	}
+	if !registryURL(DefaultRegistryURL) {
+		t.Fatalf("the built-in registry %q is not an https URL", DefaultRegistryURL)
 	}
 	if cfg.CurateEvery() == 0 || cfg.ArchiveAfter() == 0 {
 		t.Fatal("curate defaults")
 	}
-	for _, bad := range []string{"curate: hourly", "registries: [{name: team, url: 'http://example.com/i.json'}]", "default_registry: nope"} {
+	if !cfg.BundledSkills() || len(cfg.DisabledSkills()) != 0 {
+		t.Fatal("bundled skills are on and nothing is turned off by default")
+	}
+	// "off" removes the public directory, a URL replaces it, and skills can
+	// be turned off by name or all the bundled ones at once.
+	with := func(section string) *Config {
+		t.Helper()
+		cfg, err := Parse([]byte(strings.Replace(Template, "\nworkers:", "\nskills:\n  "+section+"\nworkers:", 1)))
+		if err != nil {
+			t.Fatalf("%s: %v", section, err)
+		}
+		return cfg
+	}
+	if regs := with(`default_registry: "off"`).SkillRegistries(); len(regs) != 0 {
+		t.Fatalf("off left %+v", regs)
+	}
+	if regs := with(`default_registry: "https://skills.example.com/all.json"`).SkillRegistries(); len(regs) != 1 || regs[0].URL != "https://skills.example.com/all.json" {
+		t.Fatalf("replaced: %+v", regs)
+	}
+	if cfg := with("bundled: false\n  disabled: [daily-brief, code-review]"); cfg.BundledSkills() || strings.Join(cfg.DisabledSkills(), ",") != "daily-brief,code-review" {
+		t.Fatalf("bundled %v disabled %v", cfg.BundledSkills(), cfg.DisabledSkills())
+	}
+	for _, bad := range []string{"curate: hourly", "registries: [{name: team, url: 'http://example.com/i.json'}]", "default_registry: nope", "disabled: [Not_A_Name]", "registries: [{name: default, url: 'https://example.com/i.json'}]"} {
 		if _, err := Parse([]byte(strings.Replace(Template, "\nworkers:", "\nskills:\n  "+bad+"\nworkers:", 1))); err == nil {
 			t.Errorf("accepted %s", bad)
 		}

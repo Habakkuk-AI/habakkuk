@@ -128,6 +128,7 @@ func (a *App) wireModelCommands() {
 	}
 	if a.Gateway != nil {
 		a.Gateway.Commands = a.ChatCommands()
+		a.Gateway.AgentCommand = a.SkillCommand // every skill as /<skill-name>
 	}
 }
 

@@ -118,8 +118,9 @@ Usage:
   hk retro list [-agent A] | show ID | apply ID N [N...] | reject ID N
                                     past retros; approve or reject their proposals
   hk skills [-agent A]                list the skills an agent can use
+  hk skills disable|enable NAME       turn a skill off, or back on, without removing it
   hk skills [search|install|update|remove|approve|restore|curate]
-                                    skills from GitHub, URLs, paths and registries (hk skills help)
+                                    skills from the public directory, GitHub, URLs and paths (hk skills help)
   hk plugins [list|search|install|enable|disable|update|remove|restore]
                                     plugins: MCP servers, skills, hooks and commands (docs/tools/plugins.md)
   hk checkpoints [-agent A]           list workspace snapshots taken before turns changed files
@@ -409,9 +410,12 @@ func chat(ctx context.Context, home string, args []string) error {
 			return err
 		}
 		sid = sess.ID
-	} else if _, err := a.Sessions.Get(ctx, sid); err != nil {
+	} else if sess, err := a.Sessions.Get(ctx, sid); err != nil {
 		return err
+	} else {
+		name = sess.Agent // a resumed session keeps its own agent
 	}
+	chatAgent := name
 
 	term := &terminal{in: bufio.NewReader(os.Stdin)}
 	stdinTerminal := isTerminal(os.Stdin)
@@ -438,8 +442,9 @@ func chat(ctx context.Context, home string, args []string) error {
 		prompted := false
 		if name, arg, _ := strings.Cut(line, " "); strings.HasPrefix(name, "/") {
 			// The chat app's commands: /model, /usage, /skills, /skill,
-			// /learn and plugin commands. A prompt command becomes the message.
-			if cmd, ok := a.ChatCommands()[name]; ok {
+			// /learn, plugin commands and each skill as /<skill-name>. A
+			// prompt command becomes the message.
+			if cmd, ok := a.ChatCommand(chatAgent, name); ok {
 				if cmd.Prompt == nil {
 					fmt.Println(cmd.Run(ctx, sid, strings.TrimSpace(arg)))
 					continue

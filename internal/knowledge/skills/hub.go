@@ -45,7 +45,7 @@ func (l *Library) Backups() hub.Backups {
 // project) in that agent's skills/.lock.json. Skills written by hand or by
 // an agent, and plugin skills (enabling a plugin approves it), are trusted.
 func (l *Library) Untrusted(s Skill) (source string, untrusted bool) {
-	if s.Plugin {
+	if s.Plugin || s.Bundled {
 		return "", false
 	}
 	if s.Shared && filepath.Dir(s.Dir) != l.SharedDir() {
@@ -111,6 +111,15 @@ func (l *Library) Approve(agent, name string) error {
 
 const usageFile = ".usage.json"
 
+// usageKeyOf names a skill in the usage file: its folder's path under home,
+// or bundled/<name> for one shipped in the binary.
+func (l *Library) usageKeyOf(s Skill) string {
+	if s.Bundled {
+		return "bundled/" + s.Name
+	}
+	return l.usageKey(s.Dir)
+}
+
 // usageKey names a skill folder in the usage file: its path under home.
 func (l *Library) usageKey(dir string) string {
 	if rel, err := filepath.Rel(l.Home, dir); err == nil && !strings.HasPrefix(rel, "..") {
@@ -136,7 +145,7 @@ func (l *Library) MarkUsed(s Skill) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	used := l.LastUsed()
-	used[l.usageKey(s.Dir)] = time.Now().UTC().Truncate(time.Second)
+	used[l.usageKeyOf(s)] = time.Now().UTC().Truncate(time.Second)
 	data, err := json.MarshalIndent(used, "", "  ")
 	if err != nil {
 		return
