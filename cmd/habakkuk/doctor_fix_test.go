@@ -98,7 +98,10 @@ func TestDoctorFixServiceFile(t *testing.T) {
 	os.MkdirAll(filepath.Dir(unit), 0o700)
 	gone := filepath.Join(t.TempDir(), "old", "habakkuk")
 	// A unit the user added to: an argument and an environment line.
-	custom := strings.Replace(systemdUnit(gone, home, "/opt/bin:/usr/bin"), " serve\n", " serve --quiet\n", 1) + "Environment=\"HTTPS_PROXY=http://proxy:3128\"\n"
+	userUnit := func(exe string) string {
+		return strings.Replace(systemdUnit(exe, home, "/opt/bin:/usr/bin"), " serve\n", " serve --quiet\n", 1) + "Environment=\"HTTPS_PROXY=http://proxy:3128\"\n"
+	}
+	custom := userUnit(gone)
 	os.WriteFile(unit, []byte(custom), 0o600)
 
 	var out bytes.Buffer
@@ -117,7 +120,7 @@ func TestDoctorFixServiceFile(t *testing.T) {
 		t.Fatalf("no reload advice: %q", done)
 	}
 	data, _ := os.ReadFile(unit)
-	if want := strings.Replace(custom, `"`+gone+`"`, `"/usr/local/bin/habakkuk"`, 1); string(data) != want {
+	if want := userUnit("/usr/local/bin/habakkuk"); string(data) != want {
 		t.Fatalf("only the program should change:\n got %s\nwant %s", data, want)
 	}
 	bak := filepath.Join(home, "service-backups", "habakkuk.service.20261110-173000.bak")

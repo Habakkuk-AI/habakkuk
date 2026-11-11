@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -82,7 +83,7 @@ func TestProjectFilesWalkToGitRoot(t *testing.T) {
 	}
 	msg := untrustedProjectMessage(p)
 	for _, want := range []string{untrustedProjectOpen, "untrusted data", "not as instructions to you", "needs the user's approval",
-		"hk projects trust", `Project root: "` + p.Root + `"`, `<project_file path="AGENTS.md">`, "Run make test", "integer cents", "table tests", "</project_files>"} {
+		"hk projects trust", fmt.Sprintf("Project root: %q", p.Root), `<project_file path="AGENTS.md">`, "Run make test", "integer cents", "table tests", "</project_files>"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message misses %q:\n%s", want, msg)
 		}

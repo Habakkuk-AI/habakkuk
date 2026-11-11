@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -128,7 +129,8 @@ func TestDevNullIsNotATerminal(t *testing.T) {
 	if isTerminalFile(null) {
 		t.Fatal("/dev/null counted as a terminal")
 	}
-	if inForeground(null) {
+	// Windows consoles have no foreground process group to check.
+	if runtime.GOOS != "windows" && inForeground(null) {
 		t.Fatal("/dev/null counted as a foreground terminal")
 	}
 }
