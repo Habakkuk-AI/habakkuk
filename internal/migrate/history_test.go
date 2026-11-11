@@ -642,6 +642,73 @@ func TestHistoryCountSkipsUnreadable(t *testing.T) {
 	}
 }
 
+// A session row that cannot be read skips that conversation only: the
+// ones listed before it are still counted and imported.
+func TestHistoryBadRowSkipsOnlyItself(t *testing.T) {
+	ctx := context.Background()
+	src, home := fixture(t, Hermes), t.TempDir()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(src, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, title TEXT, started_at REAL NOT NULL);
+CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, timestamp REAL);
+INSERT INTO sessions VALUES ('good', 'cli', 'Bread order', 1792569600), ('badrow', 'cli', 'Odd row', 'yesterday');
+INSERT INTO messages (session_id, role, content, timestamp) VALUES
+	('good', 'user', 'Two loaves for Corner Bakery, please.', 1792569601),
+	('good', 'assistant', 'Ordered two loaves.', 1792569602),
+	('badrow', 'user', 'Anything?', 1792569700);`)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := mustPlan(t, Hermes, src, home, false)
+	if it := historyItem(p, "habakkuk"); it == nil || len(it.hist) != 1 || it.histMsgs != 2 {
+		t.Fatalf("plan = %+v; want the good conversation, 2 messages", it)
+	}
+	if !slices.ContainsFunc(p.Found.Skipped, func(s string) bool { return strings.Contains(s, "badrow") }) {
+		t.Errorf("skipped = %q; want the bad row named", p.Found.Skipped)
+	}
+	res, err := p.Apply(ctx, false)
+	if err != nil || res.Conversations != 1 || res.Messages != 2 {
+		t.Fatalf("imported %d conversations, %d messages, %v", res.Conversations, res.Messages, err)
+	}
+
+	// The same in an OpenClaw agent database.
+	src, home = fixture(t, OpenClaw), t.TempDir()
+	dir := filepath.Join(src, "agents", "work", "agent")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if db, err = sql.Open("sqlite", "file:"+filepath.Join(dir, "openclaw-agent.sqlite")); err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`
+CREATE TABLE session_windows (session_id TEXT PRIMARY KEY, session_key TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE transcript_events (session_id TEXT NOT NULL, seq INTEGER NOT NULL, event_json TEXT NOT NULL, PRIMARY KEY (session_id, seq));
+INSERT INTO session_windows VALUES ('db-bad', 'agent:work:main', 'yesterday'), ('db-good', 'agent:work:main', 1792800000000);
+INSERT INTO transcript_events VALUES ('db-bad', 1, '{"type":"message","message":{"role":"user","content":"Odd row"}}');
+INSERT INTO transcript_events VALUES ('db-good', 1, '{"type":"message","message":{"role":"user","content":"Who is on call tonight?"}}');
+`)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p = mustPlan(t, OpenClaw, src, home, false)
+	ids := []string{}
+	if it := historyItem(p, "work"); it != nil {
+		for _, c := range it.hist {
+			ids = append(ids, c.ID)
+		}
+	}
+	if !slices.Contains(ids, "work/db-good") || slices.Contains(ids, "work/db-bad") {
+		t.Errorf("work history = %v; want db-good and not db-bad", ids)
+	}
+	if !slices.ContainsFunc(p.Found.Skipped, func(s string) bool { return strings.Contains(s, "db-bad") }) {
+		t.Errorf("skipped = %q; want the bad row named", p.Found.Skipped)
+	}
+}
+
 // The plan counts Hermes messages with the predicate the import uses, a
 // reply's quote is not the user's words, and the owner's own surfaces
 // (desktop, web UI, editor) count as direct.

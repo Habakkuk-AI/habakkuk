@@ -519,7 +519,6 @@ func (f *Found) finish() {
 	slices.Sort(f.OtherEnv)
 }
 
-// leftover records something that cannot carry over, once.
 // allowLeftover names a source's list of calls its agent could make
 // without asking. It is never imported: Habakkuk's approval rules
 // (agents.<name>.allow, and Always allow in a chat) are exact commands a
@@ -530,6 +529,7 @@ func (f *Found) allowLeftover(what, agent string) {
 		agent+".allow in config.yaml")
 }
 
+// leftover records something that cannot carry over, once.
 func (f *Found) leftover(what, instead string) {
 	l := Leftover{What: what, Instead: instead}
 	if !slices.Contains(f.Leftovers, l) {

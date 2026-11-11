@@ -622,7 +622,13 @@ func (r *ocReader) schedules() {
 	var jobs []map[string]any
 	db := filepath.Join(r.dir, "state", "openclaw.sqlite")
 	if exists(db) {
-		js, err := readCronDB(db)
+		js, err := readCronDB(db, func(name string, err error) {
+			what := "a schedule"
+			if name != "" {
+				what = fmt.Sprintf("schedule %q", name)
+			}
+			r.f.skip("%s in %s could not be read (%v); it was not imported", what, db, err)
+		})
 		if err != nil {
 			r.f.skip("%s could not be read (%v); its schedules were not imported", db, err)
 		}
@@ -653,7 +659,9 @@ func (r *ocReader) schedules() {
 	}
 }
 
-func readCronDB(path string) ([]map[string]any, error) {
+// readCronDB reads the cron_jobs table. A row that cannot be read goes to
+// bad, and the rest are still read.
+func readCronDB(path string, bad func(name string, err error)) ([]map[string]any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	db, closeDB, err := openSourceDB(path)
@@ -678,7 +686,8 @@ func readCronDB(path string) ([]map[string]any, error) {
 		var js, agentID, name string
 		var enabled bool
 		if err := rows.Scan(&js, &enabled, &agentID, &name); err != nil {
-			return nil, err
+			bad(name, err)
+			continue
 		}
 		j := map[string]any{}
 		if err := json.Unmarshal([]byte(js), &j); err != nil {

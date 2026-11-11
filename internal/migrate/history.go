@@ -302,8 +302,10 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 		var id, src, chat, thread, chatType, title, parent string
 		var started float64
 		if err := rows.Scan(&id, &src, &chat, &thread, &chatType, &title, &started, &parent); err != nil {
-			f.skip("the conversations in %s: %v", path, err)
-			return
+			// One odd row skips that conversation, not the ones around it.
+			// Scan fills the columns before the bad one, id first.
+			f.skip("the conversation %s/%s in %s: %v", a.From, id, path, err)
+			continue
 		}
 		sid := id
 		if parent != "" {
@@ -351,17 +353,23 @@ func (f *Found) hermesHistory(a *Agent, path string) {
 					if err != nil {
 						return nil, false, err
 					}
+					defer urows.Close()
 					for urows.Next() {
 						var role, content, u string
 						var at float64
-						if urows.Scan(&role, &content, &at, &u) != nil {
-							continue
+						if err := urows.Scan(&role, &content, &at, &u); err != nil {
+							return nil, false, fmt.Errorf("reading the conversation it continues: %w", err)
 						}
 						if byContent {
 							seen[contentKey(role, content, at)] = true
 						} else {
 							seen["u"+u] = true
 						}
+					}
+					// Without every carried turn known, some would come in
+					// twice: the conversation is skipped instead.
+					if err := urows.Err(); err != nil {
+						return nil, false, fmt.Errorf("reading the conversation it continues: %w", err)
 					}
 					urows.Close()
 				}
@@ -620,6 +628,8 @@ func (f *Found) openClawHistory(a *Agent, dir string) {
 					return
 				}
 				add(id, e)
+			}, func(id string, err error) {
+				f.skip("the conversation %s/%s in %s: %v", a.From, id, dbPath, err)
 			})
 		}
 		if err != nil {
@@ -794,7 +804,8 @@ func parseSessionKey(key string) (platform, chat, thread, kind string) {
 
 // ocDBSessions lists the sessions in an agent database that hold
 // transcript events, with a count of their user and assistant messages.
-func ocDBSessions(db *sql.DB, fn func(id string, n int, e *ocEntry)) error {
+// A row that cannot be read goes to bad, and the rest are still listed.
+func ocDBSessions(db *sql.DB, fn func(id string, n int, e *ocEntry), bad func(id string, err error)) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	wc, err := columns(ctx, db, "session_windows")
@@ -824,7 +835,8 @@ func ocDBSessions(db *sql.DB, fn func(id string, n int, e *ocEntry)) error {
 		var created float64
 		var n int
 		if err := rows.Scan(&id, &key, &created, &channel, &n); err != nil {
-			return err
+			bad(id, err) // that session only; the others are still read
+			continue
 		}
 		fn(id, n, &ocEntry{key: key, created: created, channel: channel})
 	}

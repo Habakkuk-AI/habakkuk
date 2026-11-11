@@ -330,7 +330,7 @@ func (r *hermesReader) facts() {
 	if _, err := os.Stat(path); err != nil {
 		return
 	}
-	facts, err := readFacts(path)
+	facts, err := readFacts(path, func(err error) { r.f.skip("a fact in %s: %v", path, err) })
 	if err != nil {
 		r.f.skip("the facts in %s: %v", path, err)
 		return
@@ -357,8 +357,9 @@ func (r *hermesReader) facts() {
 
 type fact struct{ content, category, tags string }
 
-// readFacts reads memory_store.db's facts table, oldest first.
-func readFacts(path string) ([]fact, error) {
+// readFacts reads memory_store.db's facts table, oldest first. A row that
+// cannot be read goes to bad, and the rest are still read.
+func readFacts(path string, bad func(error)) ([]fact, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	db, closeDB, err := openSourceDB(path)
@@ -382,7 +383,8 @@ func readFacts(path string) ([]fact, error) {
 	for rows.Next() {
 		var f fact
 		if err := rows.Scan(&f.content, &f.category, &f.tags); err != nil {
-			return nil, err
+			bad(err)
+			continue
 		}
 		out = append(out, f)
 	}
