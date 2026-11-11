@@ -56,6 +56,9 @@ func shellFor(goos, pref, script string, wantBash bool, look func(string) (strin
 		switch {
 		case kind == "pwsh" || kind == "powershell":
 		case kind == "sh" || kind == "bash" || kind == "zsh" || kind == "dash":
+		case path != "":
+			// A path to a shell this doesn't know (fish, a wrapper): it runs,
+			// with -c, under its own name, never labelled bash or sh.
 		case wantBash:
 			kind = "bash"
 		default:
@@ -229,7 +232,8 @@ func MinimalEnvKeys() []string {
 func ScriptCommand(script string) *exec.Cmd { return scriptShell(script).cmd() }
 
 // ScriptShellName names the shell ScriptCommand uses, for tool descriptions
-// and prompts: "bash", "sh", "PowerShell" or "cmd".
+// and prompts: "bash", "sh", "zsh", "dash", "PowerShell", "cmd", or the
+// name of another program HABAKKUK_SHELL points to.
 func ScriptShellName() string {
 	switch k := scriptShell("").kind; k {
 	case "powershell", "pwsh":

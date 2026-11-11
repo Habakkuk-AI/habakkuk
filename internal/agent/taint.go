@@ -77,18 +77,26 @@ func (t *turn) limitRules(env *tools.Env, recs []session.Record) {
 // that the owner didn't type (a notice, meeting notes, a background
 // result, a /goal follow-up, a retry), or, in that message's own turn, a
 // tool that can bring outside content in, a hosted search result, a
-// tainted start or a chat note. A turn whose job can no longer be read
-// counts too.
+// tainted start or a chat note. Records with no job (a Live mode call's
+// transcript) count, and so does a turn whose job can no longer be read.
 func (t *turn) sessionPaused(recs []session.Record) bool {
-	var jobsSeen []string
+	// Walk back from the newest record. Records with no job (a Live mode
+	// call's transcript, written when the call ends) are words that aren't
+	// the owner's typing: they pause, unless they are older than the owner's
+	// previous typed message.
 	seen := map[string]bool{t.job.ID: true}
 	for i := len(recs) - 1; i >= 0; i-- {
-		if id := recs[i].JobID; id != "" && !seen[id] {
-			seen[id] = true
-			jobsSeen = append(jobsSeen, id)
+		id := recs[i].JobID
+		if id == t.job.ID {
+			continue
 		}
-	}
-	for _, id := range jobsSeen {
+		if id == "" {
+			return true
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		typed, tainted := t.jobTrust(id)
 		if !typed || tainted || t.recordsTaint(recs, id) || (t.r.Notes != nil && t.r.Notes.NotesTaken(t.ctx, id)) {
 			// A turn the owner didn't type (a notice, meeting notes, a

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +39,9 @@ func (echoModel) Send(_ context.Context, _ []llm.Target, req llm.Request, _ func
 // request, a board card's run, a meeting notice, a sub-agent's task, an
 // A2A task.
 func TestLocalRuleAnswersOnlyForTheOwnersTurns(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command rules need bash")
+	}
 	a := openOutsideHome(t)
 	a.Runner.Models = echoModel{}
 	ctx := context.Background()
@@ -163,6 +167,9 @@ func openOutsideHome(t *testing.T) *App {
 // Nothing in Habakkuk's home is covered by a rule: not a command run there,
 // not a file there. Its config.yaml, .env and databases always ask.
 func TestNoRuleInTheHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command rules need bash")
+	}
 	a, ws := openWith(t, "") // this workspace is inside the home
 	a.Runner.Models = echoModel{}
 	ctx := context.Background()

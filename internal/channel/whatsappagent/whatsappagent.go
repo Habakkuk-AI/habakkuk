@@ -333,6 +333,7 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 		if msg.Text != nil {
 			m.Text = msg.Text.Body
 		}
+		m.Plain = true // the platform sends forwards and quotes as other types
 	case "image":
 		ref, name = msg.Image, "image.jpg"
 	case "audio":

@@ -201,7 +201,7 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 	}
 	origin, _ := json.Marshal(from)
 	if _, err := g.Runner.SubmitTurn(ctx, agent.Turn{
-		ID: TurnID(m), Session: conv.SessionID, Text: text, Media: media, Origin: origin, Typed: typed(m, owner),
+		ID: TurnID(m), Session: conv.SessionID, Text: text, Media: media, Origin: origin, Typed: g.typed(m, owner),
 	}); err != nil {
 		log.Error("queue turn failed", "err", err)
 		g.reply(to, g.t(to, "turn.queue_failed"))
@@ -1118,10 +1118,24 @@ func shorten(s string, n int) string {
 }
 
 // typed reports whether a message is plain text the owner just typed, one
-// to one: no quote of another message, no forward, no speech, no
-// attachment (a voice note, a file). Only such a turn may use approval
-// rules; a group's turns, and every follow-up the gateway queues itself
-// (/goal, /retry, /btw), never do.
+// to one: the adapter vouched for it (Message.Plain), and it has no quote
+// of another message, no forward, no speech and no attachment. Only such a
+// turn may use approval rules; a group's turns, every channel whose
+// adapter does not set Plain, and every follow-up the gateway queues
+// itself (/goal, /retry, /btw) never do.
 func typed(m Message, owner bool) bool {
-	return owner && m.Direct && m.Quote == nil && !m.Forwarded && !m.Spoken && len(m.Attachments) == 0
+	return owner && m.Plain && m.Direct && m.Quote == nil && !m.Forwarded && !m.Spoken && len(m.Attachments) == 0
+}
+
+// TypedChannels are the channel types whose messages can be typed turns:
+// their platforms report forwards and quotes (or the chat is the owner's
+// own page), so an adapter's Plain means something. Every other channel
+// (Slack, Discord, Signal, Matrix, Teams, Google Chat, email, SMS, ntfy,
+// IRC, Zulip, DingTalk, WeCom and the rest) is never typed.
+var TypedChannels = []string{"telegram", "whatsapp", "whatsappcloud", "whatsappagent", "web"}
+
+// typed is typed(m, owner) on a channel in TypedChannels only.
+func (g *Gateway) typed(m Message, owner bool) bool {
+	ch := g.Channels[m.Account]
+	return ch != nil && slices.Contains(TypedChannels, ch.Type) && typed(m, owner)
 }

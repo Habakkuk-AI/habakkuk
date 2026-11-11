@@ -15,6 +15,7 @@ import (
 // ran in bash: what happens on a Windows host is TestNoExecRulesWithoutBash's.
 func TestMain(m *testing.M) {
 	windowsHost = false
+	shellName = func() string { return "bash" }
 	os.Exit(m.Run())
 }
 
@@ -269,8 +270,8 @@ func TestRulesFileGuardIgnoresCaseAndLinks(t *testing.T) {
 }
 
 // On this machine on Windows commands run in PowerShell, which the rules
-// can't judge: no exec rule is offered or applies there. A sandbox runs
-// bash, so there they work. File rules are unaffected.
+// can't judge: no exec rule is offered or applies there, nor in a sandbox.
+// File rules are unaffected.
 func TestNoExecRulesWithoutBash(t *testing.T) {
 	windowsHost = true
 	defer func() { windowsHost = false }()
@@ -283,8 +284,8 @@ func TestNoExecRulesWithoutBash(t *testing.T) {
 	if _, ok := matchRule(env, execTool{}, c, []Rule{{Tool: "exec", Exact: "git status", In: ws}}); ok {
 		t.Fatal("an exec rule matched without bash")
 	}
-	if !posixShell(&Env{Backend: fakeBackend{}}) {
-		t.Fatal("a sandbox runs bash")
+	if posixShell(&Env{Backend: fakeBackend{}}) {
+		t.Fatal("exec rules in a sandbox, whose programs this machine can't pin")
 	}
 	dir := filepath.Join(env.Workspace, "notes")
 	os.MkdirAll(dir, 0o755)

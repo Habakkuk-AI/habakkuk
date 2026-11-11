@@ -401,6 +401,7 @@ func chat(ctx context.Context, home string, args []string) error {
 	}
 
 	term := &terminal{in: bufio.NewReader(os.Stdin)}
+	stdinTerminal := isTerminal(os.Stdin)
 	detach := a.Runner.Attach(sid, term)
 	defer detach()
 	evs, unsub := a.Bus.Subscribe(sid)
@@ -438,10 +439,11 @@ func chat(ctx context.Context, home string, args []string) error {
 				line, prompted = text, true
 			}
 		}
-		// A line typed at the prompt is Typed; a skill or plugin prompt
-		// carries file text the owner did not type.
+		// A line typed at the prompt, on a terminal, is Typed; a skill or
+		// plugin prompt carries file text the owner did not type, and piped
+		// input is a program's.
 		submit := a.Runner.SubmitTyped
-		if prompted {
+		if prompted || !stdinTerminal {
 			submit = a.Runner.Submit
 		}
 		if _, err := submit(ctx, sid, line); err != nil {

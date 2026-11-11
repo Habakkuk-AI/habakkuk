@@ -77,7 +77,7 @@ Use this setting for folders that hold only notes. `hk security` lists each agen
 
 **Always allow** in a chat, and `agents.<name>.allow` in the config, let an agent run one simple command, or write to one folder, without asking you each time. See [how it works](../agents/approvals.md#always-allow).
 
-A rule is a standing yes, so it answers in one case only: a **typed** turn, whose whole message is plain text you just sent. That's a text message in a one-to-one chat, a line typed at the `hk chat` or TUI prompt, or a message typed into the dashboard's chat (`/api/chat` included, which is that chat behind the dashboard's token). These are not typed: TUI `/btw`, `/skill` and plugin commands, `hk run` (with or without `-skill`), `hk send`, retries, `/queue`, `/goal` follow-ups, Live mode, voice notes, `hk talk`, quotes of other messages, forwards (where the platform marks them) and messages with attachments.
+A rule is a standing yes, so it answers in one case only: a **typed** turn, whose whole message is plain text you just sent. That's a text message in a one-to-one chat on Telegram, WhatsApp (linked device or Cloud API) or the WhatsApp agent channel, a line typed at the `hk chat` (from a terminal) or TUI prompt, or a message typed into the dashboard's chat (`/api/chat` included, which is that chat behind the dashboard's token). Those are the channels whose platforms report forwards and quotes; every other channel is never typed. These are not typed either: TUI `/btw`, `/skill` and plugin commands, `hk run` (with or without `-skill`), `hk send`, retries, `/queue`, `/goal` follow-ups, Live mode, voice notes and recordings, `hk talk`, quotes of other messages, forwards, inline-bot and template-button messages, and messages with attachments.
 
 A typed turn also needs all of these:
 
@@ -90,7 +90,8 @@ Everything else asks a person: schedules of any kind, notices, board cards, sub-
 The rule itself is kept narrow:
 
 - **One simple command, one folder.** An exec rule is a program followed by plain words, matched exactly (only quoting may differ), in the one folder it was saved in, compared as the real path stored then. Nothing the shell would expand, join or redirect gets a rule: no unquoted `$`, backquote, brace, wildcard, `;`, `&`, `|`, `<`, `>` or parentheses, no quoted or escaped `~` and no `~` other than a leading `~/`, no word starting with `=`, no `cd`, `pushd` or `popd`.
-- **Bash only.** Command rules are judged for bash. On this computer on Windows, where commands run in PowerShell, none are offered or applied. A Docker or SSH sandbox runs bash.
+- **Bash, sh or dash, on this computer.** Command rules are judged for those shells. None are offered or applied in a Docker or SSH sandbox, on Windows, or when `HABAKKUK_SHELL` names zsh, fish, PowerShell or any other program.
+- **A workspace outside the home.** An agent whose workspace is inside Habakkuk's home (the default with no `workspace:`) gets no command or file rules there.
 - **The same program.** The rule records where its program was found when it was saved, `~/` expanded. If it can't be found, no rule is offered. One found elsewhere later, or swapped for a link, asks.
 - **Where you gave it.** A rule saved in a chat applies in that chat. One saved on this computer applies to messages typed here.
 - **Never past the hardline.** Commands on the blocklist never run, whatever a rule says.
@@ -105,7 +106,7 @@ These limits are known:
 
 - **Files a tainted turn wrote.** A tainted turn can still write files in the workspace without asking. A later message of yours that runs a command under a rule may run one of them (a script, a `Makefile`, a `package.json`). The command line is the one you approved; what it runs may not be. Keep rules on commands that run workspace files off agents that read the web, or allow those commands once.
 - **Programs that pick their own files.** Habakkuk checks the paths a command's words name, as they are when it starts. It can't see files a program chooses for itself, or a folder an option like `-C` moves it to.
-- **Forwards on other platforms.** Telegram marks forwarded messages, and those aren't typed. On a platform that doesn't say a message was forwarded, a forward looks like your own text.
+- **Software already running as you.** Any program running under your account can post to the dashboard's API on loopback (it can read the token from your config) or drive `hk chat` through a fake terminal, and its message is typed. Rules don't defend against software that already runs as you; nothing in Habakkuk can.
 - **Commands in `full` mode.** `full` mode runs commands without asking and doesn't parse them, so a command can write an instruction file there. The file tools always ask.
 - **Hard links on Windows.** Windows doesn't report a file's other names, so the hard-link check runs on macOS and Linux only.
 

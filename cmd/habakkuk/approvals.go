@@ -94,7 +94,7 @@ func listApprovals(w io.Writer, cfg *config.Config, names []string) error {
 		fmt.Fprintln(w, `No approval rules. Answer "Always allow" in a chat, or add agents.<name>.allow to config.yaml.`)
 		return nil
 	}
-	fmt.Fprintln(w, "\nRules answer only for a message you typed just now, as plain text, one to one or at the hk chat,\nTUI or dashboard prompt, with no chat notes and nothing but your own words since your previous\none: never for schedules, /goal, /btw, hk run, voice, notices, board cards, sub-agents, the API,\nMCP, A2A, groups, webhooks or guests. An exec rule is one simple command in one folder, in bash.")
+	fmt.Fprintln(w, "\nRules answer only for a message you typed just now, as plain text, one to one or at the hk chat,\nTUI or dashboard prompt, with no chat notes and nothing but your own words since your previous\none: never for schedules, /goal, /btw, hk run, voice, notices, board cards, sub-agents, the API,\nMCP, A2A, groups, webhooks, guests, or channels other than Telegram, WhatsApp and the dashboard.\nAn exec rule is one simple command in one folder, run here in bash, sh or dash.")
 	return nil
 }
 

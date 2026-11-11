@@ -297,6 +297,7 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Text = strings.TrimSpace(req.Text + "\n" + transcript)
+		req.Spoken = true // a recording could be anyone's voice
 	}
 	if req.Text == "" && len(atts) == 0 {
 		httpError(w, http.StatusBadRequest, "send text, a file or a recording")
@@ -363,6 +364,7 @@ func (s *Server) deliverChat(rctx context.Context, req chatRequest, shown string
 	m := channel.Message{
 		Account: s.Account, Conversation: req.Conversation, ID: req.ID, Sender: "web",
 		Text: req.Text, Direct: true, Agent: req.Agent, Attachments: atts, Spoken: req.Spoken,
+		Plain: !req.Spoken && len(atts) == 0, // typed into the chat input
 	}
 	in.Deliver(ctx, m)
 	out := map[string]string{"message": req.ID, "turn": ""}

@@ -300,6 +300,7 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 		if m.Text = msg.Recognition; m.Text == "" {
 			attach("voice." + strings.ToLower(cmp.Or(msg.Format, "amr")))
 		}
+		m.Spoken = true
 	case "video":
 		attach("video.mp4")
 	case "file":

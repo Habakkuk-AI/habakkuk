@@ -82,14 +82,28 @@ type Rule struct {
 var RuleTools = []string{"write_file", "edit_file", "apply_patch"}
 
 // windowsHost is set on Windows, where commands on this machine run in
-// PowerShell (a sandbox runs bash).
+// PowerShell unless HABAKKUK_SHELL says otherwise.
 var windowsHost = runtime.GOOS == "windows"
 
-// posixShell reports whether the agent's commands run in bash, the shell
-// command rules are judged for: everywhere but this machine on Windows. Where
-// they don't, no exec rule is offered or applies; file rules are unaffected.
+// shellName names the shell commands run in on this machine
+// (platform.ScriptShellName); a variable so tests can stand in another.
+var shellName = platform.ScriptShellName
+
+// posixShell reports whether exec rules can be judged for this agent: its
+// commands run on this machine (not in a Docker or SSH sandbox, whose
+// programs this machine can't pin), on macOS or Linux, in bash, sh or dash
+// (not zsh, which expands a leading =, nor fish, PowerShell or anything
+// HABAKKUK_SHELL names). Elsewhere no exec rule is offered or applies;
+// file rules are unaffected.
 func posixShell(env *Env) bool {
-	return env.Backend != nil || !windowsHost
+	if env.Backend != nil || windowsHost {
+		return false
+	}
+	switch shellName() {
+	case "bash", "sh", "dash":
+		return true
+	}
+	return false
 }
 
 // maxOffered is the longest command or folder "Always allow" is offered
@@ -866,14 +880,13 @@ func shellWords(s string) ([]string, bool) {
 			if j < 0 {
 				return nil, false
 			}
-			if !inWord && j > 0 && strings.IndexByte("~=", s[i+1]) >= 0 {
+			if cur.Len() == 0 && j > 0 && strings.IndexByte("~=", s[i+1]) >= 0 {
 				return nil, false // a quoted ~ is not the home folder: the same words would name another file
 			}
 			cur.WriteString(s[i+1 : i+1+j])
 			i += j + 1
 			inWord = true
 		case c == '"':
-			start := !inWord
 			inWord = true
 			closed := false
 			for i++; i < len(s); i++ {
@@ -893,7 +906,7 @@ func shellWords(s string) ([]string, bool) {
 						return nil, false
 					}
 				}
-				if start && cur.Len() == 0 && (d == '~' || d == '=') {
+				if cur.Len() == 0 && (d == '~' || d == '=') {
 					return nil, false
 				}
 				cur.WriteByte(d)
@@ -909,15 +922,15 @@ func shellWords(s string) ([]string, bool) {
 				return nil, false
 			}
 			i++
-			if !inWord && (s[i] == '~' || s[i] == '=') {
+			if cur.Len() == 0 && (s[i] == '~' || s[i] == '=') {
 				return nil, false
 			}
 			cur.WriteByte(s[i])
 			inWord = true
 		case strings.IndexByte(unsafeChars, c) >= 0:
 			return nil, false
-		case c == '=' && !inWord:
-			return nil, false // zsh expands a leading =
+		case c == '=' && cur.Len() == 0:
+			return nil, false // zsh expands a leading =, and a quoted ~ or = after empty quotes is still first
 		default:
 			cur.WriteByte(c)
 			inWord = true

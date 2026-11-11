@@ -282,3 +282,21 @@ func TestLiveTurnsAreNotTyped(t *testing.T) {
 		t.Fatalf("a dashboard chat message is not typed: %+v", p)
 	}
 }
+
+// A dashboard voice recording is a transcript: Spoken, not typed.
+func TestDashboardVoiceRecordingIsNotTyped(t *testing.T) {
+	r := newDashRig(t)
+	webm := append([]byte{0x1a, 0x45, 0xdf, 0xa3}, make([]byte, 64)...)
+	code, out := r.upload(t, map[string]string{"conversation": "v1", "id": "rec-9"}, nil, webm, true)
+	if code != http.StatusAccepted {
+		t.Fatalf("upload: %d %v", code, out)
+	}
+	j, err := r.s.Gateway.Queue.Get(context.Background(), channel.TurnID(channel.Message{Account: "web", Conversation: "v1", ID: "rec-9"}))
+	if err != nil || j == nil {
+		t.Fatalf("turn: %v", err)
+	}
+	var p agent.TurnPayload
+	if err := j.Decode(&p); err != nil || p.Typed {
+		t.Fatalf("a voice recording's turn: %+v, %v", p, err)
+	}
+}

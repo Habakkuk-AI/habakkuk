@@ -142,6 +142,8 @@ type message struct {
 	ForwardOrigin json.RawMessage `json:"forward_origin"`
 	ForwardFrom   *user           `json:"forward_from"`
 	ForwardDate   int64           `json:"forward_date"`
+	// ViaBot: the message was written by an inline bot, not typed.
+	ViaBot *user `json:"via_bot"`
 	// Quote is the part of the replied-to message the user picked, if any.
 	Quote *struct {
 		Text string `json:"text"`
@@ -250,6 +252,9 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 	}
 	m.Quote = a.quote(msg)
 	m.Forwarded = len(msg.ForwardOrigin) > 0 || msg.ForwardFrom != nil || msg.ForwardDate != 0
+	// Plain text the sender typed: Telegram marks forwards, quotes and
+	// inline bots, so the absence of each means something.
+	m.Plain = msg.Text != "" && len(atts) == 0 && m.Quote == nil && !m.Forwarded && msg.ViaBot == nil
 	mention := "@" + a.username
 	if a.username != "" && strings.Contains(strings.ToLower(text), strings.ToLower(mention)) {
 		m.Mentioned = true

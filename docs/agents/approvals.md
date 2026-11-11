@@ -83,23 +83,42 @@ A rule covers one of these:
 - **One simple command, in one folder.** A program followed by plain words, such as `git status` or `ls ~/notes`. The rule allows that exact line, run in the folder it ran in, and nowhere else. A subfolder is another folder: `ls`, `make` or `npm test` there read other files. Quoting may differ (`echo 'a b'` is `echo "a b"`), nothing else may: `git status -s` isn't `git status`. Habakkuk also notes where the program was found, and a program found somewhere else, or swapped for a link, isn't covered. Rules that take any arguments (wildcards) may come later, with a reviewed list of programs they're safe for.
 - **A file tool in a folder.** `write_file`, `edit_file` or `apply_patch` writing inside the folder of the file you approved, or below it. Hidden files and folders still ask.
 
-A command isn't simple, and gets no **Always allow**, if it has an unquoted `$`, a backquote, `{` or `}`, `*`, `?` or `[`, a `~` other than an unquoted leading `~/`, a word starting with `=`, any of `;`, `&`, `|`, `<`, `>`, `(` or `)`, a line break, or runs `cd`, `pushd` or `popd`. **Always allow** also needs the program to be found where it is now (a program that's missing isn't offered a rule), and commands that run in bash: on this computer on Windows, where they run in PowerShell, no command rules are offered or applied, though a Docker or SSH sandbox runs bash. You can still allow any of these once.
+A command isn't simple, and gets no **Always allow**, if it has an unquoted `$`, a backquote, `{` or `}`, `*`, `?` or `[`, a `~` other than an unquoted leading `~/` (quotes in front count: `''"~/x"` is refused), a word starting with `=`, any of `;`, `&`, `|`, `<`, `>`, `(` or `)`, a line break, or runs `cd`, `pushd` or `popd`. **Always allow** also needs the program to be found where it is now (a program that's missing isn't offered a rule). You can still allow any of these once.
+
+**Which shell.** Command rules are judged for bash, sh and dash, run on this computer. Exec rules, saved or from the config, are never offered or applied when:
+
+- the agent runs commands in a Docker or SSH sandbox, whose programs this computer can't pin;
+- Habakkuk runs on Windows, where commands run in PowerShell;
+- `HABAKKUK_SHELL` names another shell: zsh (it expands a leading `=`), fish, PowerShell, or a path to any other program.
+
+File rules are unaffected.
+
+**Workspace inside the home.** An agent whose workspace is inside Habakkuk's home never gets command or file rules there. That's the default when the agent has no `workspace:` (it's `agents/<name>/workspace`). To use rules, give it a workspace outside the home:
+
+```yaml
+agents:
+  habakkuk:
+    workspace: ~/habakkuk-workspace
+```
 
 ### Which turns rules answer for
 
 A rule answers only for a **typed** turn: one whose whole message is plain text you just sent. That's one of these:
 
-- a text message in a one-to-one chat with the agent;
-- a line you type at the `hk chat` or TUI prompt;
+- a text message in a one-to-one chat on **Telegram, WhatsApp (linked device or Cloud API) or the WhatsApp agent channel**;
+- a line you type at the `hk chat` or TUI prompt, when `hk chat` reads from a terminal;
 - a message typed into the dashboard's chat. That includes `/api/chat`, which is the same chat behind the dashboard's token.
+
+Those are the channels whose platforms tell Habakkuk when a message is forwarded or quotes another, so a plain message there really is your typing. On every other channel no turn is typed and rules never answer: Slack, Discord, Signal, Matrix, Microsoft Teams, Google Chat, email, SMS, ntfy, IRC, Zulip, DingTalk, WeCom and the rest.
 
 None of these are typed, even when you started them:
 
 - `/btw` in the TUI, which carries the conversation's history;
 - `/skill`, plugin commands and `hk run -skill`, which carry a file's text, and `hk run` itself;
 - `hk send`, a retry, `/queue` and `/goal` follow-ups;
-- Live mode, voice notes and `hk talk`, since speech could be anyone's;
-- a message that quotes another message, a forwarded message (where the platform marks forwards, as Telegram does), and a message with an attachment.
+- Live mode, voice notes and dashboard recordings (wherever they're transcribed), and `hk talk`, since speech could be anyone's;
+- a message that quotes another message, a forwarded message, a Telegram message sent through an inline bot, a WhatsApp template button's text, and a message with an attachment;
+- `hk chat` reading from a pipe rather than a terminal.
 
 A typed turn also needs all of these:
 

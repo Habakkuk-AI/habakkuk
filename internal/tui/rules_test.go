@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,9 @@ func (pageModel) Send(_ context.Context, _ []llm.Target, req llm.Request, _ func
 // tool results included, is not: after the main session read a page, the
 // side question asks a person.
 func TestTUITypedLinesAndBtw(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command rules need bash")
+	}
 	home, ws := t.TempDir(), t.TempDir()
 	cfg := strings.Replace(config.Template, "workspace: ~/habakkuk-workspace", "workspace: "+ws, 1)
 	if err := store.WriteFileAtomic(filepath.Join(home, "config.yaml"), []byte(cfg), 0o600); err != nil {
