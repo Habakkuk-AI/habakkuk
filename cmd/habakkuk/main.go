@@ -183,6 +183,9 @@ func main() {
 	if exe, err := os.Executable(); err == nil && plat.IsWindows {
 		removeReplaced(exe) // binaries an update moved aside
 	}
+	if takesNoArgs[cmd] && len(args) > 0 {
+		os.Exit(noArgsCmd(os.Stdout, os.Stderr, cmd, args))
+	}
 	var err error
 	switch cmd {
 	case "setup":
@@ -1133,4 +1136,45 @@ func schedules(ctx context.Context, home string, args []string) error {
 		return fmt.Errorf("unknown schedules command %q", sub)
 	}
 	return nil
+}
+
+// takesNoArgs lists the commands that take no arguments. Anything after
+// one of them is refused before it runs, so `hk serve -h` prints help
+// instead of starting a server and `hk init -h` doesn't write a config.
+var takesNoArgs = map[string]bool{"init": true, "serve": true, "channels": true, "status": true, "models": true, "version": true}
+
+// noArgsCmd answers arguments given to a command that takes none: help
+// for -h, --help or help (exit 0), an error otherwise (exit 2).
+func noArgsCmd(stdout, stderr io.Writer, cmd string, args []string) int {
+	help := commandUsage(cmd)
+	switch args[0] {
+	case "-h", "-help", "--help", "help":
+		fmt.Fprint(stdout, help)
+		return 0
+	}
+	fmt.Fprintf(stderr, "hk %s takes no arguments (got %q)\n\n%s", cmd, strings.Join(args, " "), help)
+	return 2
+}
+
+// commandUsage is cmd's entry in the usage text: its line and the indented
+// lines that continue it.
+func commandUsage(cmd string) string {
+	var b strings.Builder
+	in := false
+	for _, line := range strings.Split(usage, "\n") {
+		switch {
+		case strings.HasPrefix(line, "  hk "+cmd+" ") || line == "  hk "+cmd:
+			in = true
+		case in && strings.HasPrefix(line, "     "):
+		default:
+			in = false
+		}
+		if in {
+			b.WriteString(line + "\n")
+		}
+	}
+	if b.Len() == 0 {
+		return "usage: hk " + cmd + "\n"
+	}
+	return b.String()
 }
