@@ -24,6 +24,15 @@ type fakeSystem struct {
 	ignoreTerm map[int]bool
 	ran        []string
 	stopped    []int
+	// info is what Inspect returns for a pid; a pid without one has a
+	// readable environment that names no home.
+	info map[int]ProcInfo
+	// scopes are systemd scopes and the pids in them.
+	scopes map[string][]int
+	// procErr makes the process list fail.
+	procErr error
+	// fail makes a command fail once: command line prefix -> error.
+	fail map[string]error
 }
 
 type fakeService struct {
@@ -36,7 +45,7 @@ type fakeService struct {
 
 func newFake(home string) *fakeSystem {
 	return &fakeSystem{goos: "linux", home: home, services: map[string]*fakeService{},
-		respawn: map[int]bool{}, ignoreTerm: map[int]bool{}}
+		respawn: map[int]bool{}, ignoreTerm: map[int]bool{}, info: map[int]ProcInfo{}, scopes: map[string][]int{}, fail: map[string]error{}}
 }
 
 func (f *fakeSystem) GOOS() string     { return f.goos }
@@ -49,7 +58,11 @@ func (f *fakeSystem) Wait(time.Duration) {
 func (f *fakeSystem) Processes(context.Context) ([]Process, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return slices.Clone(f.procs), nil
+	if f.procErr != nil {
+		return nil, f.procErr
+	}
+	// A real list is never empty: the system's own processes are there.
+	return append(slices.Clone(f.procs), Process{PID: 1, Cmdline: "/sbin/init"}), nil
 }
 
 func (f *fakeSystem) Alive(pid int) bool {
@@ -69,6 +82,15 @@ func (f *fakeSystem) Stop(pid int, force bool) error {
 	return nil
 }
 
+func (f *fakeSystem) Inspect(_ context.Context, pid int) ProcInfo {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if in, ok := f.info[pid]; ok {
+		return in
+	}
+	return ProcInfo{Env: map[string]string{}}
+}
+
 // run adds a process.
 func (f *fakeSystem) run(p Process) {
 	f.mu.Lock()
@@ -79,6 +101,10 @@ func (f *fakeSystem) run(p Process) {
 // service installs a service running the given processes.
 func (f *fakeSystem) service(manager, name string, active, enabled bool, pids ...Process) {
 	f.services[name] = &fakeService{manager: manager, active: active, enabled: enabled, pids: pids}
+	for _, p := range pids {
+		// What /proc/<pid>/cgroup shows for a process of a user unit.
+		f.info[p.PID] = ProcInfo{Cgroup: "0::/user.slice/user-501.slice/user@501.service/app.slice/" + name}
+	}
 	if active {
 		for _, p := range pids {
 			f.run(p)
@@ -105,12 +131,32 @@ func (f *fakeSystem) Run(_ context.Context, name string, args ...string) (string
 	defer f.mu.Unlock()
 	line := name + " " + strings.Join(args, " ")
 	f.ran = append(f.ran, line)
+	for prefix, err := range f.fail {
+		if strings.HasPrefix(line, prefix) {
+			delete(f.fail, prefix)
+			return "", err
+		}
+	}
 	last := ""
 	if len(args) > 0 {
 		last = args[len(args)-1]
 	}
 	switch name {
 	case "systemctl":
+		if slices.Contains(args, "list-units") {
+			var b strings.Builder
+			for n := range f.scopes {
+				fmt.Fprintf(&b, "%s loaded active running Hermes worker\n", n)
+			}
+			return b.String(), nil
+		}
+		if pids, ok := f.scopes[last]; ok && slices.Contains(args, "stop") {
+			for _, pid := range pids {
+				f.procs = slices.DeleteFunc(f.procs, func(p Process) bool { return p.PID == pid })
+			}
+			delete(f.scopes, last)
+			return "", nil
+		}
 		a := slices.DeleteFunc(slices.Clone(args), func(s string) bool { return s == "--user" || s == "--now" })
 		s := f.services[last]
 		if s == nil || s.manager != map[bool]string{true: Systemd, false: SystemdSystem}[slices.Contains(args, "--user")] {

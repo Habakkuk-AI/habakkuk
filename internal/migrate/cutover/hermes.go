@@ -1,6 +1,7 @@
 package cutover
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,7 +37,8 @@ import (
 var hermesSpec = &spec{
 	services: hermesServices,
 	role:     hermesRole,
-	mayBe:    func(p Process) bool { return hermesish(p.Args()) },
+	home:     hermesHomeOf,
+	mayBe:    func(p Process) bool { return hermesish(p) },
 	pidFiles: func(dir string) []pidFile {
 		var out []pidFile
 		for _, h := range hermesHomes(dir) {
@@ -61,10 +63,13 @@ var hermesSpec = &spec{
 		}
 		return out, joinErrs(errs)
 	},
-	pause: func(store string, ids []string) ([]string, error) {
-		return pauseJobs(store, ids, time.Now(), true)
+	store: func(path string) jobStore {
+		return jsonStore(path, []string{"enabled", "state", "paused_at", "paused_reason"}, func(now time.Time) fields {
+			// What its own pause command writes.
+			return fields{"enabled": rawOf(false), "state": rawOf("paused"),
+				"paused_at": rawOf(now.Format("2006-01-02T15:04:05.000000-07:00")), "paused_reason": rawOf(pauseReason)}
+		})
 	},
-	resume: func(store, id string) error { return resumeJob(store, id, true) },
 	waSessions: func(dir string) []string {
 		var out []string
 		for _, h := range hermesHomes(dir) {
@@ -76,23 +81,37 @@ var hermesSpec = &spec{
 		}
 		return out
 	},
-	brake: &brake{
-		file: func(dir string) string { return filepath.Join(dir, "ESTOP") },
-		text: func(now time.Time) string {
-			return `{"engaged_at": "` + now.Format("2006-01-02T15:04:05.000000-07:00") + `", "reason": "` + pauseReason + `"}` + "\n"
-		},
+	// Each home has its own: a profile's gateway reads its profile's.
+	brakes: func(dir string) []string {
+		var out []string
+		for _, h := range hermesHomes(dir) {
+			out = append(out, filepath.Join(h.dir, "ESTOP"))
+		}
+		return out
 	},
+	brakeText: func(now time.Time) string {
+		return `{"engaged_at": "` + now.Format("2006-01-02T15:04:05.000000-07:00") + `", "reason": "` + pauseReason + `"}` + "\n"
+	},
+	scopes: hermesScopes,
 }
 
 type hermesHome struct{ name, dir string }
 
-// hermesHomes are the home and its profiles.
+// hermesHomes are the home and its profiles: the folders under profiles/
+// that hold a profile's own files.
 func hermesHomes(dir string) []hermesHome {
 	homes := []hermesHome{{"default", dir}}
 	entries, _ := os.ReadDir(filepath.Join(dir, "profiles"))
 	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			homes = append(homes, hermesHome{e.Name(), filepath.Join(dir, "profiles", e.Name())})
+		p := filepath.Join(dir, "profiles", e.Name())
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		for _, mark := range []string{"config.yaml", ".env", "SOUL.md", "profile.yaml", "auth.json", "state.db", "cron", "gateway.pid"} {
+			if fileExists(filepath.Join(p, mark)) {
+				homes = append(homes, hermesHome{e.Name(), p})
+				break
+			}
 		}
 	}
 	return homes
@@ -103,47 +122,102 @@ func hermesWASessionDirs(home string) []string {
 }
 
 // hermesish reports a command line of the Hermes Agent program: its
-// command, or its Python modules.
-func hermesish(args []string) bool {
-	for i, a := range args {
-		if i > 3 {
-			break
-		}
-		if p := program(a); p == "hermes" || p == "hermes-agent" {
-			return true
-		}
-		if i > 0 && args[i-1] == "-m" && (strings.HasPrefix(a, "hermes_cli.") || strings.HasPrefix(a, "cron.") || a == "gateway.run") {
-			return true
+// command, or a Python interpreter running its modules or its command.
+// Python's own flags (-u, -X utf8) may come first.
+func hermesish(p Process) bool {
+	switch exe := p.Exe(); {
+	case exe == "hermes" || exe == "hermes-agent":
+		return true
+	case !isPython(exe):
+		return false
+	}
+	args := p.Args()
+	switch m := wordAfter(args, "-m"); {
+	case strings.HasPrefix(m, "hermes_cli."), m == "gateway.run":
+		return true
+	case m == "cron.scheduler":
+		// A module name other projects use too: only with the flag
+		// Hermes Agent starts its job workers with.
+		return slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, "--external-worker-file") })
+	}
+	// python [flags] /path/to/hermes ...: the first word that is not a
+	// flag or a flag's value.
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-X" || a == "-W":
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			p := program(a)
+			return p == "hermes" || p == "hermes-agent"
 		}
 	}
 	return false
 }
 
-func hermesRole(p Process, dir, _ string) (string, bool) {
+func isPython(exe string) bool {
+	return exe == "python" || exe == "pythonw" || exe == "py" || strings.HasPrefix(exe, "python3") || strings.HasPrefix(exe, "python2")
+}
+
+// hermesHomeOf: HERMES_HOME names the home a process uses; a profile
+// flag names one inside the default home; no HERMES_HOME means the
+// default home.
+func hermesHomeOf(w where, p Process, env map[string]string) (verdict, string) {
+	uh := w.sys.UserHome()
+	def := isDefaultHome(w.dir, filepath.Join(uh, ".hermes"))
+	if h, ok := env["HERMES_HOME"]; ok && h != "" {
+		if under(expandTilde(h, uh), w.dir) {
+			return ours, "its HERMES_HOME is " + h
+		}
+		return theirs, "its HERMES_HOME is " + h
+	}
+	if prof := wordAfter(p.Args(), "-p", "--profile"); prof != "" && prof != "default" {
+		if def && fileExists(filepath.Join(w.dir, "profiles", prof)) {
+			return ours, "it runs profile " + prof + " of this home"
+		}
+		if env != nil {
+			return theirs, "its profile " + prof + " is not in this home"
+		}
+		return unknown, ""
+	}
+	if env != nil {
+		if def {
+			return ours, "it has no HERMES_HOME, so it uses the default home"
+		}
+		return theirs, "it has no HERMES_HOME, so it uses the default home"
+	}
+	return unknown, ""
+}
+
+func hermesRole(p Process, dir, userHome string) (string, bool) {
 	args := p.Args()
 	if len(args) == 0 {
 		return "", false
 	}
-	// The WhatsApp bridge is a Node program in Hermes Agent's tree or home.
+	// The WhatsApp bridge is a Node program, bridge.js, given the session
+	// folder; its folder is Hermes Agent's tree or a copy in the home.
 	if prog := p.Exe(); prog == "node" || prog == "nodejs" {
 		for _, a := range args[1:] {
-			if strings.HasSuffix(slashes(a), "whatsapp-bridge/bridge.js") {
-				if s := wordAfter(args, "--session"); s != "" && !under(s, dir) {
-					return "", false // the bridge of another home
-				}
+			s := slashes(a)
+			if !strings.HasSuffix(s, "/bridge.js") && s != "bridge.js" {
+				continue
+			}
+			session := wordAfter(args, "--session")
+			if strings.Contains(s, "whatsapp-bridge/") || under(expandTilde(a, userHome), dir) || session != "" {
 				return RoleBridge, true
 			}
 		}
 		return "", false
 	}
-	if !hermesish(args) {
+	if !hermesish(p) {
 		return "", false
 	}
 	switch wordAfter(args, "-m") {
 	case "hermes_cli.kanban_worker_client", "cron.scheduler":
 		return RoleWorker, true
 	case "hermes_cli.web_server":
-		return RoleScheduler, true
+		return RoleDashboard, true
 	}
 	sub := hermesSubcommand(args)
 	switch sub {
@@ -159,7 +233,7 @@ func hermesRole(p Process, dir, _ string) (string, bool) {
 			return RoleWorker, true
 		}
 	case "dashboard", "web":
-		return RoleScheduler, true
+		return RoleDashboard, true
 	}
 	return "", false
 }
@@ -220,7 +294,7 @@ func hermesServices(w where) []Service {
 		for _, d := range []struct{ dir, manager string }{{w.userUnits(), Systemd}, {"/etc/systemd/system", SystemdSystem}} {
 			for _, f := range globAll(d.dir, "hermes-gateway*.service", "hermes.service") {
 				name := filepath.Base(f)
-				suffix := strings.TrimPrefix(strings.TrimSuffix(strings.TrimSuffix(name, ".service"), "hermes-gateway"), "-")
+				suffix := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSuffix(name, ".service"), "hermes-gateway"), "-")
 				if name == "hermes.service" {
 					suffix = ""
 				}
@@ -257,4 +331,34 @@ func hermesServices(w where) []Service {
 		}
 	}
 	return out
+}
+
+// hermesScopes are the systemd scopes (hermes-worker-*) its job and board
+// workers run in, when a worker of this home is in one. Stopping a scope
+// stops everything in it; there is nothing to disable.
+func hermesScopes(ctx context.Context, w where, procs []Running) []string {
+	if w.sys.GOOS() != "linux" || len(procs) == 0 {
+		return nil
+	}
+	out, err := w.sys.Run(ctx, "systemctl", "--user", "list-units", "--type=scope", "--all", "--plain", "--no-legend", "--no-pager", "hermes-worker-*")
+	if err != nil {
+		return nil
+	}
+	var cgroups []string
+	for _, p := range procs {
+		if cg := w.sys.Inspect(ctx, p.PID).Cgroup; cg != "" {
+			cgroups = append(cgroups, cg)
+		}
+	}
+	var scopes []string
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 || !strings.HasPrefix(f[0], "hermes-worker-") || !strings.HasSuffix(f[0], ".scope") {
+			continue
+		}
+		if slices.ContainsFunc(cgroups, func(cg string) bool { return strings.Contains(cg, "/"+f[0]) }) {
+			scopes = append(scopes, f[0])
+		}
+	}
+	return scopes
 }

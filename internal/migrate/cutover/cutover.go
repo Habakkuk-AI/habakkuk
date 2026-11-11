@@ -50,8 +50,14 @@ type Status struct {
 	Dir   string
 	// Services are its installed services, with their state.
 	Services []ServiceStatus
-	// Processes are its processes running now, by role.
+	// Processes are its processes running now, by role: each one shown to
+	// belong to this home.
 	Processes []Running
+	// Maybe are the user's processes that look like the old agent's but
+	// could not be tied to this home. They are listed, never stopped.
+	Maybe []Running
+	// Scopes are the systemd scopes its workers run in (Linux).
+	Scopes []string
 	// Jobs are its own schedules that are on.
 	Jobs []Job
 	// Stale are pid and lock files left by processes that are gone.
@@ -70,9 +76,11 @@ type ServiceStatus struct {
 // Running is one process of the old agent.
 type Running struct {
 	Process
-	Role string // gateway, worker, scheduler, bridge
+	Role string // gateway, worker, scheduler, dashboard, bridge
 	// Via says how it was found: "process list" or the pid file.
 	Via string
+	// Why says how it is tied to the home, or why it could not be.
+	Why string
 }
 
 // Job is one of the old agent's own schedules.
@@ -100,10 +108,34 @@ func (s *Status) Live() bool {
 // SchedulerRunning reports whether a process that fires the old agent's
 // schedules runs now.
 func (s *Status) SchedulerRunning() bool {
-	for _, p := range s.Processes {
-		if p.Role == RoleGateway || p.Role == RoleScheduler || p.Role == RoleWorker {
-			return true
+	return slices.ContainsFunc(s.Processes, func(p Running) bool { return firesSchedules(p.Role) })
+}
+
+// MaybeScheduler lists the processes that may be the old agent's and
+// would fire its schedules if they are.
+func (s *Status) MaybeScheduler() []Running {
+	var out []Running
+	for _, p := range s.Maybe {
+		if firesSchedules(p.Role) {
+			out = append(out, p)
 		}
+	}
+	return out
+}
+
+// UsesChannels reports whether a process that polls the old agent's
+// channels runs now: a gateway, a scheduler (which delivers) or a bridge.
+// The dashboard alone does not.
+func (s *Status) UsesChannels() bool {
+	return slices.ContainsFunc(s.Processes, func(p Running) bool {
+		return p.Role == RoleGateway || p.Role == RoleScheduler || p.Role == RoleBridge
+	})
+}
+
+func firesSchedules(role string) bool {
+	switch role {
+	case RoleGateway, RoleScheduler, RoleWorker, RoleDashboard:
+		return true
 	}
 	return false
 }
@@ -113,6 +145,7 @@ const (
 	RoleGateway   = "gateway"
 	RoleWorker    = "worker"
 	RoleScheduler = "scheduler"
+	RoleDashboard = "dashboard" // ticks the schedules, polls no channel
 	RoleBridge    = "bridge"
 )
 
@@ -143,7 +176,8 @@ func (s *Status) Summary() string {
 		parts = append(parts, g)
 	}
 	for _, r := range []struct{ role, one, many string }{
-		{RoleWorker, "worker", "workers"}, {RoleScheduler, "scheduler", "schedulers"}, {RoleBridge, "channel bridge", "channel bridges"},
+		{RoleWorker, "worker", "workers"}, {RoleScheduler, "scheduler", "schedulers"}, {RoleDashboard, "dashboard", "dashboards"},
+		{RoleBridge, "channel bridge", "channel bridges"},
 	} {
 		if n := roles[r.role]; n > 0 {
 			parts = append(parts, count(n, r.one, r.many))
@@ -196,26 +230,27 @@ func Detect(ctx context.Context, sys System, o Options) (*Status, error) {
 			st.Services = append(st.Services, ServiceStatus{Service: svc, ServiceState: s})
 		}
 	}
+	switch sys.GOOS() {
+	case "linux", "darwin", "windows":
+	default:
+		st.Problems = append(st.Problems, "its services are not looked for on "+sys.GOOS())
+	}
+	w := where{sys: sys, dir: dir, getenv: getenv}
+	var units []string
+	for _, sv := range st.Services {
+		units = append(units, sv.Name)
+	}
 	procs, err := sys.Processes(ctx)
 	if err != nil {
 		st.Problems = append(st.Problems, "could not list the running processes: "+err.Error())
+	} else if len(procs) == 0 {
+		st.Problems = append(st.Problems, "the process list came back empty")
 	}
 	byPID := map[int]Process{}
 	for _, p := range procs {
 		byPID[p.PID] = p
 	}
-	seen := map[int]bool{sys.Self(): true}
-	for _, p := range procs {
-		if seen[p.PID] {
-			continue
-		}
-		if role, ok := sp.role(p, dir, sys.UserHome()); ok {
-			seen[p.PID] = true
-			st.Processes = append(st.Processes, Running{Process: p, Role: role, Via: "process list"})
-		}
-	}
-	// A pid file names a process the list may not show as ours (a
-	// renamed interpreter, a list we could not read).
+	pidFiles := map[int]pidFile{}
 	for _, pf := range sp.pidFiles(dir) {
 		pid, ok := readPID(pf.path)
 		if !ok {
@@ -225,22 +260,66 @@ func Detect(ctx context.Context, sys System, o Options) (*Status, error) {
 			st.Stale = append(st.Stale, pf.path)
 			continue
 		}
-		if seen[pid] {
+		if p, listed := byPID[pid]; listed && !sp.mayBe(p) {
+			st.Stale = append(st.Stale, pf.path) // the pid now belongs to another program
 			continue
 		}
-		p, listed := byPID[pid]
-		if listed && !sp.mayBe(p) {
-			// The pid was reused by an unrelated program.
-			st.Stale = append(st.Stale, pf.path)
+		pidFiles[pid] = pf
+		if _, listed := byPID[pid]; !listed {
+			// Alive but not in the list: tied to the home by its pid file.
+			st.Processes = append(st.Processes, Running{Process: Process{PID: pid,
+				Cmdline: "(pid " + strconv.Itoa(pid) + " from " + filepath.Base(pf.path) + ")"}, Role: pf.role, Via: pf.path, Why: "its pid file is in the home"})
+		}
+	}
+	// Ours: tied to the home by its pid file, its command line, its
+	// folder, its service, its environment, or a parent that is ours.
+	verdicts := map[int]verdict{}
+	var cands []Running
+	for _, p := range procs {
+		if p.PID == sys.Self() || p.Other {
 			continue
 		}
-		if !listed {
-			p = Process{PID: pid, Cmdline: "(pid " + strconv.Itoa(pid) + " from " + filepath.Base(pf.path) + ")"}
+		role, ok := sp.role(p, dir, sys.UserHome())
+		pf, named := pidFiles[p.PID]
+		if !ok && !named {
+			continue
 		}
-		seen[pid] = true
-		st.Processes = append(st.Processes, Running{Process: p, Role: pf.role, Via: pf.path})
+		if !ok {
+			role = pf.role
+		}
+		r := Running{Process: p, Role: role, Via: "process list"}
+		if named {
+			verdicts[p.PID], r.Why = ours, "its pid file "+pf.path+" is in the home"
+		} else {
+			verdicts[p.PID], r.Why = proof(sp, w, p, sys.Inspect(ctx, p.PID), units)
+		}
+		cands = append(cands, r)
+	}
+	for changed := true; changed; {
+		changed = false
+		for i, r := range cands {
+			if verdicts[r.PID] == unknown && verdicts[r.PPID] == ours && r.PPID > 1 {
+				verdicts[r.PID], cands[i].Why = ours, "its parent "+strconv.Itoa(r.PPID)+" is"
+				changed = true
+			}
+		}
+	}
+	for _, r := range cands {
+		switch verdicts[r.PID] {
+		case ours:
+			st.Processes = append(st.Processes, r)
+		case unknown:
+			if r.Why == "" {
+				r.Why = "nothing ties it to " + dir
+			}
+			st.Maybe = append(st.Maybe, r)
+		}
+	}
+	if sp.scopes != nil {
+		st.Scopes = sp.scopes(ctx, w, st.Processes)
 	}
 	slices.SortFunc(st.Processes, func(a, b Running) int { return a.PID - b.PID })
+	slices.SortFunc(st.Maybe, func(a, b Running) int { return a.PID - b.PID })
 	jobs, err := sp.jobs(dir)
 	if err != nil {
 		st.Problems = append(st.Problems, "could not read its schedules: "+err.Error())

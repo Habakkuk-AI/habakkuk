@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 )
 
 // globAll lists the files in dir that match any of the patterns.
@@ -69,13 +68,4 @@ func joinErrs(msgs []string) error {
 		return nil
 	}
 	return errors.New(strings.Join(msgs, "; "))
-}
-
-// brake is an old agent's own switch that stops it starting new work
-// while a file is there. Finish sets it, so a process of the old agent
-// that starts again later (a supervisor, a login item it missed) does
-// nothing; rollback removes it, but only when finish made it.
-type brake struct {
-	file func(dir string) string
-	text func(now time.Time) string
 }

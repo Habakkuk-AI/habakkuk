@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 )
 
 // A jobs file is a JSON file of schedules: {"jobs": [...]} or a bare
@@ -182,11 +181,67 @@ func runnableJobs(path, agent string) ([]Job, error) {
 	return out, nil
 }
 
-// pauseJobs pauses the jobs with these ids the way the old agent's own
-// pause command does: off and, with marks, marked paused with the time
-// and a reason. Without marks only "enabled" changes (a file format that
-// has no pause marker).
-func pauseJobs(path string, ids []string, now time.Time, marks bool) ([]string, error) {
+// fields are a job's values for the fields a pause changes, as raw
+// JSON. A field the job does not have is missing from the map.
+type fields = map[string]json.RawMessage
+
+// canon is a JSON value in one spelling, to compare two of them.
+func canon(raw json.RawMessage) string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return string(raw)
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// same reports whether a job holds exactly want for these keys.
+func same(have, want fields, keys []string) bool {
+	for _, k := range keys {
+		h, hok := have[k]
+		w, wok := want[k]
+		if hok != wok || hok && canon(h) != canon(w) {
+			return false
+		}
+	}
+	return true
+}
+
+func rawOf(v any) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
+}
+
+// readJobFields reads the keys of the jobs with these ids.
+func readJobFields(path string, ids, keys []string) (map[string]fields, error) {
+	f, err := readJobsFile(path)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]fields{}
+	for _, j := range f.jobs {
+		id := jobID(j)
+		if !slices.Contains(ids, id) {
+			continue
+		}
+		fs := fields{}
+		for _, k := range keys {
+			if v, ok := j[k]; ok {
+				fs[k] = rawOf(v)
+			}
+		}
+		out[id] = fs
+	}
+	return out, nil
+}
+
+// writeJobFields moves each job's keys from one set of values to another,
+// but only a job that still holds the first: one changed since is left as
+// it is. It returns the ids it changed. The file is copied aside once,
+// before its first change.
+func writeJobFields(path string, keys []string, changes map[string][2]fields) ([]string, error) {
 	f, err := readJobsFile(path)
 	if err != nil {
 		return nil, err
@@ -194,14 +249,32 @@ func pauseJobs(path string, ids []string, now time.Time, marks bool) ([]string, 
 	var done []string
 	for _, j := range f.jobs {
 		id := jobID(j)
-		if !slices.Contains(ids, id) || !jobRunnable(j) {
+		c, ok := changes[id]
+		if !ok {
 			continue
 		}
-		j["enabled"] = false
-		if marks {
-			j["state"] = "paused"
-			j["paused_at"] = now.Format("2006-01-02T15:04:05.000000-07:00")
-			j["paused_reason"] = pauseReason
+		have := fields{}
+		for _, k := range keys {
+			if v, ok := j[k]; ok {
+				have[k] = rawOf(v)
+			}
+		}
+		if !same(have, c[0], keys) {
+			continue
+		}
+		for _, k := range keys {
+			v, ok := c[1][k]
+			if !ok {
+				delete(j, k)
+				continue
+			}
+			dec := json.NewDecoder(bytes.NewReader(v))
+			dec.UseNumber()
+			var val any
+			if err := dec.Decode(&val); err != nil {
+				return nil, err
+			}
+			j[k] = val
 		}
 		done = append(done, id)
 	}
@@ -215,36 +288,4 @@ func pauseJobs(path string, ids []string, now time.Time, marks bool) ([]string, 
 		return nil, err
 	}
 	return done, nil
-}
-
-// resumeJob turns a job the cutover paused back on. Its next run time is
-// left as it was, so the old agent's own catch-up rule decides what
-// happens to a run it missed. With marks, a job paused since then by
-// someone else (another reason) is left alone.
-func resumeJob(path, id string, marks bool) error {
-	f, err := readJobsFile(path)
-	if err != nil {
-		return err
-	}
-	for _, j := range f.jobs {
-		if jobID(j) != id {
-			continue
-		}
-		if jobRunnable(j) {
-			return nil // already on
-		}
-		if !marks {
-			j["enabled"] = true
-			return f.write()
-		}
-		if reason, _ := j["paused_reason"].(string); reason != pauseReason {
-			return errors.New("it was paused again since, not by hk migrate finish")
-		}
-		j["enabled"] = true
-		j["state"] = "scheduled"
-		j["paused_at"] = nil
-		j["paused_reason"] = nil
-		return f.write()
-	}
-	return errors.New("it is no longer there")
 }

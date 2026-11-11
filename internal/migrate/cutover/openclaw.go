@@ -3,8 +3,10 @@ package cutover
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -39,6 +41,7 @@ import (
 
 var openclawSpec = &spec{
 	services: openclawServices,
+	home:     openclawHomeOf,
 	role: func(p Process, dir, _ string) (string, bool) {
 		args := p.Args()
 		if len(args) == 0 {
@@ -74,18 +77,15 @@ var openclawSpec = &spec{
 		return out
 	},
 	jobs: openclawJobs,
-	pause: func(store string, ids []string) ([]string, error) {
-		if strings.HasSuffix(store, ".json") {
-			return pauseJobs(store, ids, time.Now(), false)
+	store: func(path string) jobStore {
+		if strings.HasSuffix(path, ".json") {
+			return jsonStore(path, []string{"enabled"}, func(time.Time) fields { return fields{"enabled": rawOf(false)} })
 		}
-		return setOpenClawJobs(store, ids, false)
-	},
-	resume: func(store, id string) error {
-		if strings.HasSuffix(store, ".json") {
-			return resumeJob(store, id, false)
+		return jobStore{keys: []string{"column", "json"},
+			paused: func(time.Time) fields { return fields{"column": rawOf(0), "json": rawOf(false)} },
+			read:   func(ids []string) (map[string]fields, error) { return readOpenClawFields(path, ids) },
+			write:  func(c map[string][2]fields) ([]string, error) { return writeOpenClawFields(path, c) },
 		}
-		_, err := setOpenClawJobs(store, []string{id}, true)
-		return err
 	},
 	waSessions: func(dir string) []string {
 		var out []string
@@ -94,6 +94,36 @@ var openclawSpec = &spec{
 		}
 		return out
 	},
+}
+
+// openclawHomeOf: OPENCLAW_STATE_DIR names the home; OPENCLAW_PROFILE or
+// --profile NAME (--dev is the dev profile) names ~/.openclaw-NAME;
+// neither means the default home.
+func openclawHomeOf(w where, p Process, env map[string]string) (verdict, string) {
+	uh := w.sys.UserHome()
+	if d, ok := env["OPENCLAW_STATE_DIR"]; ok && d != "" {
+		if under(expandTilde(d, uh), w.dir) {
+			return ours, "its OPENCLAW_STATE_DIR is " + d
+		}
+		return theirs, "its OPENCLAW_STATE_DIR is " + d
+	}
+	prof := env["OPENCLAW_PROFILE"]
+	if f := wordAfter(p.Args(), "--profile"); f != "" {
+		prof = f
+	} else if hasWord(p.Args(), "--dev") {
+		prof = "dev"
+	}
+	home := filepath.Join(uh, ".openclaw")
+	if prof != "" && prof != "default" {
+		home += "-" + prof
+	}
+	switch {
+	case prof == "" && env == nil:
+		return unknown, ""
+	case isDefaultHome(w.dir, home):
+		return ours, "it uses " + home
+	}
+	return theirs, "it uses " + home
 }
 
 // isShortGatewayCommand: openclaw gateway status, stop and the like end
@@ -253,9 +283,61 @@ func readOpenClawJobs(path string) ([]Job, error) {
 	return out, rows.Err()
 }
 
-// setOpenClawJobs turns jobs on or off in both places OpenClaw keeps it.
-// It returns the ids it changed.
-func setOpenClawJobs(path string, ids []string, on bool) ([]string, error) {
+// readOpenClawFields reads where each job keeps whether it is on: the
+// enabled column ("column") and job_json's "enabled" ("json", missing
+// when job_json has none).
+func readOpenClawFields(path string, ids []string) (map[string]fields, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	db, err := openOpenClawDB(path, false)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	out := map[string]fields{}
+	for _, id := range ids {
+		f, err := openClawFields(ctx, db, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out[id] = f
+	}
+	return out, nil
+}
+
+type queryer interface {
+	QueryRowContext(ctx context.Context, q string, args ...any) *sql.Row
+}
+
+func openClawFields(ctx context.Context, db queryer, id string) (fields, error) {
+	var col int64
+	var typ sql.NullString
+	if err := db.QueryRowContext(ctx, `SELECT enabled, json_type(job_json, '$.enabled') FROM cron_jobs WHERE job_id = ? LIMIT 1`, id).Scan(&col, &typ); err != nil {
+		return nil, err
+	}
+	f := fields{"column": rawOf(col)}
+	switch typ.String {
+	case "true":
+		f["json"] = rawOf(true)
+	case "false":
+		f["json"] = rawOf(false)
+	case "":
+	default:
+		var v sql.NullString
+		if err := db.QueryRowContext(ctx, `SELECT json_extract(job_json, '$.enabled') FROM cron_jobs WHERE job_id = ? LIMIT 1`, id).Scan(&v); err != nil {
+			return nil, err
+		}
+		f["json"] = rawOf(v.String)
+	}
+	return f, nil
+}
+
+// writeOpenClawFields moves each job from one state to another in both
+// places, only where it still holds the first.
+func writeOpenClawFields(path string, changes map[string][2]fields) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if !fileExists(path) {
@@ -271,29 +353,37 @@ func setOpenClawJobs(path string, ids []string, on bool) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	val, want := 0, "false"
-	if on {
-		val, want = 1, "true"
-	}
+	keys := []string{"column", "json"}
 	var done []string
-	for _, id := range ids {
-		res, err := tx.ExecContext(ctx, `UPDATE cron_jobs SET enabled = ?, job_json = json_set(job_json, '$.enabled', json(?))
-			WHERE job_id = ? AND (enabled != ? OR COALESCE(json_extract(job_json, '$.enabled'), 1) != ?)`, val, want, id, val, val)
+	for _, id := range slices.Sorted(maps.Keys(changes)) {
+		c := changes[id]
+		have, err := openClawFields(ctx, tx, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
-		if n, _ := res.RowsAffected(); n > 0 {
-			done = append(done, id)
+		if !same(have, c[0], keys) {
+			continue
 		}
+		var col int64
+		if err := json.Unmarshal(c[1]["column"], &col); err != nil {
+			return nil, fmt.Errorf("job %s: %w", id, err)
+		}
+		q := `UPDATE cron_jobs SET enabled = ?, job_json = json_remove(job_json, '$.enabled') WHERE job_id = ?`
+		args := []any{col, id}
+		if v, ok := c[1]["json"]; ok {
+			q = `UPDATE cron_jobs SET enabled = ?, job_json = json_set(job_json, '$.enabled', json(?)) WHERE job_id = ?`
+			args = []any{col, string(v), id}
+		}
+		if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+			return nil, err
+		}
+		done = append(done, id)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
-	}
-	if on && len(done) == 0 && len(ids) > 0 {
-		var n int
-		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM cron_jobs WHERE job_id = ?`, ids[0]).Scan(&n); err == nil && n == 0 {
-			return nil, errors.New("it is no longer there")
-		}
 	}
 	return done, nil
 }

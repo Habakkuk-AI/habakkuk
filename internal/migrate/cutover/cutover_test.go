@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -162,6 +163,7 @@ func TestFinishThenRollbackHermes(t *testing.T) {
 	ctx := context.Background()
 	sys, userHome, dir := hermesRunning(t)
 	home, found := imported(t, migrate.Hermes, userHome)
+	jobsBefore := hermesJobs(t, dir)
 	// A schedule of your own, paused, that the old agent never had.
 	db, err := app.OpenControl(ctx, home)
 	if err != nil {
@@ -216,8 +218,13 @@ func TestFinishThenRollbackHermes(t *testing.T) {
 	if !fileExists(filepath.Join(dir, "cron", "jobs.json.before-habakkuk")) {
 		t.Error("no copy of jobs.json before the change")
 	}
-	if !fileExists(filepath.Join(dir, "ESTOP")) {
-		t.Error("the old agent's pause switch is not set")
+	for _, h := range []string{dir, filepath.Join(dir, "profiles", "coder")} {
+		if !fileExists(filepath.Join(h, "ESTOP")) {
+			t.Errorf("the old agent's pause switch is not set in %s", h)
+		}
+	}
+	if fileExists(filepath.Join(dir, "profiles", "stray", "ESTOP")) {
+		t.Error("a folder that is not a profile got a pause switch")
 	}
 	after := habakkukSchedules(t, home)
 	for _, name := range []string{"habakkuk/Morning brief", "habakkuk/Inbox sweep", "habakkuk/Digest script"} {
@@ -252,34 +259,48 @@ func TestFinishThenRollbackHermes(t *testing.T) {
 	if !slices.ContainsFunc(sys.procs, func(p Process) bool { return p.PID == 100 }) {
 		t.Error("the gateway did not come back with its unit")
 	}
-	if !slices.ContainsFunc(rb.Left, func(l string) bool { return strings.Contains(l, "kanban_worker_client") }) {
-		t.Errorf("rollback should say the worker it stopped is not started again: %v", rb.Left)
+	if len(rb.Left) > 0 {
+		t.Errorf("rollback left steps: %v", rb.Left)
 	}
-	jobs = hermesJobs(t, dir)
-	for _, id := range []string{"a1b2c3d4e5f6", "b2c3d4e5f6a1", "c3d4e5f6a1b2", "e5f6a1b2c3d4"} {
-		if j := jobs[id]; j["enabled"] != true || j["state"] != "scheduled" || j["paused_at"] != nil {
-			t.Errorf("job %s is not back on: %v", id, j)
+	if !slices.ContainsFunc(rb.Gone, func(l string) bool { return strings.Contains(l, "kanban_worker_client") }) {
+		t.Errorf("rollback should name the worker it can't start again: %v", rb.Gone)
+	}
+	// Each job exactly as it was before finish: no field added.
+	if got := hermesJobs(t, dir); !reflect.DeepEqual(got, jobsBefore) {
+		t.Errorf("jobs after rollback differ from before:\n got %v\nwant %v", got, jobsBefore)
+	}
+	for _, h := range []string{dir, filepath.Join(dir, "profiles", "coder")} {
+		if fileExists(filepath.Join(h, "ESTOP")) {
+			t.Errorf("the pause switch in %s is still set", h)
 		}
-	}
-	if jobs["d4e5f6a1b2c3"]["enabled"] != false {
-		t.Error("rollback turned on a job that was off before")
-	}
-	if fileExists(filepath.Join(dir, "ESTOP")) {
-		t.Error("the pause switch is still set")
 	}
 	for name, on := range habakkukSchedules(t, home) {
 		if on {
 			t.Errorf("%s is still on in Habakkuk after rollback", name)
 		}
 	}
-	// The worker cannot be started again, so the record stays, and a
-	// second rollback is harmless.
-	if rb.Retired != "" {
-		t.Error("the record was retired with a step left")
+	// Nothing left: the record is retired, and a second rollback has
+	// nothing to do and starts nothing again.
+	if rb.Retired == "" || fileExists(RecordPath(home, migrate.Hermes)) {
+		t.Errorf("record not retired: %q", rb.Retired)
 	}
-	if _, err := Rollback(ctx, sys, home, migrate.Hermes, fixedNow); err != nil {
-		t.Fatalf("second rollback: %v", err)
+	starts := countRan(sys, "systemctl --user start hermes-gateway.service")
+	if _, err := Rollback(ctx, sys, home, migrate.Hermes, fixedNow); err == nil {
+		t.Error("a second rollback found something to do")
 	}
+	if n := countRan(sys, "systemctl --user start hermes-gateway.service"); n != 1 || starts != 1 {
+		t.Errorf("the unit was started %d times", n)
+	}
+}
+
+func countRan(sys *fakeSystem, line string) int {
+	n := 0
+	for _, l := range sys.ran {
+		if l == line {
+			n++
+		}
+	}
+	return n
 }
 
 func fixedNow() time.Time { return time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC) }
@@ -384,13 +405,19 @@ func TestStopForcesAProcessThatIgnoresTerm(t *testing.T) {
 	}
 }
 
-func TestRollbackLeavesAJobPausedSinceByYou(t *testing.T) {
+func TestJobFieldsMoveOnlyFromWhatTheyHold(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "jobs.json")
-	if err := os.WriteFile(path, []byte(`{"jobs":[{"id":"x","enabled":true,"repeat":{"times":1000000}},{"id":"y","enabled":true}],"updated_at":"t"}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"jobs":[{"id":"x","enabled":true,"state":"scheduled","repeat":{"times":1000000}},{"id":"y"}],"updated_at":"t"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	done, err := pauseJobs(path, []string{"x", "y"}, fixedNow(), true)
+	js := hermesSpec.store(path)
+	prior, err := js.read([]string{"x", "y"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := js.paused(fixedNow())
+	done, err := js.write(map[string][2]fields{"x": {prior["x"], set}, "y": {prior["y"], set}})
 	if err != nil || len(done) != 2 {
 		t.Fatalf("paused %v, %v", done, err)
 	}
@@ -404,14 +431,25 @@ func TestRollbackLeavesAJobPausedSinceByYou(t *testing.T) {
 	if err := f.write(); err != nil {
 		t.Fatal(err)
 	}
-	if err := resumeJob(path, "x", true); err != nil {
-		t.Fatal(err)
+	back, err := js.write(map[string][2]fields{"x": {set, prior["x"]}, "y": {set, prior["y"]}})
+	if err != nil || !slices.Equal(back, []string{"x"}) {
+		t.Fatalf("put back %v, %v; want only x", back, err)
 	}
-	if err := resumeJob(path, "y", true); err == nil {
-		t.Error("a job paused since by someone else was resumed")
+	jobs := map[string]map[string]any{}
+	f, _ = readJobsFile(path)
+	for _, j := range f.jobs {
+		jobs[jobID(j)] = j
 	}
-	if err := resumeJob(path, "x", true); err != nil {
-		t.Errorf("resuming twice: %v", err)
+	// x exactly as it was: no field added, none left behind.
+	if x := jobs["x"]; x["enabled"] != true || x["state"] != "scheduled" || len(x) != 4 {
+		t.Errorf("x = %v", x)
+	}
+	if jobs["y"]["paused_reason"] != "mine" {
+		t.Error("a job paused since by someone else was changed")
+	}
+	// Twice changes nothing.
+	if again, _ := js.write(map[string][2]fields{"x": {set, prior["x"]}}); len(again) != 0 {
+		t.Errorf("put back twice: %v", again)
 	}
 }
 
@@ -664,14 +702,15 @@ func TestSharedChannels(t *testing.T) {
 }
 
 func TestParseProcesses(t *testing.T) {
-	ps := " 100     1 /usr/bin/python3 -m hermes_cli.main gateway run\n  200   100 node bridge.js --session /a b\n junk\n"
-	got := parseProcesses(ps, "")
-	if len(got) != 2 || got[0].PID != 100 || got[1].PPID != 100 || got[1].Cmdline != "node bridge.js --session /a b" {
+	other := func(owner string) bool { return owner != "501" }
+	ps := " 100     1  501 /usr/bin/python3 -m hermes_cli.main gateway run\n  200   100 502 node bridge.js --session /a  b\n junk\n"
+	got := parseProcesses(ps, "", other)
+	if len(got) != 2 || got[0].PID != 100 || got[0].Other || got[1].PPID != 100 || !got[1].Other || got[1].Cmdline != "node bridge.js --session /a  b" {
 		t.Errorf("%+v", got)
 	}
-	win := "4321\t12\t\"C:\\Program Files\\nodejs\\node.exe\" C:\\x\\openclaw\\dist\\index.js gateway\r\n8\t4\t\r\n"
-	got = parseProcesses(win, "\t")
-	if len(got) != 1 || got[0].PID != 4321 {
+	win := "4321\t12\t1\t\"C:\\Program Files\\nodejs\\node.exe\" C:\\x\\openclaw\\dist\\index.js gateway\r\n8\t4\t0\t\r\n"
+	got = parseProcesses(win, "\t", func(f string) bool { return f != "1" })
+	if len(got) != 1 || got[0].PID != 4321 || got[0].Other {
 		t.Errorf("%+v", got)
 	}
 	if r, ok := openclawSpec.role(got[0], "", ""); !ok || r != RoleGateway {
@@ -707,7 +746,7 @@ func TestHermesRoles(t *testing.T) {
 		"python -m cron.scheduler --external-worker-file /h/cron/external-workers/x": RoleWorker,
 		"python -m hermes_cli.kanban_worker_client":                                  RoleWorker,
 		"hermes kanban daemon --pidfile /tmp/k.pid":                                  RoleWorker,
-		"hermes dashboard":       RoleScheduler,
+		"hermes dashboard":       RoleDashboard,
 		"hermes gateway stop":    "",
 		"hermes chat":            "",
 		"grep hermes":            "",

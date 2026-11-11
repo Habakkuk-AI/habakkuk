@@ -41,7 +41,8 @@ func (f *fakeComputer) Wait(time.Duration) {}
 func (f *fakeComputer) Processes(context.Context) ([]cutover.Process, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return slices.Clone(f.procs), nil
+	// A real list is never empty: the system's own processes are there.
+	return append(slices.Clone(f.procs), cutover.Process{PID: 1, Cmdline: "/sbin/init"}), nil
 }
 
 func (f *fakeComputer) Alive(pid int) bool {
@@ -58,6 +59,12 @@ func (f *fakeComputer) Stop(pid int, _ bool) error {
 		f.procs = slices.DeleteFunc(f.procs, func(p cutover.Process) bool { return p.PID == pid })
 	}
 	return nil
+}
+
+// Inspect: every process's environment is readable and names no home,
+// so it uses the default home.
+func (f *fakeComputer) Inspect(context.Context, int) cutover.ProcInfo {
+	return cutover.ProcInfo{Env: map[string]string{}}
 }
 
 func (f *fakeComputer) Run(context.Context, string, ...string) (string, error) {
@@ -191,13 +198,14 @@ func TestMigrateFinishAndRollbackCommands(t *testing.T) {
 		t.Errorf("second finish: %v\n%s", err, out)
 	}
 
-	// Rollback can't start the processes that ran outside a service, and
-	// says how; it still pauses ours and turns the old jobs back on.
+	// Rollback can't start the processes that ran outside a service: it
+	// names them, and still finishes.
 	out, err = migrateRun(t, home, user, "", "rollback", "-y")
-	if err == nil {
-		t.Errorf("rollback with steps left should fail:\n%s", out)
+	if err != nil {
+		t.Errorf("rollback: %v\n%s", err, out)
 	}
-	for _, want := range []string{"Paused 3 imported schedules in Habakkuk again", "Turned 4 of its schedules back on", "start it the way you did before: hermes gateway run"} {
+	for _, want := range []string{"Paused 3 imported schedules in Habakkuk again", "Turned 4 of its schedules back on",
+		"Start the ones you need the way you did before:", "the gateway (pid 100): hermes gateway run", "Hermes Agent runs again"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rollback output lacks %q:\n%s", want, out)
 		}
@@ -300,4 +308,29 @@ func TestDoctorWarnsWhenTheOldAgentStillRuns(t *testing.T) {
 		}
 	}
 	assertNoSecrets(t, got)
+}
+
+// Its dashboard alone ticks schedules but polls no channel: doctor warns
+// about the schedules only.
+func TestDoctorDashboardAloneIsNoChannelConflict(t *testing.T) {
+	for _, k := range []string{"HERMES_HOME", "OPENCLAW_STATE_DIR", "OPENCLAW_PROFILE", "TELEGRAM_BOT_TOKEN"} {
+		t.Setenv(k, "")
+	}
+	user, _ := sourceHome(t, "hermes")
+	pc := &fakeComputer{home: user}
+	useComputer(t, pc)
+	home := t.TempDir()
+	if out, err := migrateRun(t, home, user, "", "--from", "hermes", "-y", "--secrets", "copy"); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	pc.procs = []cutover.Process{{PID: 100, PPID: 1, Cmdline: "hermes dashboard"}}
+	var out bytes.Buffer
+	if n := cutoverDoctor(context.Background(), home, &out); n != 0 {
+		t.Errorf("no schedule is on in both, and the dashboard polls no channel, yet %d problems:\n%s", n, out.String())
+	}
+	pc.procs = append(pc.procs, cutover.Process{PID: 101, PPID: 1, Cmdline: "hermes gateway run"})
+	out.Reset()
+	if n := cutoverDoctor(context.Background(), home, &out); n != 1 || !strings.Contains(out.String(), "uses the same channel") {
+		t.Errorf("with its gateway running: %d problems:\n%s", n, out.String())
+	}
 }

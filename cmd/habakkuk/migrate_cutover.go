@@ -214,11 +214,20 @@ func (m *migration) finish(ctx context.Context, sys cutover.System, a cutoverArg
 			m.say("Not done: %s.", l)
 		}
 	}
-	if errors.Is(err, cutover.ErrSchedulerRunning) {
-		m.say("\n%s's scheduler is still running:", st.Label)
+	switch {
+	case errors.Is(err, cutover.ErrSchedulerRunning):
+		m.say("\n%s's scheduler is still running, or may be:", st.Label)
 		m.writeStatus(res.Status)
-		m.say("Stop it, then run hk migrate finish again. To resume the imported schedules anyway (they may run twice), run hk migrate finish --force.")
+		m.say("Stop it, then run hk migrate finish again. If what's listed isn't %s's, or to resume the imported schedules anyway (they may run twice), run hk migrate finish --force.", st.Label)
 		return errors.New("the imported schedules were left paused")
+	case errors.Is(err, cutover.ErrUnchecked):
+		m.say("\nhk migrate finish couldn't see what still runs, so it can't tell whether %s has stopped.", st.Label)
+		m.say("Check by hand that no process of %s runs (its gateway, workers and dashboard), then run hk migrate finish --force.", st.Label)
+		return errors.New("the imported schedules were left paused")
+	case errors.Is(err, cutover.ErrRecord):
+		m.say("\nThe record of what changed couldn't be written, so nothing more was changed.")
+		m.say("Fix the problem below, then run hk migrate finish again, or hk migrate rollback to undo what was done.")
+		return err
 	}
 	if err != nil {
 		return err
@@ -263,11 +272,20 @@ func (m *migration) rollback(ctx context.Context, sys cutover.System, from strin
 		if res.Resumed > 0 {
 			m.say("Turned %s back on in %s.", count(res.Resumed, "of its schedules", "of its schedules"), migrate.Label(from))
 		}
-		if res.Brake != "" {
-			m.say("Removed %s's pause switch (%s).", migrate.Label(from), res.Brake)
+		for _, b := range res.Brakes {
+			m.say("Removed %s's pause switch (%s).", migrate.Label(from), b)
 		}
 		for _, s := range res.Services {
-			m.say("Enabled and started %s again.", s)
+			m.say("Put %s back as it was.", s)
+		}
+		for _, k := range res.Kept {
+			m.say("Left %s as it is: it was changed after hk migrate finish paused it.", k)
+		}
+		if len(res.Gone) > 0 {
+			m.say("These were stopped outside any service, so they can't be started again for you. Start the ones you need the way you did before:")
+			for _, g := range res.Gone {
+				m.say("  %s", g)
+			}
 		}
 		for _, l := range res.Left {
 			m.say("Not done: %s.", l)
@@ -308,6 +326,9 @@ func (m *migration) writeStatus(st *cutover.Status) {
 	for _, p := range st.Processes {
 		m.say("  %s, pid %d: %s", p.Role, p.PID, shorten(p.Cmdline, 90))
 	}
+	for _, p := range st.Maybe {
+		m.say("  may be its %s, pid %d (not stopped: %s): %s", p.Role, p.PID, p.Why, shorten(p.Cmdline, 90))
+	}
 	if n := len(st.Jobs); n > 0 {
 		m.say("  %s on in %s", count(n, "schedule", "schedules"), st.Label)
 	}
@@ -344,12 +365,12 @@ func (m *migration) cutoverSection(ctx context.Context, found *migrate.Found) {
 	}
 	cfg, _ := config.Load(m.home)
 	shared := cutover.SharedChannels(found, cfg, habakkukSecret(m.home, m.getenv))
-	if !st.Live() && len(st.Jobs) == 0 && len(shared) == 0 {
+	if !st.Live() && len(st.Maybe) == 0 && len(st.Jobs) == 0 && len(shared) == 0 {
 		return
 	}
 	m.say("\nThe old agent")
 	m.say("  %s.", st.Summary())
-	if st.Live() {
+	if st.Live() || len(st.Maybe) > 0 {
 		m.writeStatus(st)
 	}
 	for _, s := range shared {
@@ -406,7 +427,7 @@ func cutoverDoctor(ctx context.Context, home string, w io.Writer) int {
 		}
 		st, err := cutover.Detect(ctx, sys, cutover.Options{From: from, Source: dir})
 		if err != nil || len(st.Processes) == 0 {
-			continue
+			continue // only what is shown to be its own counts here
 		}
 		fix := "hk migrate finish --from " + from
 		// Names alone: the agent names the import used are not known here.
@@ -421,6 +442,9 @@ func cutoverDoctor(ctx context.Context, home string, w io.Writer) int {
 			problems++
 		}
 		found := readForCutover(from, dir, "", nil, sys.UserHome())
+		if !st.UsesChannels() {
+			continue // its dashboard alone polls no channel
+		}
 		if shared := cutover.SharedChannels(found, cfg, habakkukSecret(home, nil)); len(shared) > 0 {
 			var names []string
 			for _, s := range shared {

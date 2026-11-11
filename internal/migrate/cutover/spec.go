@@ -1,8 +1,10 @@
 package cutover
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/migrate"
 )
@@ -17,6 +19,9 @@ type spec struct {
 	// role says whether a process belongs to the agent in dir, and what
 	// it does there.
 	role func(p Process, dir, userHome string) (string, bool)
+	// home judges, from the environment (nil when unreadable) and the
+	// command line's profile flags, whether a process uses this home.
+	home func(w where, p Process, env map[string]string) (verdict, string)
 	// mayBe reports whether a process could be the agent at all, to tell
 	// a live pid file from a pid the system gave to another program.
 	mayBe func(p Process) bool
@@ -24,18 +29,37 @@ type spec struct {
 	pidFiles func(dir string) []pidFile
 	// jobs are its schedules that are on.
 	jobs func(dir string) ([]Job, error)
-	// pause turns schedules off in their store; it returns the ids it
-	// turned off (ones already off are not returned).
-	pause func(store string, ids []string) ([]string, error)
-	// resume turns one back on.
-	resume func(store, id string) error
+	// store is how a schedule store is paused and put back.
+	store func(path string) jobStore
 	// waSessions are its WhatsApp linked-device sessions that hold a login.
 	waSessions func(dir string) []string
-	// brake is its own stop switch, when it has one.
-	brake *brake
+	// brakes are its own stop switches, when it has them.
+	brakes func(dir string) []string
+	// brakeText is what a stop switch file holds.
+	brakeText func(now time.Time) string
+	// scopes are the systemd scopes its workers of this home run in.
+	scopes func(ctx context.Context, w where, procs []Running) []string
 }
 
 type pidFile struct{ path, role string }
+
+// jobStore reads and writes the fields of a store's jobs that a pause
+// changes. Pausing moves a job from its fields as read to paused(); rollback
+// moves it back, only where it still holds what the pause wrote.
+type jobStore struct {
+	keys   []string
+	paused func(now time.Time) fields
+	read   func(ids []string) (map[string]fields, error)
+	write  func(changes map[string][2]fields) ([]string, error)
+}
+
+// jsonStore is a jobs file.
+func jsonStore(path string, keys []string, paused func(time.Time) fields) jobStore {
+	return jobStore{keys: keys, paused: paused,
+		read:  func(ids []string) (map[string]fields, error) { return readJobFields(path, ids, keys) },
+		write: func(c map[string][2]fields) ([]string, error) { return writeJobFields(path, keys, c) },
+	}
+}
 
 // where is the old agent's home and the computer it is on.
 type where struct {

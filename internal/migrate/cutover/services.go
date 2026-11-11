@@ -160,9 +160,13 @@ func restoreService(ctx context.Context, sys System, s Service, was ServiceState
 			_, err = sys.Run(ctx, "systemctl", "--user", "start", s.Name)
 		}
 	case Launchd:
+		// Enabled again only if it was before: finish disables it, and an
+		// agent you had turned off stays off.
 		target := launchdTarget(sys, s)
-		if _, err = sys.Run(ctx, "launchctl", "enable", target); err != nil {
-			return err
+		if was.Enabled {
+			if _, err = sys.Run(ctx, "launchctl", "enable", target); err != nil {
+				return err
+			}
 		}
 		if was.Active && s.File != "" {
 			_, err = sys.Run(ctx, "launchctl", "bootstrap", "gui/"+strconv.Itoa(sys.UID()), s.File)
