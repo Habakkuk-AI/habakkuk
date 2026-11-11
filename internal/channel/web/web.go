@@ -27,6 +27,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel"
+	"github.com/habakkuk-ai/habakkuk/internal/channel/webpush"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 )
@@ -72,6 +73,9 @@ type Server struct {
 	// A2A serves the Agent2Agent protocol at /a2a and the Agent Card at
 	// /.well-known/agent-card.json; it checks its own token. nil is off.
 	A2A http.Handler
+	// Push sends Web Push notifications to devices that turned them on in
+	// the dashboard (push.go); nil is off.
+	Push *webpush.Service
 
 	mu        sync.Mutex
 	inbox     channel.Inbox // set while the supervisor runs the adapter
@@ -120,6 +124,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		ErrorLog:    slog.NewLogLogger(s.Log.Handler(), slog.LevelWarn),
 	}
 	go s.prune(ctx)
+	go s.watchApprovals(ctx)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	select {
@@ -383,6 +388,9 @@ type chatRequest struct {
 	Text         string `json:"text"`
 	Agent        string `json:"agent"`
 	ID           string `json:"id"` // optional client message id; resending it is a no-op
+	// Spoken: the text is a transcript of Live mode's speech, never set by
+	// a client.
+	Spoken bool `json:"-"`
 }
 
 // chat hands a message to the gateway and returns the turn it started, or
@@ -447,7 +455,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	s.hub.notify(req.Conversation, false)
 	m := channel.Message{
 		Account: s.Account, Conversation: req.Conversation, ID: req.ID, Sender: "web",
-		Text: req.Text, Direct: true, Agent: req.Agent,
+		Text: req.Text, Direct: true, Agent: req.Agent, Plain: true, // typed into the chat
 	}
 	in.Deliver(ctx, m)
 	out := map[string]string{"message": req.ID, "turn": ""}
@@ -577,6 +585,7 @@ func (s *Server) Send(ctx context.Context, to channel.Address, text, _ string) e
 		return err
 	}
 	s.hub.notify(to.Conversation, false)
+	s.replyPushed(ctx, to, text)
 	return nil
 }
 

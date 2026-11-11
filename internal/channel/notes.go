@@ -61,7 +61,7 @@ func (g *Gateway) recordNote(ctx context.Context, jobID string, p deliverPayload
 		text = clip(text, maxNoteStored)
 	}
 	if err := g.State.AddChatNote(ctx, state.ChatNote{Conversation: to.key(), Delivery: jobID,
-		Agent: p.Agent, What: p.What, Text: text, At: g.now()}); err != nil {
+		Agent: p.Agent, What: p.What, Text: text, At: g.now(), Tainted: p.Tainted}); err != nil {
 		g.Log.Warn("record chat note failed", "channel", to.Account, "err", err)
 	}
 }
@@ -93,6 +93,19 @@ func (g *Gateway) TakeNotes(ctx context.Context, sessionID, jobID string) string
 		return ""
 	}
 	return renderNotes(notes, conv.Agent, g.now(), g.location())
+}
+
+// NotesTaken implements agent.ChatNotes.
+func (g *Gateway) NotesTaken(ctx context.Context, jobID string) bool {
+	if g.State == nil {
+		return false
+	}
+	taken, err := g.State.ChatNotesTaken(ctx, jobID)
+	if err != nil {
+		g.Log.Warn("read chat notes failed", "job", jobID, "err", err)
+		return true // unknown: no rules for this turn
+	}
+	return taken
 }
 
 // NotesSeen implements agent.ChatNotes.

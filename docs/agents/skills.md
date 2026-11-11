@@ -74,6 +74,8 @@ hk skills enable news-digest       # back on
 
 The name is all that counts, so this works for a bundled skill, a shared one, a plugin's and an agent's own. `hk serve` doesn't need a restart.
 
+Turning a skill on never approves one. A skill that's waiting for you stays out until you approve that skill itself: one you installed that ships scripts (`hk skills approve NAME`), one `hk migrate` brought in from a project (`hk skills approve -agent AGENT NAME`), or one an agent saved after reading outside content (`hk skills approve AGENT/NAME`). While it waits, the agent uses whatever else has that name, such as the bundled skill.
+
 You can keep the list in `config.yaml` instead, and turn off every bundled skill at once:
 
 ```yaml
@@ -116,7 +118,7 @@ hk skills approve NAME                               # after reading it
 
 Names come from the public directory at [habakkuk.ai/skills](https://www.habakkuk.ai/skills), which Habakkuk uses as its default registry. It is contacted only when you run `hk skills` or `hk plugins` with `search`, `install` or `update`. To stop using it, set `skills.default_registry: "off"`. See [Registries](../tools/plugins.md#registries).
 
-An installed skill is untrusted until you run `hk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
+An installed skill is untrusted until you run `hk skills approve`. Until then, a skill that ships scripts stays disabled, and one without scripts loads with a caution in front of it. A skill `hk migrate` brought in from a project folder stays disabled until you run `hk skills approve -agent AGENT NAME`, scripts or not. Every install is pinned, hashed and scanned. See [Plugins and outside skills](../tools/plugins.md).
 
 ## The curator
 

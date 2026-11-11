@@ -17,9 +17,14 @@ import (
 type Here func(ctx context.Context, sessionID string) json.RawMessage
 
 // RegisterTools adds the "schedule" toolset. Creating a schedule grants no
-// new power: scheduled runs are unattended, so anything needing approval is
-// denied there. The tools therefore carry network risk (allowed in workspace
-// mode, denied in read-only mode).
+// new power: a call that needs approval in a scheduled run asks the owner
+// in the chat the schedule delivers to, or is denied when there is no such
+// chat. Approval rules never answer for a scheduled run. A schedule
+// created by a turn that isn't a clean one the owner typed
+// (tools.Env.Untrusted, or one rules are off for) is marked tainted, and so
+// is every one of its runs, so their risky calls need a person.
+// The tools therefore carry network risk (allowed in workspace mode,
+// denied in read-only mode).
 func RegisterTools(r *tools.Registry, st *Store, here Here) {
 	r.Register("schedule", createTool{st, here})
 	r.Register("schedule", listTool{st})
@@ -72,7 +77,9 @@ func (t createTool) Run(ctx context.Context, env *tools.Env, input json.RawMessa
 	}
 	// Script schedules run shell commands unattended, so this tool must never
 	// set Command, Workdir or the other script fields.
-	sc := Schedule{Agent: env.Agent, Name: in.Name, Spec: in.When, Prompt: in.Prompt}
+	// Only a clean turn of the owner's own makes a schedule that approval
+	// rules answer for; one from any other turn runs tainted.
+	sc := Schedule{Agent: env.Agent, Name: in.Name, Spec: in.When, Prompt: in.Prompt, Tainted: notOwnersOwn(env)}
 	if (in.Deliver == nil || *in.Deliver) && t.here != nil {
 		sc.DeliverTo = t.here(ctx, env.Session)
 	}
@@ -223,6 +230,13 @@ func (t pauseTool) Run(ctx context.Context, env *tools.Env, input json.RawMessag
 	if err := t.st.owned(ctx, in.ID, env.Agent); err != nil {
 		return "", err
 	}
+	// Whoever paused a schedule (the owner, or an import that leaves
+	// script schedules paused) is the one to resume it: a turn that isn't
+	// a clean one the owner typed (the test schedule_create uses) may
+	// pause but not resume.
+	if !in.Paused && notOwnersOwn(env) {
+		return "", fmt.Errorf("%w: this turn can't resume a paused schedule, because it isn't a clean request the owner typed (it read outside content, or came from elsewhere); tell the user to resume it with hk schedules resume %s or from the dashboard", tools.ErrDenied, in.ID)
+	}
 	if err := t.st.SetEnabled(ctx, in.ID, !in.Paused); err != nil {
 		return "", err
 	}
@@ -231,6 +245,13 @@ func (t pauseTool) Run(ctx context.Context, env *tools.Env, input json.RawMessag
 	}
 	return "Resumed " + in.ID + ".", nil
 }
+
+// notOwnersOwn reports whether a turn isn't a clean one the owner typed:
+// it read outside content (tools.Env.Untrusted), or approval rules are off
+// for its kind (a scheduled or board run, an API request, a sub-agent).
+// A schedule such a turn creates runs tainted, and such a turn can't
+// resume a paused one.
+func notOwnersOwn(env *tools.Env) bool { return env.Untrusted() || env.RulesOff }
 
 // owned stops one agent from changing another agent's schedules.
 func (s *Store) owned(ctx context.Context, id, agentName string) error {

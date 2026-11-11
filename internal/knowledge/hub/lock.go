@@ -42,7 +42,10 @@ type Entry struct {
 	// Trusted is false until the owner approves the package. Untrusted
 	// skills are loaded with a warning not to run their scripts unasked;
 	// plugins load only when trusted and enabled.
-	Trusted bool     `json:"trusted"`
+	Trusted bool `json:"trusted"`
+	// Held keeps a skill from loading at all until it is approved, scripts
+	// or not: one brought in from a project folder someone else wrote.
+	Held    bool     `json:"held,omitempty"`
 	Enabled bool     `json:"enabled,omitempty"` // plugins
 	Flags   []string `json:"flags,omitempty"`   // scan findings accepted with -y
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/app"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/llm/auth"
+	"github.com/habakkuk-ai/habakkuk/internal/protocols/mcp"
 )
 
 const mcpLoginUsage = `usage: hk mcp login [-device] [-no-browser] NAME
@@ -45,7 +46,7 @@ func mcpLoginCmd(ctx context.Context, home string, args []string) error {
 		return err
 	}
 	l := auth.MCPLogin{
-		Server: name, URL: s.URL, ClientID: s.ClientID, Scopes: s.Scopes, Port: s.CallbackPort, Device: *device,
+		Server: name, URL: mcp.Expand(s.URL, a.Secret), ClientID: s.ClientID, Scopes: s.Scopes, Port: s.CallbackPort, Device: *device,
 		Say: func(line string) { fmt.Println(line) },
 	}
 	if s.ClientSecretEnv != "" {

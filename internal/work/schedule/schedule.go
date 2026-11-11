@@ -46,6 +46,8 @@ ALTER TABLE schedules ADD COLUMN workdir     TEXT NOT NULL DEFAULT '';
 ALTER TABLE schedules ADD COLUMN on_output   TEXT NOT NULL DEFAULT '';
 ALTER TABLE schedules ADD COLUMN last_output TEXT NOT NULL DEFAULT '';
 ALTER TABLE schedules ADD COLUMN fail_streak INTEGER NOT NULL DEFAULT 0;
+`}, {Version: 6, SQL: `
+ALTER TABLE schedules ADD COLUMN tainted INTEGER NOT NULL DEFAULT 0;
 `}}
 
 // KindScheduled is the job that starts one scheduled run.
@@ -81,6 +83,10 @@ type Schedule struct {
 	LastOutput string // a script's last output, capped
 	FailStreak int    // consecutive failed script runs
 	CreatedAt  time.Time
+	// Tainted: a turn that had read outside content created the schedule,
+	// so every run starts tainted: approval rules never answer for it and
+	// risky calls need a person (tools.Env.Untrusted).
+	Tainted bool
 }
 
 type Store struct {
@@ -146,9 +152,9 @@ func (s *Store) Create(ctx context.Context, sc Schedule) (*Schedule, error) {
 	}
 	sc.ID, sc.NextRun, sc.Enabled, sc.CreatedAt = jobs.NewID("sch"), next, true, s.now()
 	_, err = s.db.ExecContext(ctx, `INSERT INTO schedules (id, agent, name, spec, prompt, deliver_to,
-		command, timeout_s, workdir, on_output, next_run, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, sc.ID, sc.Agent, sc.Name, sc.Spec, sc.Prompt, string(sc.DeliverTo),
-		sc.Command, int64(sc.Timeout/time.Second), sc.Workdir, sc.OnOutput, next.UnixMilli(), sc.CreatedAt.UnixMilli())
+		command, timeout_s, workdir, on_output, next_run, created_at, tainted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, sc.ID, sc.Agent, sc.Name, sc.Spec, sc.Prompt, string(sc.DeliverTo),
+		sc.Command, int64(sc.Timeout/time.Second), sc.Workdir, sc.OnOutput, next.UnixMilli(), sc.CreatedAt.UnixMilli(), sc.Tainted)
 	return &sc, err
 }
 
@@ -183,7 +189,7 @@ func validate(sc *Schedule) error {
 }
 
 const columns = `id, agent, name, spec, prompt, deliver_to, command, timeout_s, workdir, on_output,
-	enabled, next_run, last_run, last_job, last_status, last_output, fail_streak, created_at`
+	enabled, next_run, last_run, last_job, last_status, last_output, fail_streak, created_at, tainted`
 
 func scan(r interface{ Scan(...any) error }) (*Schedule, error) {
 	var sc Schedule
@@ -191,7 +197,7 @@ func scan(r interface{ Scan(...any) error }) (*Schedule, error) {
 	var next, last, created, timeout int64
 	if err := r.Scan(&sc.ID, &sc.Agent, &sc.Name, &sc.Spec, &sc.Prompt, &to, &sc.Command, &timeout, &sc.Workdir,
 		&sc.OnOutput, &sc.Enabled, &next, &last, &sc.LastJob, &sc.LastStatus, &sc.LastOutput, &sc.FailStreak,
-		&created); err != nil {
+		&created, &sc.Tainted); err != nil {
 		return nil, err
 	}
 	if to != "" {
@@ -299,6 +305,9 @@ type Scheduler struct {
 	// Secrets returns extra environment for scripts ($HABAKKUK_HOME/.env);
 	// the process environment wins over it.
 	Secrets func() map[string]string
+	// OnFailure hears about a failed run: each prompt run whose turn
+	// failed, and a script's first failure in a row. Nil is none.
+	OnFailure func(id, name, status string)
 }
 
 type payload struct {
@@ -365,6 +374,16 @@ func (s *Scheduler) Tick(ctx context.Context) (int, error) {
 			continue
 		}
 		id := fmt.Sprintf("sch_%s_%d", strings.TrimPrefix(sc.ID, "sch_"), slot.UnixMilli())
+		if sc.Command == "" && sc.LastStatus == statusStarted && sc.LastJob != "" && sc.LastJob != id {
+			// The last run is still going, perhaps waiting in its chat for
+			// an approval: one run at a time, so the chat is never asked
+			// twice for the same schedule. This slot is dropped.
+			if _, err := s.Store.advance(ctx, sc, slot, slot, "", statusStarted); err != nil {
+				return started, err
+			}
+			s.Log.Info("skipped a schedule slot: the last run is still going", "schedule", sc.ID, "slot", slot)
+			continue
+		}
 		if sc.Command != "" {
 			// Another poller may already have queued this slot; only an
 			// earlier run counts as an overlap.
@@ -406,16 +425,16 @@ const statusStarted = "started"
 // advanced after the script already finished is caught here too. Tick
 // calls it; hk schedules list calls it before listing.
 func (s *Scheduler) Settle(ctx context.Context) error {
-	rows, err := s.Store.db.QueryContext(ctx, `SELECT id, last_job FROM schedules
+	rows, err := s.Store.db.QueryContext(ctx, `SELECT id, name, last_job FROM schedules
 		WHERE last_status = ? AND last_job != ''`, statusStarted)
 	if err != nil {
 		return err
 	}
-	type run struct{ id, job string }
+	type run struct{ id, name, job string }
 	var runs []run
 	for rows.Next() {
 		var r run
-		if err := rows.Scan(&r.id, &r.job); err != nil {
+		if err := rows.Scan(&r.id, &r.name, &r.job); err != nil {
 			rows.Close()
 			return err
 		}
@@ -430,9 +449,14 @@ func (s *Scheduler) Settle(ctx context.Context) error {
 		if err != nil || status == "" {
 			continue // still running, or unreadable for now
 		}
-		if _, err := s.Store.db.ExecContext(ctx, `UPDATE schedules SET last_status = ?
-			WHERE id = ? AND last_job = ? AND last_status = ?`, status, r.id, r.job, statusStarted); err != nil {
+		res, err := s.Store.db.ExecContext(ctx, `UPDATE schedules SET last_status = ?
+			WHERE id = ? AND last_job = ? AND last_status = ?`, status, r.id, r.job, statusStarted)
+		if err != nil {
 			return err
+		}
+		// Only the process whose update took effect reports the failure.
+		if n, _ := res.RowsAffected(); n == 1 && strings.HasPrefix(status, "failed:") && s.OnFailure != nil {
+			s.OnFailure(r.id, r.name, status)
 		}
 	}
 	return nil
@@ -544,7 +568,7 @@ func (s *Scheduler) Handle(ctx context.Context, j *jobs.Job, _ string) (string, 
 	}
 	text := fmt.Sprintf("[Scheduled task %q (%s). Do it now and report the result; the user is not watching live.]\n%s",
 		sc.Name, sc.Spec, sc.Prompt)
-	return s.submit(ctx, j, sc, text)
+	return s.submit(ctx, j, sc, text, sc.Tainted)
 }
 
 // skipForBudget skips a run whose agent has used up a spending limit,
@@ -564,7 +588,7 @@ func (s *Scheduler) skipForBudget(ctx context.Context, j *jobs.Job, sc *Schedule
 // submit runs text as a fresh session's first turn, replying to the
 // schedule's address. The turn ID derives from the job, so a rerun after a
 // crash finds the turn it already queued.
-func (s *Scheduler) submit(ctx context.Context, j *jobs.Job, sc *Schedule, text string) (string, error) {
+func (s *Scheduler) submit(ctx context.Context, j *jobs.Job, sc *Schedule, text string, tainted bool) (string, error) {
 	turnID := "turn_" + j.ID
 	if existing, err := s.Queue.Get(ctx, turnID); err == nil && existing != nil {
 		return turnID, nil // already queued before a crash
@@ -574,7 +598,7 @@ func (s *Scheduler) submit(ctx context.Context, j *jobs.Job, sc *Schedule, text 
 		return "", err
 	}
 	if _, err := s.Runner.SubmitTurn(ctx, agent.Turn{ID: turnID, Session: sess.ID, Text: text, Origin: sc.DeliverTo,
-		Background: true, Source: agent.SourceSchedule, Task: fmt.Sprintf("scheduled task %q", sc.Name)}); err != nil {
+		Background: true, Source: agent.SourceSchedule, Task: fmt.Sprintf("scheduled task %q", sc.Name), Tainted: tainted || sc.Tainted}); err != nil {
 		return "", err
 	}
 	if s.Wake != nil {

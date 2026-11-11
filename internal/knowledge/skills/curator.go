@@ -87,6 +87,9 @@ func (l *Library) Curate(o CurateOptions) ([]CurateAction, error) {
 			if l.Pinned(ctx, agent, name) {
 				continue // never rewritten, merged away or archived
 			}
+			if _, untrusted := l.Untrusted(own[name]); untrusted {
+				continue // from outside and not approved: never merged, archived or merged into
+			}
 			s, body, err := load(own[name].Dir)
 			if err != nil {
 				continue

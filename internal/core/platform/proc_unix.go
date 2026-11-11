@@ -67,6 +67,21 @@ func FileOwner(info os.FileInfo) int {
 	return -1
 }
 
+// Links returns how many names (hard links) the file at path has, after
+// symlinks. An error means the count could not be read; callers that
+// guard files treat that as more than one.
+func Links(path string) (uint64, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, errors.New("no link count for " + path)
+	}
+	return uint64(st.Nlink), nil //nolint:unconvert // uint16 on some platforms
+}
+
 // DiskUsage reports the bytes available to unprivileged users and the total
 // size of the file system holding path.
 func DiskUsage(path string) (free, total uint64, err error) {

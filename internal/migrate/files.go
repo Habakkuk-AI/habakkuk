@@ -228,11 +228,45 @@ var openclawInternals = []internals{
 	{"%s's schedules, already imported", []string{"cron"}},
 }
 
+// claudeCodeInternals: what a Claude Code folder (~/.claude) keeps for
+// itself.
+var claudeCodeInternals = []internals{
+	{whyProgram, []string{"local", "bin", "node_modules", "ide"}},
+	{whyCache, []string{"statsig", "shell-snapshots", "paste-cache", "image-cache", "file-history", "tmp"}},
+	{whyLogs, []string{"logs", "debug", "telemetry"}},
+	{whySessions, []string{"projects", "todos", "history.jsonl", "session-env", "sessions", "plans", "tasks", "teams"}},
+	{whyKeys, []string{".credentials.json", ".claude.json", "backups"}}, // backups: copies of .claude.json
+	{whyConfig, []string{"settings.json", "settings.local.json", "keybindings.json", "statusline.sh"}},
+	{whyPlugins, []string{"plugins", "hooks", "agents", "output-styles"}},
+	{"already imported as the agent's AGENTS.md", []string{"CLAUDE.md"}},
+	{"already imported as skills", []string{"skills", "commands"}},
+}
+
+// codexInternals: what a Codex folder (~/.codex) keeps for itself.
+var codexInternals = []internals{
+	{whyProgram, []string{"bin", "node_modules", "vendor_imports", "computer-use", "node_repl", "process_manager"}},
+	{whyRunning, []string{"ipc", "thread-writer-locks"}},
+	{whyPlugins, []string{"plugins"}},
+	{whyCache, []string{"tmp", ".tmp", "shell_snapshots"}},
+	{whyLogs, []string{"log", "logs"}},
+	{whySessions, []string{"sessions", "archived_sessions", "history.jsonl", "session_index.jsonl", "state.sqlite", "worktrees", "sqlite", "state"}},
+	{whyKeys, []string{"auth.json", ".credentials.json", "installation_id", "browser"}},
+	{whyConfig, []string{"config.toml", "version.json", "rules"}},
+	{"already imported as the agent's AGENTS.md", []string{"AGENTS.md", "AGENTS.override.md"}},
+	{"already imported as skills", []string{"skills", "prompts"}},
+	{"already imported as memory notes", []string{"memories"}},
+}
+
 // internalWhy says why an entry name is part of the agent itself, or "".
 func internalWhy(from, name string) string {
 	list := hermesInternals
-	if from == OpenClaw {
+	switch from {
+	case OpenClaw:
 		list = openclawInternals
+	case ClaudeCode:
+		list = claudeCodeInternals
+	case Codex:
+		list = codexInternals
 	}
 	same := func(a, b string) bool {
 		if runtime.GOOS == "windows" {
@@ -257,6 +291,14 @@ func internalWhy(from, name string) string {
 		why = whyRunning
 	case strings.HasSuffix(low, "-wal"), strings.HasSuffix(low, "-shm"), strings.HasSuffix(low, "-journal"):
 		why = whySessions
+	case from == Codex && strings.HasPrefix(low, "chrome-native-hosts") && strings.HasSuffix(low, ".json"):
+		why = whyProgram
+	case IsCodingTool(from) && (strings.HasSuffix(low, ".sqlite") || strings.HasSuffix(low, ".sqlite3") || strings.HasSuffix(low, ".db") ||
+		strings.Contains(low, "browser")):
+		// In a coding tool's folder, a database or a browser profile the
+		// import does not know may hold sign-ins and cookies. (In an
+		// agent's home, the user's own scripts keep databases too.)
+		why = whyKeys
 	}
 	if strings.Contains(why, "%s") {
 		why = fmt.Sprintf(why, Label(from))
@@ -562,7 +604,7 @@ func textHits(f *Found, h *homeRefs) ([]hit, error) {
 		}
 		for _, s := range a.Skills {
 			keys := map[string]int{}
-			err := skillFiles(s.Dir, func(_ string, data []byte) {
+			err := skillTexts(&s, func(_ string, data []byte) {
 				for k, n := range h.count(string(data)) {
 					keys[k] += n
 				}

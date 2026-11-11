@@ -49,7 +49,7 @@ CREATE TABLE compactions (
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (session_id, keep_from)
 ) WITHOUT ROWID;
-`}, {Version: 3, SQL: searchSchema}, {Version: 4, SQL: metaSchema}}
+`}, {Version: 3, SQL: searchSchema}, {Version: 4, SQL: metaSchema}, {Version: 5, SQL: importedSchema}}
 
 type Session struct {
 	ID           string
@@ -63,14 +63,21 @@ type Session struct {
 	TitleSource string
 	Archived    bool   // hidden from lists; kept until deleted or pruned
 	Parent      string // the session this one was forked or rewound from
+	// Imported marks a conversation brought over from another agent:
+	// history that no message is ever added to (see Store.Import).
+	Imported bool
 }
+
+// isImported is the SQL for Session.Imported, on a row of sessions.
+const isImported = `EXISTS (SELECT 1 FROM imported_sessions i WHERE i.session_id = sessions.id)`
 
 type Record struct {
 	Seq     int
 	Message llm.Message
 	Model   string
 	Usage   *llm.Usage
-	JobID   string // the turn job that wrote it; makes turn start idempotent
+	JobID   string    // the turn job that wrote it; makes turn start idempotent
+	At      time.Time // when it was written
 }
 
 type Store struct {
@@ -91,9 +98,9 @@ func (s *Store) Create(ctx context.Context, agent, systemPrompt string) (*Sessio
 func (s *Store) Get(ctx context.Context, id string) (*Session, error) {
 	var sess Session
 	var created, updated int64
-	err := s.db.QueryRowContext(ctx, `SELECT id, agent, title, system_prompt, created_at, updated_at, title_source, archived, parent
+	err := s.db.QueryRowContext(ctx, `SELECT id, agent, title, system_prompt, created_at, updated_at, title_source, archived, parent, `+isImported+`
 		FROM sessions WHERE id = ?`, id).Scan(&sess.ID, &sess.Agent, &sess.Title, &sess.SystemPrompt, &created, &updated,
-		&sess.TitleSource, &sess.Archived, &sess.Parent)
+		&sess.TitleSource, &sess.Archived, &sess.Parent, &sess.Imported)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("session %s not found", id)
 	}
@@ -116,7 +123,7 @@ func (s *Store) ListArchived(ctx context.Context, agent string, limit int) ([]Se
 }
 
 func (s *Store) list(ctx context.Context, agent string, limit int, archived bool) ([]Session, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, agent, title, created_at, updated_at, title_source, archived, parent FROM sessions
+	rows, err := s.db.QueryContext(ctx, `SELECT id, agent, title, created_at, updated_at, title_source, archived, parent, `+isImported+` FROM sessions
 		WHERE (? = '' OR agent = ?) AND archived = ? ORDER BY updated_at DESC LIMIT ?`, agent, agent, archived, limit)
 	if err != nil {
 		return nil, err
@@ -126,7 +133,7 @@ func (s *Store) list(ctx context.Context, agent string, limit int, archived bool
 	for rows.Next() {
 		var sess Session
 		var created, updated int64
-		if err := rows.Scan(&sess.ID, &sess.Agent, &sess.Title, &created, &updated, &sess.TitleSource, &sess.Archived, &sess.Parent); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.Agent, &sess.Title, &created, &updated, &sess.TitleSource, &sess.Archived, &sess.Parent, &sess.Imported); err != nil {
 			return nil, err
 		}
 		sess.CreatedAt, sess.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)
@@ -158,6 +165,13 @@ func (s *Store) Append(ctx context.Context, sessionID, jobID string, expectSeq i
 		return err
 	}
 	defer tx.Rollback()
+	var imported int
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM imported_sessions WHERE session_id = ?)`, sessionID).Scan(&imported); err != nil {
+		return err
+	}
+	if imported == 1 {
+		return ErrImported
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO messages (session_id, seq, role, blocks, model, usage, job_id, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, sessionID, expectSeq, m.Role, string(blocks), model, string(u), jobID, now); err != nil {
 		return fmt.Errorf("append seq %d to %s: %w", expectSeq, sessionID, err)
@@ -169,7 +183,7 @@ func (s *Store) Append(ctx context.Context, sessionID, jobID string, expectSeq i
 }
 
 func (s *Store) Messages(ctx context.Context, sessionID string) ([]Record, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT seq, role, blocks, model, usage, job_id FROM messages
+	rows, err := s.db.QueryContext(ctx, `SELECT seq, role, blocks, model, usage, job_id, created_at FROM messages
 		WHERE session_id = ? ORDER BY seq`, sessionID)
 	if err != nil {
 		return nil, err
@@ -179,9 +193,11 @@ func (s *Store) Messages(ctx context.Context, sessionID string) ([]Record, error
 	for rows.Next() {
 		var r Record
 		var role, blocks, usage string
-		if err := rows.Scan(&r.Seq, &role, &blocks, &r.Model, &usage, &r.JobID); err != nil {
+		var at int64
+		if err := rows.Scan(&r.Seq, &role, &blocks, &r.Model, &usage, &r.JobID, &at); err != nil {
 			return nil, err
 		}
+		r.At = time.UnixMilli(at)
 		r.Message.Role = llm.Role(role)
 		if err := json.Unmarshal([]byte(blocks), &r.Message.Blocks); err != nil {
 			return nil, fmt.Errorf("message %d: %w", r.Seq, err)
@@ -262,9 +278,11 @@ func (s *Store) LatestCompaction(ctx context.Context, sessionID string) (*Compac
 	return &c, nil
 }
 
-// Prune deletes sessions not updated since the cutoff.
+// Prune deletes sessions not updated since the cutoff. Sessions imported
+// from another agent are kept: they are history the user brought over.
 func (s *Store) Prune(ctx context.Context, olderThan time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE updated_at < ?`, olderThan.UnixMilli())
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE updated_at < ?
+		AND id NOT IN (SELECT session_id FROM imported_sessions)`, olderThan.UnixMilli())
 	if err != nil {
 		return 0, err
 	}

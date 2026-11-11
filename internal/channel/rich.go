@@ -40,7 +40,9 @@ func (g *Gateway) offer(labels []Button, tag string, h buttonHandler) ([][]Butto
 	var b [6]byte
 	rand.Read(b[:])
 	nonce := hex.EncodeToString(b[:])
-	g.buttons.Store(nonce, h)
+	if h != nil {
+		g.buttons.Store(nonce, h)
+	}
 	rows := make([][]Button, 0, len(labels))
 	var row []Button
 	for i, l := range labels {
@@ -50,9 +52,9 @@ func (g *Gateway) offer(labels []Button, tag string, h buttonHandler) ([][]Butto
 		}
 		l.Text = buttonLabel(l.Text)
 		row = append(row, l)
-		// Approve and Deny sit side by side; choices go one per row, where
-		// long labels fit.
-		if len(labels) > 2 || i == len(labels)-1 {
+		// An approval's buttons sit side by side; choices go one per row,
+		// where long labels fit.
+		if (tag == "" && len(labels) > 2) || i == len(labels)-1 {
 			rows = append(rows, row)
 			row = nil
 		}
@@ -127,33 +129,57 @@ func (g *Gateway) callback(ctx context.Context, ch *config.Channel, m Message, t
 		return
 	}
 	p := v.(*pendingApproval)
-	if len(parts) < 3 || parts[2] != p.hash || i < 0 || i > 1 {
+	d, valid := buttonDecision(i, p.always)
+	if len(parts) < 3 || parts[2] != p.hash || !valid {
 		g.reply(to, g.t(to, "button.expired_pending"))
 		return
 	}
-	switch {
-	case !p.resolve(i == 0):
+	if !p.resolve(d, answerer(m)) {
 		g.reply(to, g.t(to, "button.expired")) // a second press on a prompt just answered
-	case i == 0:
-		g.reply(to, g.t(to, "approval.approved"))
-	default:
-		g.reply(to, g.t(to, "approval.denied"))
+		return
 	}
+	g.reply(to, g.decided(to, d))
 }
 
-// approvalButtons are the Approve and Deny buttons of an approval prompt;
-// hash is the call's (callHash).
-func (g *Gateway) approvalButtons(to Address, hash string) ([][]Button, func()) {
+// buttonDecision reads a press of an approval's button i: Allow once,
+// Always allow and Deny when always is set, Approve and Deny otherwise.
+func buttonDecision(i int, always bool) (tools.Decision, bool) {
+	switch {
+	case i == 0:
+		return tools.DecisionOnce, true
+	case always && i == 1:
+		return tools.DecisionAlways, true
+	case always && i == 2, !always && i == 1:
+		return tools.DecisionDeny, true
+	}
+	return tools.DecisionDeny, false
+}
+
+// decided is the chat's notice for an answer.
+func (g *Gateway) decided(to Address, d tools.Decision) string {
+	switch d {
+	case tools.DecisionOnce:
+		return g.t(to, "approval.approved")
+	case tools.DecisionAlways:
+		return g.t(to, "approval.always_saved", g.scope(g.lang(to), to))
+	}
+	return g.t(to, "approval.denied")
+}
+
+// approvalButtons are an approval prompt's buttons: Allow once, Always
+// allow and Deny when the call can get a rule, Approve and Deny when it
+// cannot. hash is the call's (callHash). A press is answered by callback
+// against the request waiting now, and only when the hash it carries is
+// that request's: a late press can never answer, or save a rule for, the
+// next prompt.
+func (g *Gateway) approvalButtons(to Address, hash string, always bool) [][]Button {
 	buttons := []Button{{Text: g.t(to, "button.approve"), Style: ButtonPrimary}, {Text: g.t(to, "button.deny"), Style: ButtonDanger}}
-	return g.offer(buttons, hash, func(i int) string {
-		if !g.resolveApproval(to, i == 0) {
-			return g.t(to, "button.expired")
-		}
-		if i == 0 {
-			return g.t(to, "approval.approved")
-		}
-		return g.t(to, "approval.denied")
-	})
+	if always {
+		buttons = []Button{{Text: g.t(to, "button.allow_once"), Style: ButtonPrimary}, {Text: g.t(to, "button.always")},
+			{Text: g.t(to, "button.deny"), Style: ButtonDanger}}
+	}
+	rows, _ := g.offer(buttons, hash, nil)
+	return rows
 }
 
 // choiceButtons are buttons for one clarify question's choices; a press
@@ -206,7 +232,7 @@ func (g *Gateway) reactEnd(ctx context.Context, j *jobs.Job, to *Address, err er
 	switch {
 	case err == nil:
 		g.react(ctx, *to, ReactDone)
-	case errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts:
+	case jobs.IsPermanent(err) || j.Attempts >= j.MaxAttempts:
 		g.react(ctx, *to, ReactFailed)
 	case ctx.Err() != nil || errors.Is(err, jobs.ErrLeaseLost):
 		g.react(ctx, *to, "") // stopped, or resumed later (which reacts again)

@@ -161,7 +161,10 @@ func (l *Library) List(agent string) ([]Skill, error) {
 // Inventory is every skill agent could have, sorted by name: the ones List
 // returns, and the ones held back, each with the reason. A name is settled
 // by precedence first (the agent's own, then shared, plugin and bundled),
-// so a skill that is held back still hides the ones below it.
+// so a skill that is turned off or missing something still hides the ones
+// below it. The one exception is an agent's own skill that came from
+// outside and waits for the owner (an import from a project): it hides
+// nothing, and nothing lists or loads it until hk skills approve -agent.
 func (l *Library) Inventory(agent string) ([]Entry, error) {
 	byName := map[string]Skill{}
 	if err := scanBundled(l.Bundled, byName); err != nil {
@@ -185,8 +188,15 @@ func (l *Library) Inventory(agent string) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := scan(dir, false, byName); err != nil {
+	own := map[string]Skill{}
+	if err := scan(dir, false, own); err != nil {
 		return nil, err
+	}
+	for n, s := range own {
+		if l.Disabled(s) {
+			continue // waiting for the owner: it does not hide a skill of the same name below it
+		}
+		byName[n] = s
 	}
 	off := l.off()
 	out := make([]Entry, 0, len(byName))
@@ -266,18 +276,32 @@ func (l *Library) get(agent, name string) (Skill, string, error) {
 	for _, x := range l.Extra {
 		roots = append(roots, root{x, true, true})
 	}
+	var held error
 	for _, c := range roots {
 		s, body, err := load(filepath.Join(c.dir, name))
 		if err == nil {
 			s.Shared, s.Plugin = c.shared, c.plugin
+			if !s.Shared && !s.Plugin && l.Disabled(s) {
+				// The agent's own copy came from outside and waits for the
+				// owner: it does not hide a skill of the same name below it.
+				held = fmt.Errorf("skill %q is disabled: it came from outside and is not approved yet (the owner can run hk skills approve -agent %s %s)", name, agent, name)
+				continue
+			}
 			return l.usable(s, body)
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return Skill{}, "", err
 		}
 	}
-	if s, body, err := loadBundled(l.Bundled, name); err == nil {
-		return l.usable(s, body)
+	if b, body, err := loadBundled(l.Bundled, name); err == nil {
+		// A bundled skill stands in for the agent's waiting copy only when
+		// it can be used; otherwise the owner hears about the waiting one.
+		if b, body, err = l.usable(b, body); err == nil || held == nil {
+			return b, body, err
+		}
+	}
+	if held != nil {
+		return Skill{}, "", held
 	}
 	return Skill{}, "", fmt.Errorf("no skill %q", name)
 }
@@ -289,7 +313,7 @@ func (l *Library) usable(s Skill, body string) (Skill, string, error) {
 	case e.Off != "":
 		return Skill{}, "", fmt.Errorf("skill %q is %s", s.Name, e.Reason())
 	case e.Unapproved:
-		return Skill{}, "", fmt.Errorf("skill %q is disabled: it was installed from outside, ships scripts and is not approved yet (the owner can run hk skills approve %s)", s.Name, s.Name)
+		return Skill{}, "", fmt.Errorf("skill %q is disabled: it came from outside and is not approved yet (the owner can run hk skills approve %s)", s.Name, s.Name)
 	case len(e.Missing) > 0:
 		return Skill{}, "", fmt.Errorf("skill %q cannot be used on this machine: it %s", s.Name, e.Reason())
 	}
@@ -415,6 +439,11 @@ func (l *Library) SaveContext(ctx context.Context, agent, name, description, bod
 		return s, false, err
 	}
 	dir := filepath.Join(root, name)
+	if _, untrusted := l.Untrusted(Skill{Name: name, Dir: dir}); untrusted {
+		// Writing over it would make another source's skill look like the
+		// agent's own work while it waits for approval.
+		return s, false, fmt.Errorf("skill %q came from outside and waits for the owner's approval (hk skills approve -agent %s %s); save under another name", name, agent, name)
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return s, false, err
 	}

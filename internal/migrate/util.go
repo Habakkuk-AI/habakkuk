@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/habakkuk-ai/habakkuk/internal/knowledge/hub"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/skills"
 )
@@ -207,28 +208,71 @@ func skipCopy(name string) bool {
 }
 
 // findSkills lists the folders under root that hold a SKILL.md, at any
-// depth (categories), skipping hidden folders.
-func findSkills(root string) ([]string, error) {
+// depth (categories), skipping hidden folders. A symlink is followed when
+// it leads to a skill folder, or to a category folder holding skills; one
+// that leads nowhere, or to something else, is listed as left out.
+func (f *Found) findSkills(root string) ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	seen := map[string]bool{} // folders already walked, against link loops
+	var walk func(dir string, depth int) error
+	walk = func(dir string, depth int) error {
+		real, err := filepath.EvalSymlinks(dir)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) && p == root {
-				return fs.SkipAll
-			}
 			return err
 		}
-		if d.IsDir() && p != root && (strings.HasPrefix(d.Name(), ".") || skipCopy(d.Name())) {
-			return filepath.SkipDir
+		if seen[real] || depth > 8 {
+			return nil
 		}
-		if !d.IsDir() && d.Name() == skills.FileName && filepath.Dir(p) != root {
-			out = append(out, filepath.Dir(p))
-		}
-		return nil
-	})
+		seen[real] = true
+		return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) && p == dir {
+					return fs.SkipAll
+				}
+				return err
+			}
+			if d.Type()&fs.ModeSymlink != 0 && !strings.HasPrefix(d.Name(), ".") {
+				target, err := filepath.EvalSymlinks(p)
+				info, serr := os.Stat(target)
+				inSkill := d.Name() != skills.FileName && exists(filepath.Join(filepath.Dir(p), skills.FileName))
+				switch {
+				case inSkill:
+					// A link among a skill's own files: the copy leaves links
+					// out, so say so.
+					f.skip("skill link %s: links inside a skill folder are not copied; copy the file it leads to into the skill if it needs it", p)
+				case err != nil || serr != nil:
+					f.skip("skill link %s: it leads nowhere", p)
+				case !info.IsDir():
+					if d.Name() != skills.FileName {
+						f.skip("skill link %s: it leads to a file, not a skill folder", p)
+					} else if filepath.Dir(p) != root {
+						out = append(out, filepath.Dir(p))
+					}
+				case exists(filepath.Join(target, skills.FileName)):
+					out = append(out, target)
+				default:
+					return walk(target, depth+1) // a category folder kept elsewhere
+				}
+				return nil
+			}
+			if d.IsDir() && p != dir && (strings.HasPrefix(d.Name(), ".") || skipCopy(d.Name())) {
+				return filepath.SkipDir
+			}
+			if !d.IsDir() && d.Name() == skills.FileName && filepath.Dir(p) != root {
+				out = append(out, filepath.Dir(p))
+			}
+			return nil
+		})
+	}
+	if _, err := os.Lstat(root); errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	err := walk(root, 0)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	slices.Sort(out)
+	out = slices.Compact(out)
 	// A skill's own subfolders may hold more SKILL.md files: keep the outer one.
 	var keep []string
 	for _, d := range out {
@@ -360,4 +404,55 @@ func copyTree(src, dst string, rw *rewriter) error {
 		}
 		return out.Close()
 	})
+}
+
+// The helpers below treat a skill made in memory (Skill.Text) like a
+// folder holding only its SKILL.md.
+
+// skillHash is treeHash for a skill.
+func skillHash(s *Skill, rw *rewriter) (string, error) {
+	if s.Dir != "" {
+		return treeHash(s.Dir, rw)
+	}
+	h := sha256.New()
+	fmt.Fprintf(h, "%s\x00", skills.FileName)
+	h.Write(skillText(s, rw))
+	h.Write([]byte{0})
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func skillText(s *Skill, rw *rewriter) []byte {
+	data := []byte(s.Text)
+	if rw != nil {
+		data, _ = rw.bytes(data)
+	}
+	return data
+}
+
+// skillCopy is copyTree for a skill.
+func skillCopy(s *Skill, dst string, rw *rewriter) error {
+	if s.Dir != "" {
+		return copyTree(s.Dir, dst, rw)
+	}
+	if err := os.MkdirAll(dst, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dst, skills.FileName), skillText(s, rw), 0o600)
+}
+
+// skillTexts is skillFiles for a skill.
+func skillTexts(s *Skill, fn func(rel string, data []byte)) error {
+	if s.Dir != "" {
+		return skillFiles(s.Dir, fn)
+	}
+	fn(skills.FileName, []byte(s.Text))
+	return nil
+}
+
+// skillScan is hub.Scan for a skill.
+func skillScan(s *Skill) ([]hub.Finding, error) {
+	if s.Dir != "" {
+		return hub.Scan(s.Dir)
+	}
+	return hub.ScanFile(skills.FileName, []byte(s.Text)), nil
 }

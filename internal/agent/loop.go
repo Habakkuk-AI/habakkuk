@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/events"
@@ -57,6 +58,12 @@ type Spec struct {
 	// ReportHome is off, results or all (home.go).
 	Home       string
 	ReportHome string
+	// Loop ends turns that keep repeating themselves (loopguard.go).
+	Loop LoopLimits
+	// ProjectFiles is on (default when "") or off: whether new
+	// sessions read the workspace's AGENTS.md, CLAUDE.md and .cursorrules
+	// (projectfiles.go).
+	ProjectFiles string
 }
 
 type TurnPayload struct {
@@ -78,6 +85,20 @@ type TurnPayload struct {
 	// Task names that work in one line for home reports.
 	Source string `json:"source,omitempty"`
 	Task   string `json:"task,omitempty"`
+	// Tainted: the work was set up by a turn that had read outside content
+	// (a schedule or board card it created), so this turn starts tainted.
+	Tainted bool `json:"tainted,omitempty"`
+	// Local: the owner typed this on this machine (the CLI, the TUI, hk
+	// talk). A turn with no reply address is not local without it: the
+	// API, MCP clients and editors send none either.
+	Local bool `json:"local,omitempty"`
+	// Typed: the whole message is plain text the owner just sent: a text
+	// message in a direct chat (the gateway sets it), a line typed at the
+	// hk chat or TUI prompt (SubmitTyped), the dashboard's chat input.
+	// Approval rules answer only for such a turn (taint.go). Local does
+	// not imply it: hk run, hk talk, /btw and skill prompts are local but
+	// carry text the owner did not just type.
+	Typed bool `json:"typed,omitempty"`
 }
 
 // Attachment is a file that came with a user message. The bytes live in the
@@ -138,6 +159,12 @@ type Turn struct {
 	Task    string // a one-line name for it
 	// Background: nobody is waiting on this turn (see TurnPayload).
 	Background bool
+	// Tainted: set up by a turn that had read outside content (TurnPayload).
+	Tainted bool
+	// Local: the owner typed it on this machine (TurnPayload.Local).
+	Local bool
+	// Typed: the owner sent it just now in a direct chat (TurnPayload.Typed).
+	Typed bool
 }
 
 // Sender is the model call. *llm.Router implements it; tests use fakes.
@@ -176,6 +203,8 @@ type Runner struct {
 	Policy PolicyFunc
 
 	approvers sync.Map // session id -> tools.Approver
+	trust     sync.Map // turn job id -> func() bool while it runs, true after if it ended untrusted (Untrusted)
+	trustN    atomic.Int64
 	textOnly  sync.Map // session id -> true once the model rejected its media
 	routes    sync.Map // session id -> time of its last turn on the main model (route.go)
 
@@ -198,6 +227,9 @@ type Runner struct {
 	// Notes puts messages a chat got from outside its own turns before the
 	// next user message of that chat's session (origin.go); nil means none.
 	Notes ChatNotes
+	// ProjectTrust is the owner's record of trusted project instruction
+	// files (projtrust.Store); nil trusts none (projectfiles.go).
+	ProjectTrust ProjectTrust
 	// ToolsPending waits briefly for tool sources a turn's toolsets need
 	// that are still starting (MCP servers connecting in the background)
 	// and names those still not ready; nil means none ever are.
@@ -226,6 +258,7 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 	if r.Snapshot != nil {
 		snap = r.Snapshot(ctx, spec)
 	}
+	snap.Project = r.projectFiles(spec, spec.Workspace)
 	switch {
 	case opts.Onboard:
 		snap.Onboarding = true
@@ -242,14 +275,25 @@ func (r *Runner) NewSessionWith(ctx context.Context, agent string, opts SessionO
 
 // Submit queues a user message as a turn. The message is written by the turn
 // itself so that it can never interleave with a turn already in progress.
+// Submit queues a message from this machine (hk run, a retry, a skill or
+// plugin prompt): the turn is Local, not Typed.
 func (r *Runner) Submit(ctx context.Context, sessionID, text string) (string, error) {
-	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text})
+	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text, Local: true})
+}
+
+// SubmitTyped queues a line the owner just typed at the hk chat or TUI
+// prompt, nothing added: the turn is Local and Typed.
+func (r *Runner) SubmitTyped(ctx context.Context, sessionID, text string) (string, error) {
+	return r.SubmitTurn(ctx, Turn{Session: sessionID, Text: text, Local: true, Typed: true})
 }
 
 func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
 	sess, err := r.Sessions.Get(ctx, t.Session)
 	if err != nil {
 		return "", err
+	}
+	if sess.Imported {
+		return "", session.ErrImported
 	}
 	kind := t.Kind
 	if kind == "" {
@@ -258,7 +302,7 @@ func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
 	return r.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: t.ID, Kind: kind, Agent: sess.Agent, SerialKey: t.Session, Priority: 10,
 		Payload: TurnPayload{Session: t.Session, Text: t.Text, Media: t.Media, Origin: t.Origin, Compact: t.Compact, Sub: t.Sub,
-			Source: t.Source, Task: t.Task, Background: t.Background},
+			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted, Local: t.Local, Typed: t.Typed},
 	})
 }
 
@@ -273,6 +317,9 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	if err != nil {
 		return "", jobs.Permanent{Err: err}
 	}
+	if sess.Imported {
+		return "", jobs.Permanent{Err: session.ErrImported}
+	}
 	spec, ok := r.Agents[sess.Agent]
 	if !ok {
 		return "", jobs.Permanent{Err: fmt.Errorf("agent %q is not configured", sess.Agent)}
@@ -286,8 +333,12 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	ctx = llm.WithCaller(ctx, caller)
 	ctx = withOrigin(ctx, p.Origin)
+	info := TurnInfo{Source: p.Source, Task: p.Task, Local: p.Local, Typed: p.Typed, Background: p.Background || p.Compact,
+		Delegated: p.Sub != nil, Tainted: p.Tainted || p.Source == SourceA2A}
+	ctx = WithTurnInfo(ctx, info)
 	chain, overridden := r.chainFor(ctx, sess.ID, spec)
-	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden}
+	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden, info: info}
+	defer r.settleTrust(j.ID)
 	t.useSub(p.Sub)
 	hook := TurnHookPayload{Event: HookTurnStart, Agent: spec.Name, Session: sess.ID, Job: j.ID, Text: p.Text}
 	r.Fire(ctx, HookTurnStart, spec.Name, hook)
@@ -301,6 +352,9 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 		err = t.runCompact()
 	} else {
 		err = t.run(p.Text, p.Media)
+		if err == nil && t.loopStopped && p.Background {
+			err = jobs.Permanent{Err: LoopStopped{Message: t.final}} // the run failed
+		}
 	}
 	err = t.pauseOnBudget(err, p)
 	if j.Kind == KindSubturn {
@@ -309,7 +363,7 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	if err == nil && j.Kind == KindTurn && !p.Compact && !t.paused {
 		r.autoTitle(ctx, sess.ID, spec, p.Text, t.final)
 	}
-	if err == nil && home {
+	if (err == nil || t.loopStopped) && home { // a stopped run still reports why
 		news.Final = t.final
 		r.reportHome(ctx, news)
 	}
@@ -346,8 +400,11 @@ type turn struct {
 	onFast     bool
 	mainChain  []llm.Target
 	sub        *SubturnSpec // a delegated task's options, or nil
-	msgs       []llm.Message
-	final      string
+	// info says what started the turn (TurnInfo): whether approval rules
+	// may answer for it, and whether it starts tainted.
+	info  TurnInfo
+	msgs  []llm.Message
+	final string
 
 	// Compaction state (compact.go). msgs is always the whole transcript;
 	// the model sees summary plus msgs[base:].
@@ -358,7 +415,10 @@ type turn struct {
 	usageAt      int       // its seq, or -1
 	compactTried bool
 
-	paused bool // a spending limit ended the turn (budget.go)
+	paused      bool                     // a spending limit ended the turn (budget.go)
+	guard       *loopGuard               // nil when the loop guard is off (loopguard.go)
+	loopStopped bool                     // the loop guard ended the turn
+	callDur     map[string]time.Duration // how long each call of the last round ran
 }
 
 func (t *turn) run(userText string, media []Attachment) error {
@@ -382,11 +442,26 @@ func (t *turn) run(userText string, media []Attachment) error {
 	if err := t.loadCompaction(recs); err != nil {
 		return err
 	}
+	if g := newLoopGuard(t.spec.Loop); !g.off() {
+		t.guard = g
+		g.replay(recs, t.job.ID)
+	}
+	// The environment comes first: its workspace is the folder this
+	// session works in (a worktree, an editor's project), whose project
+	// files a new session reads.
+	env := t.r.Env(t.spec, t.sess.ID)
+	env.Session, env.Agent = t.sess.ID, t.spec.Name
+	t.equip(env)
 	if !started {
 		if t.r.Sessions.SetTitle(t.ctx, t.sess.ID, title(userText)) != nil {
 			t.r.Log.Warn("set title failed", "session", t.sess.ID)
 		}
 		notes := t.r.takeNotes(t.ctx, t.sess.ID, t.job.ID)
+		if len(t.msgs) == 0 {
+			// A new session in an untrusted project: its instruction
+			// files start the first message, as data (projectfiles.go).
+			notes = untrustedProjectMessage(LoadProjectFiles(t.spec.Dir, env.Workspace, t.spec.ProjectFiles, t.r.ProjectTrust)) + notes
+		}
 		if err := t.append(userMessage(t.stamp(notes+userText+t.r.preamble(t.ctx, t.sess.ID)), media), "", nil); err != nil {
 			return err
 		}
@@ -397,17 +472,28 @@ func (t *turn) run(userText string, media []Attachment) error {
 		t.r.Notes.NotesSeen(t.ctx, t.job.ID)
 	}
 
-	env := t.r.Env(t.spec, t.sess.ID)
-	env.Session, env.Agent = t.sess.ID, t.spec.Name
-	t.equip(env)
 	env.Approvals, env.Reviewer, env.Task = t.spec.Approvals, t.spec.Reviewer, userText
 	if a, ok := t.r.approvers.Load(t.sess.ID); ok {
 		env.Approver = a.(tools.Approver)
 	} else if t.r.Approvers != nil {
 		env.Approver = t.r.Approvers(t.sess.ID)
 	}
+	// Waiting for an approval inside a tool's run is not the tool waiting
+	// (the loop guard's timing).
+	env.Approver, env.Reviewer = tools.TimedApprover(env.Approver), tools.TimedReviewer(env.Reviewer)
 	t.applyPolicy(env)
+	if t.info.Tainted {
+		env.Taint.Mark()
+	}
 	t.restoreTaint(env, recs)
+	if projectTainted(t.msgs) { // the session started with untrusted project files
+		if env.Taint == nil {
+			env.Taint = tools.NewTaint(true)
+		}
+		env.Taint.Mark()
+	}
+	t.limitRules(env, recs)
+	t.r.trackTrust(t.job.ID, env)
 	var pending []string
 	if t.r.ToolsPending != nil {
 		pending = t.r.ToolsPending(t.ctx, t.toolsets())
@@ -484,7 +570,13 @@ func (t *turn) run(userText string, media []Attachment) error {
 			t.final = resp.Message.Text()
 			return nil
 		}
-		results := t.runTools(env, calls, resp.StopReason == llm.StopMaxTokens)
+		results, stop := t.guardRound(calls, t.runTools(env, calls, resp.StopReason == llm.StopMaxTokens))
+		if stop != nil {
+			if err := t.append(llm.Message{Role: llm.User, Blocks: results}, "", nil); err != nil {
+				return err
+			}
+			return t.stopLoop(stop)
+		}
 		results = append(results, t.r.steer(t.ctx, t.sess.ID)...) // after the results, as the APIs require
 		// Tools that tool_search found join the next call.
 		specs = t.moreTools(specs, calls, results)
@@ -515,6 +607,13 @@ func hasMedia(msgs []llm.Message) bool {
 func (t *turn) runTools(env *tools.Env, calls []llm.Block, truncated bool) []llm.Block {
 	results := make([]llm.Block, len(calls))
 	media := make([][]llm.Block, len(calls))
+	durs := make([]time.Duration, len(calls))
+	defer func() {
+		t.callDur = make(map[string]time.Duration, len(calls))
+		for i, c := range calls {
+			t.callDur[c.ToolUseID] = durs[i]
+		}
+	}()
 	var wg sync.WaitGroup
 	for i, c := range calls {
 		if truncated {
@@ -527,7 +626,8 @@ func (t *turn) runTools(env *tools.Env, calls []llm.Block, truncated bool) []llm
 			defer wg.Done()
 			t.r.publishEvent(events.Event{Session: t.sess.ID, Kind: events.ToolStart, Text: c.ToolName + " " + preview(string(c.Input)),
 				ToolID: c.ToolUseID, Tool: c.ToolName, Input: c.Input})
-			res, extra := t.runTool(env, c)
+			res, extra, ran := t.runTool(env, c)
+			durs[i] = ran
 			t.r.publishEvent(events.Event{Session: t.sess.ID, Kind: events.ToolDone, Text: c.ToolName + ": " + preview(res.Text),
 				IsError: res.IsError, ToolID: c.ToolUseID, Tool: c.ToolName})
 			results[i], media[i] = res, extra
@@ -619,4 +719,68 @@ func preview(s string) string {
 		s = s[:120] + "..."
 	}
 	return s
+}
+
+// projectFiles reads the instruction files of the folder a new session
+// works in, and logs which were read and which are trusted.
+func (r *Runner) projectFiles(spec *Spec, folder string) ProjectFiles {
+	p := LoadProjectFiles(spec.Dir, folder, spec.ProjectFiles, r.ProjectTrust)
+	if len(p.Files) > 0 && r.Log != nil {
+		var trusted, untrusted []string
+		for _, f := range p.Files {
+			if f.Trusted {
+				trusted = append(trusted, f.Path)
+			} else {
+				untrusted = append(untrusted, f.Path)
+			}
+		}
+		r.Log.Info("project instruction files read", "agent", spec.Name, "trusted", trusted, "untrusted", untrusted)
+	}
+	return p
+}
+
+// trackTrust lets Untrusted answer for the turn while it runs.
+func (r *Runner) trackTrust(jobID string, env *tools.Env) {
+	r.trust.Store(jobID, env.Untrusted)
+}
+
+// settleTrust keeps, once the turn ends, only whether it ended untrusted.
+// The record is in memory: it is what the turn's deliveries and board
+// result carry right after it, and a few thousand are kept.
+func (r *Runner) settleTrust(jobID string) {
+	v, ok := r.trust.Load(jobID)
+	if !ok {
+		return
+	}
+	f, running := v.(func() bool)
+	if !running {
+		return
+	}
+	if !f() {
+		r.trust.Delete(jobID)
+		return
+	}
+	r.trust.Store(jobID, true)
+	if r.trustN.Add(1) > 5000 {
+		r.trustN.Store(0)
+		r.trust.Range(func(k, v any) bool {
+			if _, done := v.(bool); done && k != jobID {
+				r.trust.Delete(k)
+			}
+			return true
+		})
+	}
+}
+
+// Untrusted reports whether outside content may have steered the turn job
+// jobID (tools.Env.Untrusted): what it delivers to a chat is a tainted
+// note there, and a board card it ran is marked tainted.
+func (r *Runner) Untrusted(jobID string) bool {
+	switch v, _ := r.trust.Load(jobID); f := v.(type) {
+	case func() bool:
+		return f()
+	case bool:
+		return f
+	}
+	return false
 }

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -106,6 +107,34 @@ type ApprovalRequest struct {
 	// Cause says why a human is asked, for approvers that explain it in
 	// their own words (a chat prompt); "" is the permission mode.
 	Cause Cause
+	// Agent is the agent that makes the call.
+	Agent string
+	// Rule is what "Always allow" would save for this call (allow.go);
+	// nil when the call cannot get one, and then only allow once or deny
+	// is offered.
+	Rule *Rule
+}
+
+// Decision is a person's answer to an approval request.
+type Decision int
+
+const (
+	DecisionDeny   Decision = iota
+	DecisionOnce            // allow this call
+	DecisionAlways          // allow it, and save req.Rule for the agent
+)
+
+// Decider is implemented by approvers that offer "Always allow" as well
+// as allow once and deny (chats). Approvers that do not are asked with
+// Approve, and a yes allows the call once.
+type Decider interface {
+	Decide(ctx context.Context, req ApprovalRequest) (Answer, error)
+}
+
+// Answer is a person's decision and who gave it ("7 (Sam)").
+type Answer struct {
+	Decision Decision
+	By       string
 }
 
 // Cause is why a call needs a human's approval.
@@ -188,7 +217,25 @@ type Env struct {
 	// where it came from (policy.go); nil is a turn started on this
 	// machine.
 	Policy *Policy
+	// Rules are the agent's approval rules ("always allow", allow.go);
+	// nil means none, and "Always allow" is not offered.
+	Rules RuleSet
+	// RulesOff: approval rules never answer for this kind of turn: it is
+	// not a message the owner typed just now, one to one or on this
+	// machine, or it is tainted (agent.limitRules).
+	RulesOff bool
+	// RulesPaused: outside content entered this turn another way than a
+	// tool (a chat note from a tainted turn, a paused parent), so rules
+	// wait for the owner's next message, and work this turn sets up is
+	// marked tainted.
+	RulesPaused bool
 }
+
+// Untrusted reports whether outside content may be steering this turn: it
+// is tainted, or an earlier turn of its session was and nobody has sent a
+// fresh message since. Work it sets up for later (a schedule, a board
+// card) carries the taint into those runs.
+func (e *Env) Untrusted() bool { return e.Taint.Marked() || e.RulesPaused }
 
 // Files reads and writes text files through a client. Paths are absolute.
 type Files interface {
@@ -313,6 +360,125 @@ func WithCallID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, callIDKey{}, id)
 }
 
+type runTimeKey struct{}
+
+// runTime is one call's timing: how long its Run took, less the time it
+// spent waiting for an approval or a reviewer inside Run.
+type runTime struct {
+	ran    *time.Duration
+	mu     sync.Mutex
+	waited time.Duration
+}
+
+// WithRunTime returns a context under which Execute records how long the
+// tool itself ran: only its Run, not the approval or hooks before it, nor
+// an approval it asks for while it runs (through TimedApprover and
+// TimedReviewer).
+func WithRunTime(ctx context.Context) (context.Context, *time.Duration) {
+	d := new(time.Duration)
+	return context.WithValue(ctx, runTimeKey{}, &runTime{ran: d}), d
+}
+
+// waiting adds time a call spent waiting on someone to its run's timing.
+func waiting(ctx context.Context, d time.Duration) {
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		rt.waited += d
+		rt.mu.Unlock()
+	}
+}
+
+// TimedApprover wraps an approver so time spent waiting for an answer is
+// not counted as the tool's own run time. Nil stays nil. The wrapper keeps
+// the approver's optional interfaces, Decider ("Always allow") and Asker
+// (a terminal's questions), and adds neither when it lacks them, since
+// callers look for them with type assertions.
+func TimedApprover(a Approver) Approver {
+	if a == nil {
+		return nil
+	}
+	if _, ok := a.(interface{ timed() }); ok {
+		return a
+	}
+	t := timedApprover{a}
+	d, isD := a.(Decider)
+	k, isK := a.(Asker)
+	switch {
+	case isD && isK:
+		return timedDeciderAsker{t, timedDecider{t, d}, timedAsker{t, k}}
+	case isD:
+		return timedDecider{t, d}
+	case isK:
+		return timedAsker{t, k}
+	}
+	return t
+}
+
+type timedApprover struct{ Approver }
+
+func (timedApprover) timed() {}
+
+func (t timedApprover) Approve(ctx context.Context, req ApprovalRequest) (bool, error) {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.Approver.Approve(ctx, req)
+}
+
+type timedDecider struct {
+	timedApprover
+	d Decider
+}
+
+func (t timedDecider) Decide(ctx context.Context, req ApprovalRequest) (Answer, error) {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.d.Decide(ctx, req)
+}
+
+type timedAsker struct {
+	timedApprover
+	k Asker
+}
+
+func (t timedAsker) Ask(ctx context.Context, questions []Question) (string, error) {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.k.Ask(ctx, questions)
+}
+
+type timedDeciderAsker struct {
+	timedApprover
+	dec timedDecider
+	ask timedAsker
+}
+
+func (t timedDeciderAsker) Decide(ctx context.Context, req ApprovalRequest) (Answer, error) {
+	return t.dec.Decide(ctx, req)
+}
+
+func (t timedDeciderAsker) Ask(ctx context.Context, questions []Question) (string, error) {
+	return t.ask.Ask(ctx, questions)
+}
+
+// TimedReviewer does the same for an approval reviewer.
+func TimedReviewer(r Reviewer) Reviewer {
+	if r == nil {
+		return nil
+	}
+	if _, ok := r.(timedReviewer); ok {
+		return r
+	}
+	return timedReviewer{r}
+}
+
+type timedReviewer struct{ Reviewer }
+
+func (t timedReviewer) Review(ctx context.Context, req ApprovalRequest) Review {
+	start := time.Now()
+	defer func() { waiting(ctx, time.Since(start)) }()
+	return t.Reviewer.Review(ctx, req)
+}
+
 // CallID is the id of the tool call being run, or "". Tools with side
 // effects derive idempotency keys from it.
 func CallID(ctx context.Context) string {
@@ -350,10 +516,25 @@ func (r *Registry) Execute(ctx context.Context, env *Env, call llm.Block) llm.Bl
 		return res
 	}
 	env.checkpoint(ctx, t, call.Input)
+	before := env.Taint.Marked()
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		rt.waited = 0 // approvals before Run are outside its time already
+		rt.mu.Unlock()
+	}
+	start := time.Now()
 	out, err := t.Run(ctx, env, call.Input)
+	if rt, ok := ctx.Value(runTimeKey{}).(*runTime); ok {
+		rt.mu.Lock()
+		*rt.ran = max(time.Since(start)-rt.waited, 0)
+		rt.mu.Unlock()
+	}
 	if taints(t) {
 		env.Taint.Mark()
 	}
+	// A tool that marked the turn itself (session_search reading imported
+	// history) is recorded on its result, for restoreTaint.
+	res.Tainted = taints(t) || !before && env.Taint.Marked()
 	if err != nil {
 		res.IsError = true
 		if out != "" {
@@ -374,16 +555,29 @@ var ErrDenied = errors.New("denied by permission policy")
 // also gets a note for its result, so the transcript records why it ran.
 func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Block) (string, error) {
 	risk := t.Risk()
+	if risk == RiskWrite {
+		if err := lockedWrite(env, t, call); err != nil {
+			return "", err
+		}
+		if err := instructionWrite(env, t, call); err != nil {
+			return "", err
+		}
+	}
 	var confirm string
 	if ct, ok := t.(ConfirmTool); ok {
 		confirm = ct.Confirm(ctx, env, call.Input)
+	}
+	if confirm == "" {
+		// The agent's instruction files and saved rules: a person decides,
+		// in every mode (allow.go).
+		confirm = guardedWrite(env, t, call)
 	}
 	if cp := r.capability(ctx, env, t, call); cp != "" {
 		// A note written to one of the agent's trusted folders is not held
 		// for approval because the turn came from a chat or read outside
 		// content (trusted.go); the mode still decides.
 		trusted := false
-		if cp == CapWrite {
+		if cp == CapWrite && confirm == "" {
 			var err error
 			if trusted, err = trustedWrite(env, t, call); err != nil {
 				return "", err
@@ -394,7 +588,7 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 			case ModeWorkspace, ModeFull:
 				return "", nil
 			}
-		} else if note, handled, err := gate(ctx, env, cp, risk, call, confirm); handled {
+		} else if note, handled, err := gate(ctx, env, t, cp, risk, call, confirm); handled {
 			return note, err
 		}
 	}
@@ -431,7 +625,11 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 			}
 		}
 	}
-	return Ask(ctx, env, ApprovalRequest{Tool: call.ToolName, Summary: summarize(call.Input), Input: call.Input})
+	if rule, ok := coveredByRule(env, t, call); ok {
+		return rule.Note(), nil
+	}
+	return Ask(ctx, env, ApprovalRequest{Tool: call.ToolName, Summary: summarize(call.Input), Input: call.Input,
+		Rule: ProposeRule(env, t, call)})
 }
 
 // Ask puts a call to whoever approves this run's calls: the reviewer model
@@ -439,8 +637,11 @@ func (r *Registry) authorize(ctx context.Context, env *Env, t Tool, call llm.Blo
 // may go ahead, with a note for the result when the reviewer allowed it.
 // Tools that gate their own actions (node_invoke) use it directly.
 func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
-	req.Session, req.Task, req.Workspace = env.Session, env.Task, env.Workspace
+	req.Session, req.Task, req.Workspace, req.Agent = env.Session, env.Task, env.Workspace, env.Agent
 	req.Tainted = env.Taint.Marked()
+	if !rulesApply(env) {
+		req.Rule = nil
+	}
 	unattended := fmt.Errorf("%w: %s needs approval and no one is attending this run", ErrDenied, req.Tool)
 	if (env.Approvals == ApproveReviewer || env.Approvals == ApproveReviewerThenHuman) && env.Reviewer != nil {
 		rv := env.Reviewer.Review(ctx, req)
@@ -458,17 +659,53 @@ func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
 	if env.Approver == nil {
 		return "", unattended
 	}
-	ok, err := env.Approver.Approve(ctx, req)
+	a, err := decide(ctx, env.Approver, req)
 	if errors.Is(err, ErrNoApprover) {
 		return "", unattended
 	}
 	if err != nil {
 		return "", err
 	}
-	if !ok {
+	switch a.Decision {
+	case DecisionDeny:
 		return "", fmt.Errorf("%w: the user declined %s", ErrDenied, req.Tool)
+	case DecisionAlways:
+		return saveRule(env, req, a.By), nil
 	}
 	return "", nil
+}
+
+// decide asks an approver, with "Always allow" when it offers it.
+func decide(ctx context.Context, a Approver, req ApprovalRequest) (Answer, error) {
+	if d, ok := a.(Decider); ok && req.Rule != nil {
+		return d.Decide(ctx, req)
+	}
+	req.Rule = nil
+	ok, err := a.Approve(ctx, req)
+	if ok {
+		return Answer{Decision: DecisionOnce}, err
+	}
+	return Answer{Decision: DecisionDeny}, err
+}
+
+// saveRule keeps the rule a person chose "Always allow" for, and returns
+// the note for the call's result. The rule is checked again here: a
+// tainted or guest turn never saves one, whatever the approver said. It
+// applies where it was saved: in this chat, or on this machine.
+func saveRule(env *Env, req ApprovalRequest, by string) string {
+	if req.Rule == nil || !rulesApply(env) || (req.Rule.Tool == "exec" && !execRulesAllowed(env)) {
+		return ""
+	}
+	r := *req.Rule
+	r.Place, r.SavedBy, r.Source = turnPlace(env), by, "chat"
+	if r.Place == PlaceLocal {
+		r.Source = "local"
+	}
+	saved, err := env.Rules.Save(r)
+	if err != nil {
+		return "[approved once; saving the always-allow rule failed: " + err.Error() + "]"
+	}
+	return "[approved, and saved an always-allow rule (" + saved.ID + "): " + saved.String() + "]"
 }
 
 // confirmByHuman asks the attached human about a call a ConfirmTool marked;
@@ -478,9 +715,10 @@ func confirmByHuman(ctx context.Context, env *Env, call llm.Block, why string, c
 	if env.Approver == nil {
 		return unattended
 	}
+	// No rule is offered: these calls need a person every time.
 	ok, err := env.Approver.Approve(ctx, ApprovalRequest{Tool: call.ToolName, Summary: "[" + why + "] " + summarize(call.Input),
 		Input: call.Input, Session: env.Session, Task: env.Task, Workspace: env.Workspace, Review: why, Cause: cause,
-		Tainted: env.Taint.Marked()})
+		Tainted: env.Taint.Marked(), Agent: env.Agent})
 	switch {
 	case errors.Is(err, ErrNoApprover):
 		return unattended

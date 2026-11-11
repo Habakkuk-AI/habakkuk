@@ -287,7 +287,7 @@ func TestApprovalPromptIsPlain(t *testing.T) {
 	req := tools.ApprovalRequest{Tool: "exec", Input: json.RawMessage(`{"command":"cat >> decisions.md <<'EOF'\n## 2026-11-10\nEOF"}`),
 		Workspace: r.g.Runner.Agents["habakkuk"].Workspace, Cause: tools.CauseTainted,
 		Summary: "[this turn has read outside content (a web page, search result, email or tool output), so exec needs your approval] {...}"}
-	lines := strings.Split(r.g.approvalPrompt(to, req), "\n")
+	lines := strings.Split(r.g.approvalPrompt(context.Background(), to, req), "\n")
 	if len(lines) != 4 || lines[0] != "I'd like to add a note to decisions.md in your workspace." ||
 		lines[1] != "I'm asking because this conversation included a web page or email, and I check with you before acting on those." ||
 		lines[2] != "" || !strings.HasPrefix(lines[3], "Reply **yes** or **no**.") {
@@ -295,7 +295,7 @@ func TestApprovalPromptIsPlain(t *testing.T) {
 	}
 	for _, cause := range []tools.Cause{tools.CauseChannel, tools.CauseConfirm, ""} {
 		req.Cause = cause
-		p := r.g.approvalPrompt(to, req)
+		p := r.g.approvalPrompt(context.Background(), to, req)
 		if bad := leaks(p, "EOF", "outside content (a web page, search result"); bad != "" {
 			t.Errorf("cause %q: the prompt shows %q: %q", cause, bad, p)
 		}
@@ -305,7 +305,7 @@ func TestApprovalPromptIsPlain(t *testing.T) {
 	}
 	// The reviewer's doubt is passed on in its own words.
 	req.Cause, req.Review = "", "it deletes files"
-	if p := r.g.approvalPrompt(to, req); !strings.Contains(p, "\nI'm asking because my reviewer was not sure: it deletes files\n") {
+	if p := r.g.approvalPrompt(context.Background(), to, req); !strings.Contains(p, "\nI'm asking because my reviewer was not sure: it deletes files\n") {
 		t.Errorf("reviewer reason missing: %q", p)
 	}
 }
@@ -398,8 +398,12 @@ func TestCallHashIsStable(t *testing.T) {
 	}
 	// Button data must fit Telegram's 64 bytes.
 	g := &Gateway{}
-	rows, _ := g.approvalButtons(Address{Account: "tg", Conversation: "100"}, a)
+	rows := g.approvalButtons(Address{Account: "tg", Conversation: "100"}, a, false)
 	if d := rows[0][1].Data; len(d) > 64 || !strings.HasSuffix(d, "|1|"+a) {
+		t.Fatalf("button data %q (%d bytes)", d, len(d))
+	}
+	rows = g.approvalButtons(Address{Account: "tg", Conversation: "100"}, a+"a", true)
+	if d := rows[0][2].Data; len(d) > 64 || !strings.HasSuffix(d, "|2|"+a+"a") {
 		t.Fatalf("button data %q (%d bytes)", d, len(d))
 	}
 }

@@ -27,6 +27,10 @@ type HTTP struct {
 	// tunnel), e.g. https://habakkuk.example.com. Channels that receive
 	// webhooks are at <public_url>/channels/<account>.
 	PublicURL string `yaml:"public_url"`
+	// PushContact is how push services can reach whoever runs this
+	// server, sent with every Web Push message: mailto:you@example.com or
+	// an https URL. Default public_url when it is https.
+	PushContact string `yaml:"push_contact"`
 }
 
 // Webhook turns an authenticated POST into a turn for an agent.
@@ -113,6 +117,9 @@ func (c *Config) validateHTTP() []error {
 	}
 	if webs > 1 {
 		bad("only one channel may have type web")
+	}
+	if pc := h.PushContact; pc != "" && !strings.HasPrefix(pc, "mailto:") && !strings.HasPrefix(pc, "https://") {
+		bad("push_contact %q must start with mailto: or https://", pc)
 	}
 	if c.WebAccountName() == "" {
 		bad("channel %q is taken by another type; add a channel of type web", WebAccount)

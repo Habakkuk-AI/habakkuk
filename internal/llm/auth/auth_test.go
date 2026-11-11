@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -284,5 +285,18 @@ func TestParseInterval(t *testing.T) {
 		if got := parseInterval(json.RawMessage(in), 5*time.Second); got != want {
 			t.Errorf("%s: %v", in, got)
 		}
+	}
+}
+
+// The model router treats only a gone login as an outage; it learns which
+// errors those are through LoginGone.
+func TestGoneLoginsTellTheRouter(t *testing.T) {
+	for _, err := range []error{ErrNotLoggedIn, ErrLoginExpired, fmt.Errorf("chatgpt: %w: 401", ErrLoginExpired)} {
+		if !llm.LoginGone(err) {
+			t.Errorf("LoginGone(%v) = false", err)
+		}
+	}
+	if llm.LoginGone(errors.New("chatgpt: refresh: 503 Service Unavailable")) {
+		t.Error("a passing refresh failure counted as a gone login")
 	}
 }

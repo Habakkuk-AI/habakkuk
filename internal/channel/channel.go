@@ -30,6 +30,18 @@ type Message struct {
 	// Quote is the message this one replies to, when the sender quoted one
 	// and the platform says what it said; nil otherwise.
 	Quote *Quote
+	// Forwarded: the platform says the sender forwarded this message from
+	// someone else. Spoken: the text is a transcript of speech (Live mode, a
+	// voice note), which could be anyone's voice. Neither is text the sender
+	// just typed, so approval rules never answer for such a turn.
+	Forwarded, Spoken bool
+	// Plain: the adapter vouches that this is text the sender typed: not
+	// forwarded, not quoting anyone, no attachment, no transcript. Only the
+	// adapters whose platforms report forwards and quotes set it (Telegram,
+	// WhatsApp linked device and Cloud API, the WhatsApp agent channel, the
+	// web chat); on every other channel no turn is typed, and approval
+	// rules never answer there.
+	Plain bool
 }
 
 // Quote is a message that a reply quotes.
@@ -125,6 +137,15 @@ type Editor interface {
 	// Delete removes a message Post returned. A message already gone is not
 	// an error.
 	Delete(ctx context.Context, to Address, id string) error
+}
+
+// LoudPoster is implemented by editors whose Post is silent (it posts
+// without a notification, as a progress draft should). PostLoud posts a
+// message that notifies like an ordinary reply, quoting replyTo when set;
+// a reply streamed into the chat starts with it, so the person is told the
+// answer has begun even though it is finished by editing.
+type LoudPoster interface {
+	PostLoud(ctx context.Context, to Address, text, replyTo string) (id string, err error)
 }
 
 // Button is one choice shown under a message.

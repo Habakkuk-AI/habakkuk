@@ -89,7 +89,8 @@ type Entry struct {
 	Off string
 	// Missing are the requirements this machine does not meet.
 	Missing []string
-	// Unapproved: installed from outside, ships scripts, not approved yet.
+	// Unapproved: came from outside and is held back until the owner approves
+	// it, because it ships scripts or was marked held.
 	Unapproved bool
 }
 
@@ -104,7 +105,7 @@ func (e Entry) Reason() string {
 	case e.Off != "":
 		return "turned off (hk skills enable " + e.Name + " turns it back on)"
 	case e.Unapproved:
-		return "ships scripts and is not approved (hk skills approve " + e.Name + ")"
+		return "came from outside and is not approved (hk skills approve " + e.Name + ")"
 	case len(e.Missing) > 0:
 		return "needs " + strings.Join(e.Missing, " and ")
 	}
@@ -114,7 +115,7 @@ func (e Entry) Reason() string {
 // check fills in why a skill, found by precedence, cannot be used.
 func (l *Library) check(s Skill, off map[string]string) Entry {
 	e := Entry{Skill: s, Off: off[s.Name]}
-	e.Unapproved = s.Shared && !s.Plugin && !s.Bundled && l.Disabled(s)
+	e.Unapproved = !s.Plugin && !s.Bundled && l.Disabled(s)
 	e.Missing = l.missing(s.Requires)
 	return e
 }

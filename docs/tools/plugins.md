@@ -262,7 +262,7 @@ hk plugins restore [-id ID] NAME | restore -list [NAME]
 hk skills [-agent A]                     the skills an agent can use, where each comes from, approval
 hk skills search QUERY
 hk skills install [-y] [-force] [-name N] SOURCE
-hk skills approve NAME                   enable a skill with scripts, drop the caution
+hk skills approve [-agent A] NAME        enable a skill with scripts, drop the caution (-agent: an agent's own skill from hk migrate)
 hk skills update [-y] [-force] [NAME]
 hk skills audit                          rescan installed skills and plugins, check their hashes
 hk skills remove NAME

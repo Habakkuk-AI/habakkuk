@@ -158,7 +158,7 @@ func (a *App) reloadConfig() {
 	}
 }
 
-// reloadDisplay applies each channel's progress and approvals_detail from
+// reloadDisplay applies each channel's progress, approvals_detail and stream from
 // the file to the running gateway, which uses them from the next turn. The
 // config the process started with is left as it was; the gateway holds the
 // live values (channel.Gateway.Display).
@@ -174,19 +174,19 @@ func (a *App) reloadDisplay(next *config.Config) {
 		a.Gateway.SetDisplay(name, ch)
 		if after := a.Gateway.Display(name); after != before {
 			a.Log.Info("channel display settings reloaded", "channel", name,
-				"progress", after.Progress, "approvals_detail", after.ApprovalsDetail)
+				"progress", after.Progress, "approvals_detail", after.ApprovalsDetail, "stream", after.Stream)
 		}
 	}
 }
 
-// withoutDisplay is the channels without the two settings that reload in
+// withoutDisplay is the channels without the settings that reload in
 // place, so changing only those does not ask for a restart.
 func withoutDisplay(channels map[string]*config.Channel) map[string]config.Channel {
 	out := make(map[string]config.Channel, len(channels))
 	for name, ch := range channels {
 		if ch != nil {
 			c := *ch
-			c.Progress, c.ApprovalsDetail = "", ""
+			c.Progress, c.ApprovalsDetail, c.Stream = "", "", nil
 			out[name] = c
 		}
 	}

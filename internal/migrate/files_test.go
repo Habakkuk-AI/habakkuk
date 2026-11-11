@@ -618,11 +618,12 @@ func TestFilesRewriteNotesProfileAndMCP(t *testing.T) {
 		w := newWorld(t, Hermes)
 		w.write("workspaces/reports/q3.md", "Quarterly numbers.\n", 0o644)
 		w.write("scripts/local_mcp.py", "print('mcp')\n", 0o755)
+		w.write("logs/mcp.log", "started\n", 0o644)
 		w.add("memories/MEMORY.md", "\n§\nReports are kept in ~/.hermes/workspaces/reports, one per quarter.\n")
 		w.add("memories/USER.md", "\n§\nReads the briefs in ~/.hermes/workspaces every morning.\n")
 		cfgPath := filepath.Join(w.src, "config.yaml")
 		w.write("config.yaml", strings.Replace(readFile(t, cfgPath), `args: ["mcp-server-time"]`,
-			`args: ["run", "~/.hermes/scripts/local_mcp.py", "--log", "~/.hermes/logs/mcp.log"]`, 1), 0o644)
+			`args: ["run", "~/.hermes/scripts/local_mcp.py", "~/.hermes/logs/mcp.log"]`, 1), 0o644)
 		if earlier {
 			w.run("")
 			if cfg, err := config.Load(w.home); err != nil || !slices.Contains(cfg.MCP["time"].Args, "~/.hermes/scripts/local_mcp.py") {
@@ -655,7 +656,7 @@ func TestFilesRewriteNotesProfileAndMCP(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The script moved; the old agent's log folder did not.
-		if got, want := cfg.MCP["time"].Args, []string{"run", "~/.habakkuk/files/scripts/local_mcp.py", "--log", "~/.hermes/logs/mcp.log"}; !slices.Equal(got, want) {
+		if got, want := cfg.MCP["time"].Args, []string{"run", "~/.habakkuk/files/scripts/local_mcp.py", "~/.hermes/logs/mcp.log"}; !slices.Equal(got, want) {
 			t.Errorf("earlier %v: the MCP server's args are %v", earlier, got)
 		}
 		for _, it := range w.plan(w.options(FilesCopy)).Items {

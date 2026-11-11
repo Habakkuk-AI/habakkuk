@@ -235,6 +235,20 @@ These are the tool calls waiting for a yes or no in a chat. A call waits there u
 |---|---|
 | `GET /api/approvals` | `{"approvals": [{"id", "to": {"account", "conversation", "thread"}, "session", "tool", "summary", "review", "since"}]}`, oldest first. |
 | `POST /api/approvals/{id}` `{"approve": true}` | Allows (or with `false` denies) the call, exactly as answering in the chat would, and posts "Approved from the dashboard." there. `404` when it is no longer waiting (answered, timed out, or the turn stopped). |
+| `GET /api/approval-rules` | `{"rules": [{"id", "agent", "tool", "exact", "in", "program", "path", "place", "saved_by", "added", "source", "text", "where"}]}`: every agent's approval rules, config ones (`source: "config"`) first. `text` says what the rule covers and `where` where it applies: everywhere (config), on this machine (`place: "local"`) or in one chat (`place: "chat:ACCOUNT:CONVERSATION"`). |
+| `DELETE /api/approval-rules/{agent}/{id}` | Removes a saved rule (`204`). Rules from the config are removed by editing it, so they answer `404`. |
+
+## Push
+
+Web Push to devices that turned notifications on from the dashboard. See [Dashboard](../interfaces/dashboard.md#notifications).
+
+| Request | |
+|---|---|
+| `GET /api/push` | `{"public_key", "kinds": ["approvals", "replies", "schedules"], "devices": [{"id", "label", "service", "created", "kinds": {"approvals": true, ...}}]}`. `public_key` is the server's VAPID key, base64url, for `PushManager.subscribe`. It's created the first time you ask. `service` is the push service's host. Devices never show their endpoint or keys. |
+| `POST /api/push` `{"subscription": <PushSubscription JSON>, "label": "Chrome on Android", "off": ["replies"]}` | Registers a browser's subscription and returns `{"id"}`. The same browser again keeps its id and settings. `off` lists kinds to start turned off. `400` for an endpoint that isn't `https` on a browser push service (`fcm.googleapis.com`, `*.push.services.mozilla.com`, `web.push.apple.com`, `*.notify.windows.com`), or keys that aren't a P-256 key and a 16-byte secret. Devices are forgotten when the dashboard token changes. |
+| `PUT /api/push/{id}` `{"replies": false}` | Turns kinds on or off for one device and returns the device. Kinds you don't name keep their setting. `400` for an unknown kind, `404` for an unknown device. |
+| `DELETE /api/push/{id}` | Forgets the device. `204`, also when it was already gone. |
+| `POST /api/push/{id}/test` | Sends one notification to that device now, whatever its settings. `410` when the push service says the subscription is gone (Habakkuk forgets it), `502` for any other refusal. |
 
 ## Nodes
 

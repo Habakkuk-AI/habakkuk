@@ -18,10 +18,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/habakkuk-ai/habakkuk/internal/agent"
+	"github.com/habakkuk-ai/habakkuk/internal/agent/projtrust"
 	"github.com/habakkuk-ai/habakkuk/internal/config"
 	"github.com/habakkuk-ai/habakkuk/internal/core/jobs"
 	"github.com/habakkuk-ai/habakkuk/internal/core/state"
 	"github.com/habakkuk-ai/habakkuk/internal/core/store"
+	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/ops/i18n"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
 	"github.com/habakkuk-ai/habakkuk/internal/tools/media"
@@ -70,8 +72,9 @@ type Gateway struct {
 	Personas state.Personalities
 	// ProgressAfter is how long a turn runs before its progress draft is
 	// posted (default 8s); ProgressEvery is the least time between edits
-	// (default 3s).
-	ProgressAfter, ProgressEvery time.Duration
+	// (default 3s). StreamEvery is the least time between edits of a reply
+	// streamed while it is written (default 1.2s).
+	ProgressAfter, ProgressEvery, StreamEvery time.Duration
 	// Commands are extra slash commands ("/usage", "/model"), each given
 	// the conversation's session and the text after the command. The reply
 	// is sent back to the chat.
@@ -99,7 +102,7 @@ type Gateway struct {
 	pending   sync.Map // conversation key -> *pendingApproval, while an approval waits
 	asked     sync.Map // conversation key -> Approval, while an approval waits
 	questions sync.Map // conversation key -> chan string, while clarify waits
-	approveMu sync.Map // conversation key -> *sync.Mutex, one approval at a time
+	approveMu sync.Map // conversation key -> chan struct{} (holdChat), one prompt at a time
 	throttle  sync.Map // key -> time.Time of the last pairing notice
 	nudged    sync.Map // turn job id -> true once its progress notice went out
 
@@ -118,6 +121,9 @@ type deliverPayload struct {
 	Session string `json:"session,omitempty"`
 	Agent   string `json:"agent,omitempty"`
 	What    string `json:"what,omitempty"`
+	// Tainted: outside content may have steered the turn that wrote it
+	// (agent.Runner.Untrusted); its chat note says so.
+	Tainted bool `json:"tainted,omitempty"`
 }
 
 func (g *Gateway) now() time.Time {
@@ -176,7 +182,7 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 	owner := g.owner(ctx, ch, m)
 	// Only the owner answers approvals: a guest in a group must not approve
 	// the owner's pending command.
-	if text != "" && (g.answerQuestion(to, text) || (owner && g.answerApproval(to, text))) {
+	if text != "" && (g.answerQuestion(to, text) || (owner && g.answerApproval(to, text, answerer(m)))) {
 		return
 	}
 	pick := g.pickAgent(ctx, to, m.Agent)
@@ -202,7 +208,7 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 	}
 	origin, _ := json.Marshal(from)
 	if _, err := g.Runner.SubmitTurn(ctx, agent.Turn{
-		ID: TurnID(m), Session: conv.SessionID, Text: text, Media: media, Origin: origin,
+		ID: TurnID(m), Session: conv.SessionID, Text: text, Media: media, Origin: origin, Typed: g.typed(m, owner),
 	}); err != nil {
 		log.Error("queue turn failed", "err", err)
 		g.reply(to, g.t(to, "turn.queue_failed"))
@@ -282,9 +288,18 @@ func (g *Gateway) ingest(ctx context.Context, agentName string, atts []Attachmen
 			}
 		}
 		if inbox != "" {
-			path := filepath.Join(inbox, g.now().UTC().Format("20060102-150405")+"-"+name)
-			if err := os.MkdirAll(inbox, 0o700); err == nil && store.WriteFileAtomic(path, data, 0o600) == nil {
-				got.Path = path
+			// Saved only where the inbox really is inside the workspace: a
+			// link named inbox must not lead an attachment elsewhere.
+			ws := &tools.Env{Workspace: filepath.Dir(inbox), Policy: &tools.Policy{Locked: lockedFolders(g.Runner, agentName)}}
+			if err := os.MkdirAll(inbox, 0o700); err == nil {
+				if dir, err := ws.OutputDir(inbox); err == nil {
+					path := filepath.Join(dir, g.now().UTC().Format("20060102-150405")+"-"+name)
+					if store.WriteFileAtomic(path, data, 0o600) == nil {
+						got.Path = path
+					}
+				} else {
+					g.Log.Warn("attachment not saved in the workspace", "err", err)
+				}
 			}
 		}
 		if strings.HasPrefix(got.MediaType, "audio/") {
@@ -672,7 +687,7 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 	final, err := g.Runner.HandleTurn(ctx, j, owner)
 	g.reactEnd(ctx, j, to, err)
 	endProgress() // no draft edit may follow the reply
-	if err == nil || errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts {
+	if err == nil || jobs.IsPermanent(err) || j.Attempts >= j.MaxAttempts {
 		g.nudged.Delete(j.ID) // the turn will not run again
 		if to != nil {
 			g.forgetAsked(*to) // nor ask again: a later "yes" is an ordinary message
@@ -686,8 +701,19 @@ func (g *Gateway) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (st
 			g.settleStopped(ctx, j, *to)
 			return "", err
 		}
-		if errors.As(err, new(jobs.Permanent)) || j.Attempts >= j.MaxAttempts {
+		if jobs.IsPermanent(err) || j.Attempts >= j.MaxAttempts {
+			// No model could take the call (credit or keys): background work
+			// tells each chat once per outage, not on every run.
+			if ue := new(llm.UnavailableError); errors.As(err, &ue) && p.Background &&
+				!g.Runner.UnavailableNotice(ue, to.Account+"\x00"+to.Conversation+"\x00"+to.Thread) {
+				g.Log.Info("model outage already reported; failure not sent", "job", j.ID, "outage", ue.Key)
+				g.clearDraft(ctx, j.ID, *to)
+				return "", err
+			}
 			msg := g.t(*to, "turn.failed", shorten(err.Error(), 300))
+			if stopped := (agent.LoopStopped{}); errors.As(err, &stopped) {
+				msg = stopped.Message // the loop guard's own message, whole
+			}
 			if derr := g.enqueue(ctx, "dlv_"+j.ID, deliverPayload{To: *to, Text: msg, Draft: j.ID}); derr != nil {
 				g.Log.Error("queue failure notice failed", "err", derr)
 			}
@@ -721,6 +747,14 @@ func (g *Gateway) enqueueDelivery(ctx context.Context, id string, to Address, te
 // key, so a file sent during a turn goes out before the turn's reply.
 func (g *Gateway) enqueue(ctx context.Context, id string, p deliverPayload) error {
 	p.poster(ctx)
+	if g.Runner != nil {
+		turn := llm.CallerFrom(ctx).Turn
+		if turn == "" {
+			turn = p.Draft // a turn's reply, queued after it ended
+		}
+		p.Tainted = p.Tainted || (turn != "" && g.Runner.Untrusted(turn))
+	}
+	p.Tainted = p.Tainted || agent.TaintedFrom(ctx)
 	_, err := g.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: id, Kind: KindDeliver, SerialKey: "dlv:" + p.To.key(), Priority: 20, MaxAttempts: 20,
 		Payload: p,
@@ -752,11 +786,11 @@ func (g *Gateway) HandleDeliver(ctx context.Context, j *jobs.Job, owner string) 
 	if a == nil {
 		return "", jobs.Permanent{Err: fmt.Errorf("%w %q", errNoAdapter, p.To.Account)}
 	}
-	g.finishDraft(ctx, p.Draft, a, p.To)
-	if p.File != nil {
-		return g.deliverFile(ctx, j, owner, a, p)
-	}
-	if strings.TrimSpace(p.Text) == "" {
+	if p.File != nil || strings.TrimSpace(p.Text) == "" {
+		g.finishDraft(ctx, p.Draft, a, p.To)
+		if p.File != nil {
+			return g.deliverFile(ctx, j, owner, a, p)
+		}
 		return "removed the progress draft", nil
 	}
 	chunks := Split(p.Text, chunkLimit(a))
@@ -764,6 +798,10 @@ func (g *Gateway) HandleDeliver(ctx context.Context, j *jobs.Job, owner string) 
 	if err != nil {
 		return "", err
 	}
+	if sent == 0 && g.adoptDraft(ctx, j.ID, p.Draft, a, p.To, chunks[0]) {
+		sent = 1
+	}
+	g.finishDraft(ctx, p.Draft, a, p.To)
 	for i := sent; i < len(chunks); i++ {
 		if err := g.Queue.Owns(ctx, j.ID, owner); err != nil {
 			return "", err
@@ -861,33 +899,87 @@ type chatApprover struct {
 
 // pendingApproval is one approval prompt waiting in a chat.
 type pendingApproval struct {
-	answer chan bool
+	answer chan tools.Answer
 	once   sync.Once
 	hash   string // callHash of the call, carried by the prompt's buttons
 	req    tools.ApprovalRequest
+	always bool // the prompt offers "Always allow" (req.Rule is set)
 }
 
-// resolve answers the approval; only the first answer counts.
-func (p *pendingApproval) resolve(ok bool) (first bool) {
-	p.once.Do(func() { p.answer <- ok; first = true })
+// resolve answers the approval; only the first answer counts. by names who
+// answered.
+func (p *pendingApproval) resolve(d tools.Decision, by string) (first bool) {
+	p.once.Do(func() { p.answer <- tools.Answer{Decision: d, By: by}; first = true })
 	return first
 }
 
-func (c *chatApprover) Approve(ctx context.Context, req tools.ApprovalRequest) (bool, error) {
-	g := c.g
-	conv, err := g.Store.BySession(ctx, c.session)
-	if err != nil {
-		return false, err
+// answerer names the sender of m for a saved rule: "7 (Sam)".
+func answerer(m Message) string {
+	if m.SenderName == "" || m.SenderName == m.Sender {
+		return m.Sender
 	}
-	if conv == nil {
-		return false, tools.ErrNoApprover // not a channel session: nobody to ask
-	}
-	to := conv.Address
-	mu, _ := g.approveMu.LoadOrStore(to.key(), &sync.Mutex{})
-	mu.(*sync.Mutex).Lock()
-	defer mu.(*sync.Mutex).Unlock()
+	return m.Sender + " (" + m.SenderName + ")"
+}
 
-	p := &pendingApproval{answer: make(chan bool, 1), hash: callHash(conv.Agent, c.session, req), req: req}
+// holdChat waits, up to the approval timeout, for the chat to have no
+// other prompt waiting: one question or approval at a time. ok is false
+// when it stays busy or ctx ends, so a worker is never held for good.
+func (g *Gateway) holdChat(ctx context.Context, to Address) (release func(), ok bool) {
+	v, _ := g.approveMu.LoadOrStore(to.key(), make(chan struct{}, 1))
+	sem := v.(chan struct{})
+	timeout := g.ApprovalTimeout
+	if timeout == 0 {
+		timeout = 15 * time.Minute
+	}
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	select {
+	case sem <- struct{}{}:
+		return func() { <-sem }, true
+	case <-ctx.Done():
+	case <-t.C:
+	}
+	return nil, false
+}
+
+func (c *chatApprover) Approve(ctx context.Context, req tools.ApprovalRequest) (bool, error) {
+	req.Rule = nil // a plain yes or no: Always allow is offered only through Decide
+	a, err := c.Decide(ctx, req)
+	return a.Decision != tools.DecisionDeny, err
+}
+
+// Decide asks in the chat: Allow once, Always allow (when the request
+// carries a rule) or Deny. A scheduled run has no conversation of its own;
+// it asks in the chat it delivers to.
+func (c *chatApprover) Decide(ctx context.Context, req tools.ApprovalRequest) (tools.Answer, error) {
+	g := c.g
+	deny := tools.Answer{Decision: tools.DecisionDeny}
+	to, agentName, ok, err := c.where(ctx, req)
+	if err != nil {
+		return deny, err
+	}
+	if !ok {
+		return deny, tools.ErrNoApprover // not a channel session: nobody to ask
+	}
+	if req.Rule != nil && !g.canOfferRule(to, req) {
+		req.Rule = nil
+	}
+	release, ok := g.holdChat(ctx, to)
+	if !ok {
+		if ctx.Err() != nil {
+			return deny, ctx.Err()
+		}
+		g.Log.Warn("approval not asked: another request has been waiting in the chat too long", "channel", to.Account, "tool", req.Tool)
+		return deny, nil
+	}
+	defer release()
+
+	p := &pendingApproval{answer: make(chan tools.Answer, 1), hash: callHash(agentName, c.session, req), req: req, always: req.Rule != nil}
+	if p.always {
+		// A press from a prompt laid out without Always allow (before a
+		// restart) must not be read against this one's buttons.
+		p.hash += "a"
+	}
 	g.pending.Store(to.key(), p)
 	defer g.pending.Delete(to.key())
 	defer g.recordApproval(to, c.session, req.Tool, req.Summary, req.Review)()
@@ -896,44 +988,85 @@ func (c *chatApprover) Approve(ctx context.Context, req tools.ApprovalRequest) (
 	if timeout == 0 {
 		timeout = 15 * time.Minute
 	}
-	rows, withdraw := g.approvalButtons(to, p.hash)
-	defer withdraw()
-	if err := g.sendChoice(ctx, to, g.approvalPrompt(to, req), rows); err != nil {
-		return false, nil // could not ask, so do not allow
+	rows := g.approvalButtons(to, p.hash, p.always)
+	if err := g.sendChoice(ctx, to, g.approvalPrompt(ctx, to, req), rows); err != nil {
+		return deny, nil // could not ask, so do not allow
 	}
 	g.rememberAsked(to, p.hash)
 	select {
-	case ok := <-p.answer:
+	case a := <-p.answer:
 		g.forgetAsked(to)
-		return ok, nil
+		return a, nil
 	case <-ctx.Done():
 		// The turn stopped with the prompt still in the chat: a restart, or
 		// a lost lease. The record stays, so an answer to that prompt is
 		// explained rather than dropped; the resumed turn asks again.
-		return false, ctx.Err()
+		return deny, ctx.Err()
 	case <-time.After(timeout):
 		g.forgetAsked(to)
 		g.reply(to, g.t(to, "approval.timeout"))
-		return false, nil
+		return deny, nil
 	}
+}
+
+// canOfferRule reports whether a chat may be offered "Always allow" for
+// req: never in an email conversation (anyone can write one, and a reply
+// can be forged), and never when the rule's text would not show as it is
+// (the log redactor would hide part of it).
+func (g *Gateway) canOfferRule(to Address, req tools.ApprovalRequest) bool {
+	if ch := g.Channels[to.Account]; ch != nil && ch.Type == "email" {
+		return false
+	}
+	text := req.Rule.Exact + req.Rule.Path + req.Rule.In
+	return g.redact(text) == text
+}
+
+// where is the chat to ask in: the session's own conversation, or, for a
+// scheduled run, the chat the schedule delivers to. ok is false when there
+// is none, and the call is decided as in any unattended run.
+func (c *chatApprover) where(ctx context.Context, req tools.ApprovalRequest) (to Address, agentName string, ok bool, err error) {
+	conv, err := c.g.Store.BySession(ctx, c.session)
+	if err != nil {
+		return Address{}, "", false, err
+	}
+	if conv != nil {
+		return conv.Address, conv.Agent, true, nil
+	}
+	if agent.SourceFrom(ctx) != agent.SourceSchedule {
+		return Address{}, "", false, nil
+	}
+	origin := agent.OriginFrom(ctx)
+	if len(origin) == 0 || json.Unmarshal(origin, &to) != nil || to.Account == "" || c.g.Adapters[to.Account] == nil {
+		return Address{}, "", false, nil
+	}
+	to.ReplyTo = ""
+	return to, req.Agent, true, nil
 }
 
 // approvalPrompt is what a chat is asked: what the agent wants to do in
 // everyday words, why it asks when there is a reason beyond the permission
 // mode, and how to answer. The exact call is shown only on channels with
 // approvals_detail: full; elsewhere the prompt says how to see it.
-func (g *Gateway) approvalPrompt(to Address, req tools.ApprovalRequest) string {
+func (g *Gateway) approvalPrompt(ctx context.Context, to Address, req tools.ApprovalRequest) string {
 	lang := g.lang(to)
 	var b strings.Builder
 	b.WriteString(g.describeCall(lang, req))
 	if why := g.why(lang, req); why != "" {
 		b.WriteString("\n" + why)
 	}
+	if task := agent.TaskFrom(ctx); task != "" && agent.SourceFrom(ctx) != "" {
+		b.WriteString("\n" + i18n.T(lang, "approval.for_task", clean(task, 120)))
+	}
 	full := g.Display(to.Account).ApprovalsDetail == config.ApprovalsFull
 	if full {
 		b.WriteString("\n\n" + g.exactCall(req, maxDetailInline))
 	}
-	b.WriteString("\n\n" + i18n.T(lang, "approval.reply"))
+	if req.Rule != nil {
+		b.WriteString("\n\n" + g.ruleText(lang, to, req))
+		b.WriteString("\n\n" + i18n.T(lang, "approval.reply_always"))
+	} else {
+		b.WriteString("\n\n" + i18n.T(lang, "approval.reply"))
+	}
 	if !full {
 		b.WriteString(" " + i18n.T(lang, "approval.details_hint"))
 	}
@@ -966,7 +1099,7 @@ func (g *Gateway) forgetAsked(to Address) {
 // gets a reminder instead of starting new work. A yes or no for a prompt
 // that was waiting when the process restarted is answered too: the request
 // expired, and the agent asks again if it still needs to.
-func (g *Gateway) answerApproval(to Address, text string) bool {
+func (g *Gateway) answerApproval(to Address, text, by string) bool {
 	word := strings.ToLower(strings.TrimSpace(strings.Trim(strings.TrimSpace(text), ".!。！")))
 	v, ok := g.pending.Load(to.key())
 	if !ok {
@@ -981,17 +1114,28 @@ func (g *Gateway) answerApproval(to Address, text string) bool {
 		return true
 	}
 	p := v.(*pendingApproval)
+	reply := "approval.reply"
+	if p.always {
+		reply = "approval.reply_always"
+	}
 	switch {
 	case g.isYes(to, word):
-		if p.resolve(true) {
+		if p.resolve(tools.DecisionOnce, by) {
 			g.reply(to, g.t(to, "approval.approved"))
 		}
 	case g.isNo(to, word):
-		if p.resolve(false) {
+		if p.resolve(tools.DecisionDeny, by) {
 			g.reply(to, g.t(to, "approval.denied"))
 		}
+	case g.isAlways(to, word):
+		switch {
+		case !p.always:
+			g.reply(to, g.t(to, "approval.always_unavailable"))
+		case p.resolve(tools.DecisionAlways, by):
+			g.reply(to, g.decided(to, tools.DecisionAlways))
+		}
 	case slices.Contains(i18n.Words(g.lang(to), "approval.details_words"), word):
-		g.reply(to, g.t(to, "approval.details")+"\n"+g.exactCall(p.req, maxDetail)+"\n\n"+g.t(to, "approval.reply"))
+		g.reply(to, g.t(to, "approval.details")+"\n"+g.exactCall(p.req, maxDetail)+"\n\n"+g.t(to, reply))
 	case strings.HasPrefix(word, "/"):
 		return false // commands always get through; /new and /stop decline the approval
 	default:
@@ -1003,8 +1147,12 @@ func (g *Gateway) answerApproval(to Address, text string) bool {
 // resolveApproval answers the conversation's pending approval, if any; it
 // reports whether this call was the answer.
 func (g *Gateway) resolveApproval(to Address, ok bool) bool {
+	d := tools.DecisionDeny
+	if ok {
+		d = tools.DecisionOnce
+	}
 	if v, found := g.pending.Load(to.key()); found {
-		return v.(*pendingApproval).resolve(ok)
+		return v.(*pendingApproval).resolve(d, "")
 	}
 	return false
 }
@@ -1015,4 +1163,37 @@ func shorten(s string, n int) string {
 		return string([]rune(s)[:n]) + "..."
 	}
 	return s
+}
+
+// lockedFolders is the owner's trusted project files folder of the home
+// an agent lives in, which no save may reach.
+func lockedFolders(r *agent.Runner, agentName string) []string {
+	spec, ok := r.Agents[agentName]
+	if !ok || spec.Dir == "" {
+		return nil
+	}
+	return []string{(&projtrust.Store{Home: filepath.Dir(filepath.Dir(spec.Dir))}).Folder()}
+}
+
+// typed reports whether a message is plain text the owner just typed, one
+// to one: the adapter vouched for it (Message.Plain), and it has no quote
+// of another message, no forward, no speech and no attachment. Only such a
+// turn may use approval rules; a group's turns, every channel whose
+// adapter does not set Plain, and every follow-up the gateway queues
+// itself (/goal, /retry, /btw) never do.
+func typed(m Message, owner bool) bool {
+	return owner && m.Plain && m.Direct && m.Quote == nil && !m.Forwarded && !m.Spoken && len(m.Attachments) == 0
+}
+
+// TypedChannels are the channel types whose messages can be typed turns:
+// their platforms report forwards and quotes (or the chat is the owner's
+// own page), so an adapter's Plain means something. Every other channel
+// (Slack, Discord, Signal, Matrix, Teams, Google Chat, email, SMS, ntfy,
+// IRC, Zulip, DingTalk, WeCom and the rest) is never typed.
+var TypedChannels = []string{"telegram", "whatsapp", "whatsappcloud", "whatsappagent", "web"}
+
+// typed is typed(m, owner) on a channel in TypedChannels only.
+func (g *Gateway) typed(m Message, owner bool) bool {
+	ch := g.Channels[m.Account]
+	return ch != nil && slices.Contains(TypedChannels, ch.Type) && typed(m, owner)
 }

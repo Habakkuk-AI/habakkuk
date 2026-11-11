@@ -54,9 +54,9 @@ Set `permission: read-only` or `ask` on the agent. Keep in mind that the default
 
 Yes. You can run as many as you like in one process. Each has its own model, permissions, memory and skills. You can route channels or conversations to them, switch between them with `/agent NAME`, or let them delegate to each other. See [Multi-agent teams](../agents/multi-agent.md).
 
-## Why do replies arrive all at once?
+## Why does a reply sometimes arrive all at once?
 
-Habakkuk delivers a reply when the turn finishes. It doesn't stream text into chat apps. While a long turn runs, you see a typing indicator, a progress message that's edited with each tool step (Telegram, Slack), or a "still working" notice. The dashboard and the terminal UI do show tool calls live.
+On Telegram and Slack, you see the reply while it's being written, in one message that becomes the reply ([how it works](../channels/settings.md#replies-as-theyre-written)). Other chat apps can't edit messages, so there the reply arrives when the turn finishes. While a long turn runs, you see a typing indicator, a progress line that changes as the work moves on, or a "still working" notice. The dashboard and the terminal UI show the reply and each tool call live.
 
 ## Can I run two copies of `hk serve`?
 

@@ -82,6 +82,7 @@ channels:
 | In | Text, files (needs `files:read`) |
 | Out | Text, files up to 100 MB (needs `files:write`) |
 | Live progress | One short line such as "Checking the web", edited as the work moves on (`progress: plain`, the default); `detailed` shows a line per tool step |
+| Streamed replies | The reply shows while it's written, in one message that becomes the reply (`stream`, on by default). See [Replies as they're written](settings.md#replies-as-theyre-written) |
 | Typing indicator | Slack has none for bots. With `progress: off`, a turn that runs past 60 seconds posts one "still working" notice |
 | Buttons | Approve and Deny on approval requests. A press is acknowledged to Slack at once. A button on a request from before a restart answers the request asked again only when it is the same call; otherwise you are told it expired |
 | Approval buttons | Approve and Deny, with Interactivity turned on |

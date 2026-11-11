@@ -16,14 +16,14 @@ type Hook struct {
 	Timeout time.Duration `yaml:"timeout"` // default 10s
 	// Match is a regular expression the event's subject must match: the tool
 	// name (tool_before, tool_after), the agent (turn_start, turn_end,
-	// session_new), the channel account (message_in, message_out) or the
+	// session_new, loop_guard), the channel account (message_in, message_out) or the
 	// schedule name (schedule_run). Empty matches everything.
 	Match string `yaml:"match"`
 }
 
 // HookEvents are the events a hook can name.
 var HookEvents = []string{"turn_start", "turn_end", "tool_before", "tool_after",
-	"message_in", "message_out", "session_new", "schedule_run"}
+	"message_in", "message_out", "session_new", "schedule_run", "loop_guard"}
 
 // Progress modes for a channel: how a long turn shows that it is working.
 const (
@@ -67,6 +67,12 @@ func (ch *Channel) ProgressMode() string {
 		return mode
 	}
 	return ProgressPlain
+}
+
+// StreamOn reports whether the channel shows replies while they are being
+// written (stream, default true).
+func (ch *Channel) StreamOn() bool {
+	return ch == nil || ch.Stream == nil || *ch.Stream
 }
 
 // How much an approval prompt in a chat shows of the call it asks about.

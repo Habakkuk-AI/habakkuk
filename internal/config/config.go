@@ -162,6 +162,12 @@ type Agent struct {
 	ReportHome string `yaml:"report_home"`
 	// Budget caps this agent's model spending (budget.go); nil is no cap.
 	Budget *Budget `yaml:"budget"`
+	// LoopGuard ends a turn that keeps repeating itself (guards.go).
+	LoopGuard *LoopGuard `yaml:"loop_guard"`
+	// ProjectFiles reads the project's AGENTS.md, CLAUDE.md and .cursorrules
+	// into new sessions: on (default) or off (guards.go). A file is followed
+	// only when the owner trusted its exact content (hk projects trust).
+	ProjectFiles string `yaml:"project_files"`
 	// Safety for channel and tainted turns: trust, channel_allow,
 	// allow_tainted_exec (security.go).
 	AgentSecurity `yaml:",inline"`
@@ -199,6 +205,10 @@ type Channel struct {
 	// while serve runs (hooks.go).
 	Progress        string `yaml:"progress"`
 	ApprovalsDetail string `yaml:"approvals_detail"`
+	// Stream shows the reply while it is being written, in one message
+	// edited as the text arrives, where the platform can edit messages
+	// (default true). Can be changed while serve runs, like progress.
+	Stream *bool `yaml:"stream"`
 	// Reactions marks the user's message with an emoji while a turn runs
 	// and when it ends, where the platform has reactions.
 	Reactions bool `yaml:"reactions"`
@@ -411,6 +421,7 @@ func (c *Config) applyDefaults() {
 			a.Toolsets = []string{"core", "memory", "skills", "schedule", "delegate", "board"}
 		}
 		a.applySandboxDefaults()
+		a.applyGuardDefaults()
 	}
 }
 
@@ -480,6 +491,7 @@ func (c *Config) Validate() error {
 		}
 		errs = append(errs, validateSandbox(name, a)...)
 		errs = append(errs, a.validateSecurity(name)...)
+		errs = append(errs, a.validateGuards(name)...)
 	}
 	for name, m := range c.MCP {
 		errs = append(errs, validateMCP(name, m)...)
@@ -602,6 +614,9 @@ func isHTTPURL(s string) bool {
 
 var mcpServerName = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,32}$`)
 
+// wholeRef is a value that is one ${NAME} reference.
+var wholeRef = regexp.MustCompile(`^\$\{[A-Za-z_][A-Za-z0-9_]*\}$`)
+
 func validateMCP(name string, m *MCPServer) []error {
 	var errs []error
 	bad := func(format string, args ...any) {
@@ -621,8 +636,8 @@ func validateMCP(name string, m *MCPServer) []error {
 		bad("headers apply to url servers only")
 	case m.URL != "" && (len(m.Args) > 0 || len(m.Env) > 0):
 		bad("args and env apply to command servers only")
-	case m.URL != "" && !strings.HasPrefix(m.URL, "http://") && !strings.HasPrefix(m.URL, "https://"):
-		bad("url %q must start with http:// or https://", m.URL)
+	case m.URL != "" && !strings.HasPrefix(m.URL, "http://") && !strings.HasPrefix(m.URL, "https://") && !wholeRef.MatchString(m.URL):
+		bad("url %q must start with http:// or https://, or be a ${NAME} variable that holds the address", m.URL)
 	}
 	for k, v := range m.Env {
 		if k == "" || v == "" {

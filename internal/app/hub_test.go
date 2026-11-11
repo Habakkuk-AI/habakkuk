@@ -196,6 +196,13 @@ func TestSkillsNeverTakeACommandName(t *testing.T) {
 
 	a, _, _ := openTestAppIn(t, home, "")
 	ctx := context.Background()
+	// Every command the app adds counts as taken, so a new one cannot be
+	// left out of the list a skill's name is checked against.
+	for name := range a.ChatCommands() {
+		if !CommandTaken(a.Cfg, strings.TrimPrefix(name, "/")) {
+			t.Errorf("a skill named %s would take the app's %s; add it to appCommands", strings.TrimPrefix(name, "/"), name)
+		}
+	}
 	sess, err := a.Runner.NewSession(ctx, "habakkuk")
 	if err != nil {
 		t.Fatal(err)

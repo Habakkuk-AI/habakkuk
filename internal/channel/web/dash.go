@@ -97,6 +97,8 @@ func (s *Server) dashRoutes(mux *http.ServeMux) {
 	api("GET /api/budget", s.budgetReport)
 	api("GET /api/approvals", s.approvals)
 	api("POST /api/approvals/{id}", s.approve)
+	api("GET /api/approval-rules", s.approvalRules)
+	api("DELETE /api/approval-rules/{agent}/{id}", s.approvalRuleDelete)
 	api("GET /api/config", s.configView)
 	api("GET /api/channels", s.channelSettingsList)
 	api("PUT /api/channels/{account}", s.channelSettingsSave)
@@ -104,6 +106,7 @@ func (s *Server) dashRoutes(mux *http.ServeMux) {
 	api("POST /api/realtime/tool", s.realtimeToolCall)
 	api("POST /api/realtime/transcript", s.realtimeTranscript)
 	api("POST /api/realtime/end", s.realtimeEnd)
+	s.pushRoutes(api)
 }
 
 // dashGuard refuses requests a browser marks as coming from another site,

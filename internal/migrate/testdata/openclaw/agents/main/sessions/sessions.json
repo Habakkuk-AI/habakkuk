@@ -1,0 +1,19 @@
+{
+  "agent:main:main": {
+    "sessionId": "0b7c1d2e-main",
+    "updatedAt": 1793000000000,
+    "lastChannel": "telegram",
+    "lastTo": "telegram:4242",
+    "displayName": "Ada (Telegram)"
+  },
+  "agent:main:telegram:group:-100777": {
+    "sessionId": "5e6f7a8b-group",
+    "updatedAt": 1793100000000
+  },
+  "agent:main:telegram:group:-100777:topic:3": {
+    "sessionId": "d00d",
+    "sessionFile": "d00d-topic-3.jsonl",
+    "updatedAt": 1793200000000,
+    "chatType": "group"
+  }
+}

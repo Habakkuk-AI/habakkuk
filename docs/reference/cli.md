@@ -27,17 +27,24 @@ hk init                             write a starter config to $HABAKKUK_HOME (de
 hk setup [model|channel [TYPE]|name|service] [-y] [flags]
                                     a one-minute wizard: model, where to talk (WhatsApp agent,
                                     Telegram, web, ...), names; -y runs it from flags (hk setup -h);
-                                    on a new home it offers to import another agent (-y -migrate does it)
+                                    on a new home it offers to import another agent or a coding tool
+                                    (-y -migrate does it)
 hk setup channel NAME [-progress plain|detailed|off] [-approvals-detail summary|full]
                                     change only what an existing channel shows in its chats while the
                                     agent works and in approval requests; serve picks it up, no restart
-hk migrate [-from SOURCE] [-source DIR] [-agent NAME] [-dry-run] [-secrets copy|skip]
-                 [-files copy|skip] [-files-dir DIR] [-files-max SIZE] [-force] [-y]
-                                    bring agents, persona files, profile, memory, skills, schedules
-                                    (paused), MCP servers, providers, channels and keys over from
-                                    another agent; -files copy also copies your own files that the
-                                    imported text names into $HABAKKUK_HOME/files and rewrites the
-                                    text to name the copies (see Move from another agent)
+hk migrate [-from SOURCE] [-source DIR] [-agent NAME] [-project DIR] [-dry-run]
+                 [-secrets copy|skip] [-history copy|skip] [-files copy|skip]
+                 [-files-dir DIR] [-files-max SIZE] [-force] [-y]
+                                    bring agents, persona files, profile, memory, past conversations
+                                    (as read-only sessions), skills, schedules (paused), MCP servers,
+                                    providers, channels and keys over from another agent;
+                                    -history skip leaves the conversations behind; -files copy also
+                                    copies your own files that the imported text names into
+                                    $HABAKKUK_HOME/files and rewrites the text to name the copies;
+                                    -from claude-code or codex brings instructions, MCP servers,
+                                    skills, slash commands and memory, never keys, and -project DIR
+                                    adds one project's own: its instructions as a note, the MCP
+                                    servers you approved for it, its skills (see Move from another agent)
 hk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped
@@ -75,7 +82,7 @@ hk board [list|show|add|done|cancel]
                                     done: ID -result R)
 hk meetings [list|show [-transcript] ID|leave ID]
                                     meetings Habakkuk attends (meeting_join): status, notes, transcript
-hk sessions [-agent A]              list recent sessions
+hk sessions [-agent A]              list recent sessions (imported ones are marked read-only)
 hk sessions compact SESSION         summarize a long session's older messages now
 hk sessions export ID [-format md|json|html] [-o FILE]
                                     write a transcript as Markdown, JSON or an HTML page
@@ -107,11 +114,22 @@ hk rollback [-agent A] [-y] ID [PATH]
 hk models                           list providers and the models each one serves
 hk auth [login|list|logout]         subscription logins (login chatgpt|copilot)
 hk usage [-days N] [-agent A] tokens and cost by model and agent, and spend against the limits
-hk doctor                           check config, credentials and storage; each problem line ends with its fix
+hk doctor [--fix]                   check config, credentials and storage; each problem line ends with its fix
+                                    (--fix first applies the safe ones: config format, missing folders,
+                                    file permissions, a stale service file)
 hk status                           version, serve uptime, channels, queue, recent errors, today's cost
 hk computer view                    how to watch the agents' virtual desktops (computer backend xvfb)
 hk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
                                     print habakkuk.log readably (-f keeps following it)
+hk projects trust [-allow-control] [PATH] | list [-agent A] [PATH] | untrust [PATH]
+                                    trust the exact content of a project's AGENTS.md, CLAUDE.md and
+                                    .cursorrules, so agents follow them; any change untrusts a file;
+                                    trust shows exactly what the agent gets and asks on your terminal
+hk skills held | approve AGENT/NAME   skills an agent saved after reading outside content wait here;
+                                    approve one to put it in use
+hk approvals [list] [-agent A] | rm ID
+                                    approval rules: calls an agent makes without asking, from
+                                    "Always allow" answers and agents.<name>.allow
 hk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
 hk expose tailscale [-port 443] [-print] | status | off
@@ -144,6 +162,7 @@ Each command is explained in a guide. This table tells you which one:
 | `serve`, `setup service` | [Run it on a server](../deploy/server.md) |
 | `status`, `logs`, `doctor` | [Observability](../deploy/observability.md) |
 | `security` | [Security](../deploy/security.md) |
+| `approvals` | [Permissions and approvals](../agents/approvals.md#always-allow) |
 | `expose` | [Remote access](../deploy/remote-access.md) |
 | `remote`, `-r` | [Remote CLI](../interfaces/remote-cli.md) |
 | `backup`, `restore` | [Backups and updates](../deploy/backups-and-updates.md) |

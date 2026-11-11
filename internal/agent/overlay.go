@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
 	"github.com/habakkuk-ai/habakkuk/internal/tools"
@@ -119,17 +120,20 @@ type ToolHookPayload struct {
 // runTool runs one call between its tool_before and tool_after hooks. A
 // tool_before hook that vetoes turns the call into an error result carrying
 // its reason, so the model can take another route.
-func (t *turn) runTool(env *tools.Env, c llm.Block) (llm.Block, []llm.Block) {
+// ran is how long the tool itself ran: hooks and approval waits are left
+// out (tools.WithRunTime), as the loop guard needs.
+func (t *turn) runTool(env *tools.Env, c llm.Block) (res llm.Block, media []llm.Block, ran time.Duration) {
 	p := ToolHookPayload{Event: HookToolBefore, Agent: t.spec.Name, Session: t.sess.ID, Tool: c.ToolName,
 		CallID: c.ToolUseID, Input: rawJSON(c.Input)}
 	if veto := t.r.Fire(t.ctx, HookToolBefore, c.ToolName, p); veto != "" {
 		return llm.Block{Type: llm.ToolResult, ToolUseID: c.ToolUseID, IsError: true,
-			Text: "blocked by a tool_before hook: " + veto}, nil
+			Text: "blocked by a tool_before hook: " + veto}, nil, 0
 	}
-	res, media := t.r.Tools.ExecuteMedia(t.ctx, env, c)
+	ctx, dur := tools.WithRunTime(t.ctx)
+	res, media = t.r.Tools.ExecuteMedia(ctx, env, c)
 	p.Event, p.Result, p.IsError = HookToolAfter, res.Text, res.IsError
 	t.r.Fire(t.ctx, HookToolAfter, c.ToolName, p)
-	return res, media
+	return res, media, *dur
 }
 
 // rawJSON keeps valid JSON input as JSON in hook payloads.

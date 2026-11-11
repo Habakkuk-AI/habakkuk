@@ -433,6 +433,8 @@ var reCorrection = regexp.MustCompile(`(?i)^(no|nope|nah)\b|\bwrong\b|\bnot what
 
 // transcripts reads the agent's messages in the period: sessions, tool
 // errors, approvals, answers from fallback models and user corrections.
+// Conversations imported from another agent are left out: they are not
+// this agent's work, and their users' words are not corrections of it.
 func (g *gatherer) transcripts(ctx context.Context) error {
 	if g.src.Transcripts == nil {
 		return nil
@@ -440,7 +442,9 @@ func (g *gatherer) transcripts(ctx context.Context) error {
 	from, to := g.span()
 	rows, err := g.src.Transcripts.QueryContext(ctx, `SELECT m.session_id, m.seq, m.role, m.blocks, m.model, m.job_id
 		FROM messages m JOIN sessions s ON s.id = m.session_id
-		WHERE s.agent = ? AND m.created_at >= ? AND m.created_at < ? ORDER BY m.session_id, m.seq LIMIT ?`,
+		WHERE s.agent = ? AND m.created_at >= ? AND m.created_at < ?
+			AND s.id NOT IN (SELECT session_id FROM imported_sessions)
+		ORDER BY m.session_id, m.seq LIMIT ?`,
 		g.ag.Name, from, to, maxRows)
 	if err != nil {
 		return fmt.Errorf("evidence: transcripts: %w", err)

@@ -3,7 +3,9 @@ package store
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -57,8 +59,13 @@ func Backup(ctx context.Context, db *sql.DB, dir, prefix string, keep Retention)
 		return "", fmt.Errorf("backup skipped: %d MB free, need %d MB", free>>20, need>>20)
 	}
 	final := filepath.Join(dir, fmt.Sprintf("%s-%s.db", prefix, time.Now().UTC().Format(backupStamp)))
-	tmp := final + ".tmp"
-	_ = os.Remove(tmp)
+	// A random temp name: SQLite opens it itself, and a fixed name could
+	// have a link put there between a remove and the open.
+	var rnd [8]byte
+	if _, err := rand.Read(rnd[:]); err != nil {
+		return "", err
+	}
+	tmp := final + "." + hex.EncodeToString(rnd[:]) + ".tmp"
 	if err := VacuumInto(ctx, db, tmp); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("backup: %w", err)

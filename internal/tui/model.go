@@ -625,8 +625,9 @@ func (m *Model) setHint(text string) {
 
 // Sending.
 
-// submit queues text as a turn of the shown session.
-func (m *Model) submit(text string) tea.Cmd {
+// submit queues text as a turn of the shown session; typed says it is a
+// line the user just typed at the prompt, nothing added.
+func (m *Model) submit(text string, typed ...bool) tea.Cmd {
 	sid := m.sess.ID
 	if sid == "" {
 		m.addError("No session is open.")
@@ -636,7 +637,11 @@ func (m *Model) submit(text string) tea.Cmd {
 		m.add(&entry{kind: kindNotice, text: "Queued: it starts when the current turn is done."})
 	}
 	return tea.Batch(m.markBusy(), func() tea.Msg {
-		return submittedMsg{session: sid, err: m.be.Submit(m.ctx, sid, text)}
+		submit := m.be.Submit
+		if len(typed) > 0 && typed[0] {
+			submit = m.be.SubmitTyped
+		}
+		return submittedMsg{session: sid, err: submit(m.ctx, sid, text)}
 	})
 }
 
@@ -668,7 +673,7 @@ func (m *Model) enter() tea.Cmd {
 		}
 	}
 	m.add(&entry{kind: kindUser, text: text})
-	return m.submit(text)
+	return m.submit(text, true)
 }
 
 func (m *Model) pushHistory(text string) {

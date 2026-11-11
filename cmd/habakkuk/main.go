@@ -126,11 +126,22 @@ Usage:
   hk models                           list providers and the models each one serves
   hk auth [login|list|logout]         subscription logins (login chatgpt|copilot)
   hk usage [-days N] [-agent A] tokens and cost by model and agent, and spend against the limits
-  hk doctor                           check config, credentials and storage
+  hk doctor [--fix]                   check config, credentials and storage; each problem line ends with its fix
+                                    (--fix first applies the safe ones: config format, missing folders,
+                                    file permissions, a stale service file)
   hk status                           version, serve uptime, channels, queue, recent errors, today's cost
   hk computer view                    how to watch the agents' virtual desktops (computer backend xvfb)
   hk logs [-f] [-level warn] [-since 1h] [-grep X] [-n 100]
                                     print habakkuk.log readably (-f keeps following it)
+  hk projects trust [-allow-control] [PATH] | list [-agent A] [PATH] | untrust [PATH]
+                                    trust the exact content of a project's AGENTS.md, CLAUDE.md and
+                                    .cursorrules, so agents follow them; any change untrusts a file;
+                                    trust shows exactly what the agent gets and asks on your terminal
+  hk skills held | approve AGENT/NAME   skills an agent saved after reading outside content wait here;
+                                    approve one to put it in use
+  hk approvals [list] [-agent A] | rm ID
+                                    approval rules: calls an agent makes without asking, from
+                                    "Always allow" answers and agents.<name>.allow
   hk security [-fix] [-network] effective tool policy, audit of permissions, exposure and risky
                                     settings (-fix: safe fixes; -network: every outbound endpoint)
   hk expose tailscale [-port 443] [-print] | status | off
@@ -258,6 +269,10 @@ func main() {
 		err = logsCmd(ctx, home, args, os.Stdout)
 	case "security":
 		err = securityCmd(home, args, os.Stdout)
+	case "projects":
+		err = projectsCmd(home, args, os.Stdin, os.Stdout)
+	case "approvals":
+		err = approvalsCmd(home, args, os.Stdout)
 	case "expose":
 		err = exposeCmd(ctx, home, args, os.Stdout, nil)
 	case "auth":
@@ -400,6 +415,7 @@ func chat(ctx context.Context, home string, args []string) error {
 	chatAgent := name
 
 	term := &terminal{in: bufio.NewReader(os.Stdin)}
+	stdinTerminal := isTerminal(os.Stdin)
 	detach := a.Runner.Attach(sid, term)
 	defer detach()
 	evs, unsub := a.Bus.Subscribe(sid)
@@ -420,6 +436,7 @@ func chat(ctx context.Context, home string, args []string) error {
 		case "/exit", "/quit":
 			return nil
 		}
+		prompted := false
 		if name, arg, _ := strings.Cut(line, " "); strings.HasPrefix(name, "/") {
 			// The chat app's commands: /model, /usage, /skills, /skill,
 			// /learn, plugin commands and each skill as /<skill-name>. A
@@ -434,10 +451,17 @@ func chat(ctx context.Context, home string, args []string) error {
 					fmt.Println(err)
 					continue
 				}
-				line = text
+				line, prompted = text, true
 			}
 		}
-		if _, err := a.Runner.Submit(ctx, sid, line); err != nil {
+		// A line typed at the prompt, on a terminal, is Typed; a skill or
+		// plugin prompt carries file text the owner did not type, and piped
+		// input is a program's.
+		submit := a.Runner.SubmitTyped
+		if prompted || !stdinTerminal {
+			submit = a.Runner.Submit
+		}
+		if _, err := submit(ctx, sid, line); err != nil {
 			return err
 		}
 		pool.wake()
@@ -646,7 +670,11 @@ func sessions(ctx context.Context, home string, args []string) error {
 		return err
 	}
 	for _, s := range list {
-		fmt.Printf("%s  %-10s  %s  %s\n", s.ID, s.Agent, s.UpdatedAt.Format("2006-01-02 15:04"), s.Title)
+		title := s.Title
+		if s.Imported {
+			title += "  (imported, read-only)"
+		}
+		fmt.Printf("%s  %-10s  %s  %s\n", s.ID, s.Agent, s.UpdatedAt.Format("2006-01-02 15:04"), title)
 	}
 	return nil
 }
@@ -834,16 +862,9 @@ func doctor(ctx context.Context, home string) error {
 	for _, name := range slices.Sorted(maps.Keys(cfg.MCP)) {
 		m := cfg.MCP[name]
 		var missing []string
-		for _, env := range slices.Sorted(maps.Values(m.Env)) {
+		for _, env := range mcp.ServerVars(m) {
 			if a.Secret(env) == "" {
 				missing = append(missing, env)
-			}
-		}
-		for _, spec := range slices.Sorted(maps.Values(m.Headers)) {
-			for _, env := range mcp.HeaderVars(spec) {
-				if a.Secret(env) == "" {
-					missing = append(missing, env)
-				}
 			}
 		}
 		switch {
@@ -861,6 +882,7 @@ func doctor(ctx context.Context, home string) error {
 	}
 	problems += computerDoctor(cfg, os.Stdout)
 	problems += permissionsDoctor(home, cfg, os.Stdout)
+	problems += serviceDoctor(defaultRepairEnv(home), os.Stdout)
 	if problems > 0 {
 		return fmt.Errorf("%d problem(s) found; each one above says how to fix it", problems)
 	}

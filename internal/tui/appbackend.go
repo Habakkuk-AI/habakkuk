@@ -133,6 +133,14 @@ func (b *AppBackend) Submit(ctx context.Context, id, text string) error {
 	return nil
 }
 
+func (b *AppBackend) SubmitTyped(ctx context.Context, id, text string) error {
+	if _, err := b.A.Runner.SubmitTyped(ctx, id, text); err != nil {
+		return err
+	}
+	b.wake()
+	return nil
+}
+
 func (b *AppBackend) wake() {
 	if b.A.Runner.Wake != nil {
 		b.A.Runner.Wake()
@@ -301,6 +309,11 @@ func (b *AppBackend) btw(ctx context.Context, id, question string) (string, erro
 	if err != nil {
 		return "", err
 	}
+	if sess.Imported {
+		// Its text was never said to this agent and may come from anyone:
+		// it does not go into a new turn as the user's words.
+		return "", errors.New("/btw works in your own conversations; this one was imported from another agent. Start a new session and ask there; the agent can look it up with session_search")
+	}
 	side, err := b.A.Runner.NewSession(ctx, sess.Agent)
 	if err != nil {
 		return "", err
@@ -309,7 +322,7 @@ func (b *AppBackend) btw(ctx context.Context, id, question string) (string, erro
 	if history := b.renderContext(ctx, id); history != "" {
 		text += "\n\n<main_conversation>\n" + history + "\n</main_conversation>"
 	}
-	return b.A.Runner.Ask(ctx, agent.Turn{Session: side.ID, Text: text + "\n\nQuestion: " + question}, nil)
+	return b.A.Runner.Ask(ctx, agent.Turn{Session: side.ID, Text: text + "\n\nQuestion: " + question, Local: true}, nil)
 }
 
 // renderContext renders what the model sees of a session (the latest

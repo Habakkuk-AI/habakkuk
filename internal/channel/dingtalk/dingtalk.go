@@ -320,6 +320,7 @@ func (a *Adapter) convert(cb *callback) (channel.Message, bool) {
 		if m.Text = c.Recognition; m.Text == "" {
 			attach(c.DownloadCode, "voice.amr")
 		}
+		m.Spoken = true
 	case "video":
 		attach(c.DownloadCode, "video.mp4")
 	case "file":

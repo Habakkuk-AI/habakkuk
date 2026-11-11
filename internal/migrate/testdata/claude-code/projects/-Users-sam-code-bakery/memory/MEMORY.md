@@ -1,0 +1,2 @@
+- [Oven schedule](oven-schedule.md) - when the ovens are booked
+- [Short answers](short-answers.md) - how Sam likes replies

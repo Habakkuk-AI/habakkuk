@@ -1334,6 +1334,29 @@ pages.approvals = view => {
     }
   });
   view.append(out);
+  // Saved rules: what each agent may do without asking. Never in a turn that
+  // read outside content, never for a guest.
+  const rules = h("div", { class: "panel" });
+  const loadRules = async () => {
+    let j;
+    try { j = await api("approval-rules"); } catch (err) { rules.textContent = ""; rules.append(h("div", { class: "empty err" }, err.message)); return; }
+    rules.textContent = "";
+    rules.append(h("h3", {}, "Always allowed"),
+      h("p", { class: "small muted" }, "Calls an agent makes without asking, saved by Always allow or set in agents.<name>.allow. An exec rule is one simple command in one folder. Rules answer only for a message you typed just now as plain text, one to one or here, and a rule saved in a chat applies in that chat only. They never apply to schedules, voice, board cards, sub-agents, the API or another agent's task, nor after anything but your own words came in."));
+    if (!j.rules.length) { rules.append(h("div", { class: "empty" }, "No rules yet.")); return; }
+    rules.append(table(["Agent", "Covers", "From", ""], j.rules.map(r => h("tr", {},
+      h("td", {}, r.agent),
+      h("td", { class: "mono small" }, r.text),
+      h("td", { class: "small muted" }, r.source + (r.added ? " · " + r.added.slice(0, 10) : ""),
+        h("div", {}, "applies " + r.where + (r.saved_by ? ", saved by " + r.saved_by : ""))),
+      h("td", {}, r.source === "config" ? h("span", { class: "small muted" }, "edit config.yaml") :
+        h("button", { type: "button", class: "danger small", onclick: async () => {
+          if (!confirm("Remove this rule? The agent asks again next time.")) return;
+          try { await api(`approval-rules/${encodeURIComponent(r.agent)}/${encodeURIComponent(r.id)}`, { method: "DELETE" }); toast("Removed"); loadRules(); } catch (err) { fail(err); }
+        } }, "Remove"))))));
+  };
+  loadRules();
+  view.append(rules);
 };
 function setApprovalCount(n) {
   const c = $("approvalCount");
@@ -1354,6 +1377,7 @@ pages.config = async view => {
         h("strong", {}, c.name), h("span", { class: "muted grow" }, c.detail))))));
   }
   view.append(await channelSettingsPanel());
+  view.append(pushPanel());
   const cfg = j.config || {};
   view.append(h("div", { class: "panel" }, h("h2", {}, "Effective config"),
     h("div", { class: "muted small" }, `Secrets are redacted. Home: ${j.home || ""}`),
@@ -1401,6 +1425,111 @@ async function channelSettingsPanel() {
       pick("Approval requests show", "approvals_detail", j.approvals_detail, DETAIL_LABELS, c.approvals_detail)));
   }
   if (!j.writable) panel.append(h("div", { class: "muted small" }, "These settings cannot be saved from this process."));
+  return panel;
+}
+
+// Notifications: Web Push to this device, straight from this server
+// through the browser's own push service.
+const PUSH_LABELS = {
+  approvals: "An approval is waiting",
+  replies: "A reply came while no dashboard showed that chat",
+  schedules: "A scheduled task failed",
+};
+function b64Bytes(s) {
+  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+  return Uint8Array.from(b, c => c.charCodeAt(0));
+}
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "";
+  return os ? `${browser} on ${os}` : browser;
+}
+async function swReady() {
+  if (!("serviceWorker" in navigator)) return null;
+  if (!(await navigator.serviceWorker.getRegistration("./").catch(() => null))) return null; // registration failed
+  return Promise.race([navigator.serviceWorker.ready, new Promise(res => setTimeout(() => res(null), 5000))]);
+}
+// pushPanel returns at once and fills itself in, so the page never waits
+// on the service worker.
+function pushPanel() {
+  const panel = h("div", { class: "panel" }, h("h2", {}, "Notifications"));
+  const body = h("div", { class: "muted small" }, "Loading…");
+  let j;
+  panel.append(h("p", { class: "muted small" },
+    "Get a notification on this device when an approval is waiting, a reply comes while the dashboard is closed, or a scheduled task fails. " +
+    "They come from this server through your browser's own push service; nothing else is involved."), body);
+  const supported = window.isSecureContext && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const render = async () => {
+    if (!j) {
+      try { j = await api("push"); } catch (err) { body.textContent = ""; body.append(h("div", { class: "empty err" }, err.message)); return; }
+    }
+    body.className = "";
+    body.textContent = "";
+    let sub = null;
+    const reg = supported ? await swReady() : null;
+    if (reg) sub = await reg.pushManager.getSubscription().catch(() => null);
+    let mine = j.devices.find(d => d.id === store.get("pushId", ""));
+    if (sub && !mine) {
+      // The browser is subscribed but the server forgot it: register again.
+      try {
+        const out = await api("push", { method: "POST", body: { subscription: sub.toJSON(), label: deviceLabel() } });
+        store.set("pushId", out.id);
+        j = await api("push");
+        mine = j.devices.find(d => d.id === out.id);
+      } catch {}
+    }
+    if (!supported) {
+      body.append(h("p", { class: "small" }, window.isSecureContext
+        ? "This browser can't receive notifications from the dashboard. On an iPhone or iPad, add the dashboard to your home screen first, then open it from there."
+        : "Notifications need the dashboard on https or on localhost."));
+    } else if (!reg) {
+      body.append(h("p", { class: "small" }, "The dashboard's service worker isn't running, so notifications can't be turned on. Reload the page and try again."));
+    } else if (!sub || !mine) {
+      body.append(h("div", { class: "row" }, h("span", { class: "grow" }, "Off on this device."),
+        h("button", { type: "button", class: "primary", onclick: async e => {
+          e.target.disabled = true;
+          try {
+            if (await Notification.requestPermission() !== "granted") throw new Error("Notifications are blocked for this site. Allow them in the browser's site settings.");
+            const old = await reg.pushManager.getSubscription();
+            if (old) await old.unsubscribe();
+            const s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64Bytes(j.public_key) });
+            const out = await api("push", { method: "POST", body: { subscription: s.toJSON(), label: deviceLabel() } });
+            store.set("pushId", out.id);
+            j = await api("push");
+            toast("Notifications are on for this device.");
+          } catch (err) { toast(err.message, true); }
+          render();
+        } }, "Turn on")));
+    } else {
+      body.append(h("div", { class: "row" }, h("span", { class: "grow" }, "On for this device (", mine.label || "this browser", ")."),
+        h("button", { type: "button", onclick: async () => {
+          try { await api(`push/${mine.id}/test`, { method: "POST" }); toast("Sent. It should show in a few seconds."); } catch (err) { toast(err.message, true); }
+        } }, "Send a test"),
+        h("button", { type: "button", class: "danger", onclick: async () => {
+          try { await sub.unsubscribe(); await api("push/" + mine.id, { method: "DELETE" }); store.set("pushId", ""); j = await api("push"); }
+          catch (err) { toast(err.message, true); }
+          render();
+        } }, "Turn off")));
+      for (const k of j.kinds) {
+        const box = h("input", { type: "checkbox", checked: mine.kinds[k] });
+        box.addEventListener("change", async () => {
+          try { mine = await api("push/" + mine.id, { method: "PUT", body: { [k]: box.checked } }); }
+          catch (err) { box.checked = !box.checked; toast(err.message, true); }
+        });
+        body.append(h("label", { class: "row small" }, box, PUSH_LABELS[k] || k));
+      }
+    }
+    const others = j.devices.filter(d => d.id !== mine?.id);
+    if (others.length) {
+      body.append(h("h3", {}, "Other devices"), h("ul", { class: "list" }, others.map(d => h("li", { class: "row" },
+        h("span", { class: "grow" }, d.label || "A browser", h("span", { class: "muted small" }, ` · ${d.service} · added ${ago(d.created)}`)),
+        h("button", { type: "button", class: "small danger", onclick: async () => {
+          try { await api("push/" + d.id, { method: "DELETE" }); j = await api("push"); render(); } catch (err) { toast(err.message, true); }
+        } }, "Remove")))));
+    }
+  };
+  render();
   return panel;
 }
 

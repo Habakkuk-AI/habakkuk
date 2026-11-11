@@ -57,6 +57,10 @@ type Item struct {
 	// rewritten where they are.
 	fix  int
 	have *Schedule // schedules: the text of the one that is there
+	// hist are the new conversations of a history item, with how many
+	// messages they hold; histSame counts the ones already there.
+	hist               []*Conversation
+	histMsgs, histSame int
 }
 
 // Rewritten is how many references in the item's text name copied files
@@ -128,6 +132,7 @@ type Plan struct {
 // NewPlan compares what was found with the Habakkuk home at home. It
 // reads the home but changes nothing.
 func NewPlan(f *Found, home string, o Options) (*Plan, error) {
+	f, keyed := f.withoutKeyed(o.Secrets != "copy" || IsCodingTool(f.From))
 	p := &Plan{Found: f, Home: home, opts: o}
 	var cfg *config.Config
 	raw, err := os.ReadFile(filepath.Join(home, "config.yaml"))
@@ -161,6 +166,13 @@ func NewPlan(f *Found, home string, o Options) (*Plan, error) {
 	}
 	root := doc.Content[0]
 	edited := p.planConfig(cfg, root)
+	for _, m := range keyed {
+		why := "values in its command line, URL or headers may be keys, and keys are not copied; run again with --secrets copy to add it with them in .env, or add it yourself with hk mcp add " + m.Name
+		if IsCodingTool(f.From) {
+			why = "values in its command line, URL or headers may be keys, and keys never move from " + Label(f.From) + "; add it to mcp_servers in config.yaml yourself, with the key in .env, or with hk mcp add " + m.Name
+		}
+		p.add(&Item{Kind: "mcp", Name: m.Name, Status: Rejected, Detail: why})
+	}
 	switch {
 	case len(cfg.Agents) == 0 && !slices.ContainsFunc(p.Items, func(it *Item) bool { return it.Kind == "agent" && it.Changes() }):
 		p.NoConfig = "no agent has a model the import could set up, so config.yaml is not written; run hk setup, then hk migrate again for the channels and MCP servers"
@@ -196,6 +208,9 @@ func NewPlan(f *Found, home string, o Options) (*Plan, error) {
 		p.Items = append(p.Items, it)
 	}
 	if err := p.planSchedules(); err != nil {
+		return nil, err
+	}
+	if err := p.planHistory(); err != nil {
 		return nil, err
 	}
 	for _, it := range p.Items {
@@ -297,7 +312,18 @@ func (p *Plan) planConfig(cfg *config.Config, root *yaml.Node) bool {
 		edited = true
 	}
 	for _, m := range f.MCP {
-		it := p.add(&Item{Kind: "mcp", Name: m.Name, Status: New, Detail: firstOf(m.Command, m.URL)})
+		detail := m.Command
+		switch {
+		case strings.HasPrefix(m.URL, "${"):
+			detail = m.URL // the address is in .env
+		case m.URL != "":
+			detail = redactURL(m.URL)
+		case m.Project != "":
+			// A project's own server runs a command the project chose: show
+			// all of it.
+			detail = strings.Join(append([]string{shellQuote(m.Command)}, quoteAll(m.Args)...), " ") + " (from the project " + m.Project + ")"
+		}
+		it := p.add(&Item{Kind: "mcp", Name: m.Name, Status: New, Detail: detail})
 		if have := cfg.MCP[m.Name]; have != nil {
 			if sameServer(m, have) {
 				it.Status = Same
@@ -450,11 +476,14 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 		s := &a.Skills[i]
 		dest := p.skillDir(a.Name, s)
 		where := "agent " + a.Name
-		if s.Shared {
+		switch {
+		case s.Shared:
 			where = "shared"
+		case s.Held:
+			where = "agent " + a.Name + ", from the " + s.Source + "; it needs your approval before it loads: hk skills approve -agent " + a.Name + " " + s.Name
 		}
 		it := p.add(&Item{Kind: "skill", Agent: a.Name, Name: s.Name, Status: New, Detail: where, skill: s})
-		findings, err := hub.Scan(s.Dir)
+		findings, err := skillScan(s)
 		if err != nil {
 			return err
 		}
@@ -464,9 +493,12 @@ func (p *Plan) planAgentFiles(a *Agent) error {
 		if len(findings) > 0 {
 			it.Status = Rejected
 			it.Detail = fmt.Sprintf("the security scan flagged %s; read it, then hk skills install %s", strings.Join(hub.Summaries(findings[:min(len(findings), 3)]), "; "), shellQuote(s.Dir))
+			if s.Dir == "" {
+				it.Detail = fmt.Sprintf("the security scan flagged %s; read the command it was made from, and add it as a skill yourself if you trust it", strings.Join(hub.Summaries(findings[:min(len(findings), 3)]), "; "))
+			}
 			continue
 		}
-		want, err := treeHash(s.Dir, p.rw)
+		want, err := skillHash(s, p.rw)
 		if err != nil {
 			return err
 		}
@@ -674,6 +706,7 @@ func (p *Plan) Write(w io.Writer, copySecrets string) {
 	section("MCP servers", "mcp", func(it *Item) string { return it.Name })
 	section("Model providers", "provider", func(it *Item) string { return it.Name })
 	section("Channels", "channel", func(it *Item) string { return it.Name })
+	section("Conversation history (imported read-only)", "history", func(it *Item) string { return it.Agent })
 	p.writeFiles(w)
 	if names := p.Secrets(); len(names) > 0 {
 		fmt.Fprintf(w, "\nKeys and tokens (names only; values are never shown)\n")
@@ -764,4 +797,87 @@ func (p *Plan) writeNotes(w io.Writer, mark map[string]string) {
 	for _, it := range odd {
 		fmt.Fprintf(w, "  %s %s: %q: %s\n", mark[it.Status], it.Agent, it.Name, it.Detail)
 	}
+}
+
+func quoteAll(list []string) []string {
+	out := make([]string, len(list))
+	for i, s := range list {
+		out[i] = shellQuote(s)
+	}
+	return out
+}
+
+// withoutKeyed returns f without its keyed MCP servers when drop is set,
+// and those servers: a copy, so the same Found can be planned again with
+// another answer. Their variables leave the keys to copy and to set.
+func (f *Found) withoutKeyed(drop bool) (*Found, []*MCPServer) {
+	c := *f
+	c.Leftovers = slices.Clone(f.Leftovers) // the plan adds its own
+	defer func() {
+		for _, m := range c.MCP {
+			if m.OAuth {
+				c.leftover("the sign-in to MCP server "+m.Name, "hk mcp login "+m.Name)
+			}
+		}
+	}()
+	if !drop || !slices.ContainsFunc(f.MCP, func(m *MCPServer) bool { return len(m.Keyed) > 0 }) {
+		return &c, nil
+	}
+	var keyed []*MCPServer
+	gone := map[string]bool{}
+	needed := map[string]bool{}
+	c.MCP = nil
+	for _, m := range f.MCP {
+		vars := append(slices.Clone(m.Keyed), sortedValues(m.Env)...)
+		for _, h := range sortedValues(m.Headers) {
+			vars = append(vars, mcpHeaderVars(h)...)
+		}
+		if len(m.Keyed) > 0 {
+			keyed = append(keyed, m)
+			for _, v := range vars {
+				gone[v] = true
+			}
+			continue
+		}
+		c.MCP = append(c.MCP, m)
+		for _, v := range vars {
+			needed[v] = true
+		}
+	}
+	c.Agents = make([]*Agent, len(f.Agents))
+	for i, a := range f.Agents {
+		b := *a
+		b.MCP = slices.DeleteFunc(slices.Clone(a.MCP), func(n string) bool {
+			return slices.ContainsFunc(keyed, func(m *MCPServer) bool { return m.Name == n })
+		})
+		c.Agents[i] = &b
+	}
+	drop2 := func(v string) bool { return gone[v] && !needed[v] }
+	if f.Secrets != nil {
+		c.Secrets = map[string]string{}
+		for k, v := range f.Secrets {
+			if !drop2(k) {
+				c.Secrets[k] = v
+			}
+		}
+	}
+	c.Missing = slices.DeleteFunc(slices.Clone(f.Missing), drop2)
+	return &c, keyed
+}
+
+func sortedValues(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for _, k := range sortedKeys(m) {
+		out = append(out, m[k])
+	}
+	return out
+}
+
+// mcpHeaderVars lists the variables a header names: a bare name, or the
+// references in a template.
+func mcpHeaderVars(spec string) []string {
+	if !strings.Contains(spec, "${") {
+		return []string{spec}
+	}
+	return varRefs(spec)
 }

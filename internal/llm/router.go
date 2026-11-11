@@ -54,6 +54,8 @@ type Router struct {
 
 	mu       sync.Mutex
 	cooldown map[string]time.Time // endpoint/credential -> usable after
+	coolKind map[string]ErrorKind // endpoint/credential -> why it cooled down
+	told     map[string]time.Time // UnavailableError.Key -> when the user was told
 	sleep    func(context.Context, time.Duration) error
 }
 
@@ -62,6 +64,12 @@ func (r *Router) defaults() {
 	defer r.mu.Unlock()
 	if r.cooldown == nil {
 		r.cooldown = map[string]time.Time{}
+	}
+	if r.coolKind == nil {
+		r.coolKind = map[string]ErrorKind{}
+	}
+	if r.told == nil {
+		r.told = map[string]time.Time{}
 	}
 	if r.sleep == nil {
 		r.sleep = sleepCtx
@@ -85,10 +93,15 @@ func (r *Router) Send(ctx context.Context, chain []Target, req Request, onEvent 
 		onEvent = func(Event) {}
 	}
 	var errs []error
+	// refused records each provider that turned the call down for credit
+	// or a rejected key; other is set by any other failure. When every
+	// model was refused that way, the turn ends with an UnavailableError.
+	var refused refusals
 	for i, t := range chain {
 		ep, ok := r.Endpoints[t.Endpoint]
 		if !ok {
 			errs = append(errs, fmt.Errorf("%s: unknown endpoint", t))
+			refused.other = true
 			continue
 		}
 		if r.Gate != nil {
@@ -98,6 +111,7 @@ func (r *Router) Send(ctx context.Context, chain []Target, req Request, onEvent 
 					return nil, err
 				}
 				errs = append(errs, err)
+				refused.other = true
 				continue
 			}
 		}
@@ -107,6 +121,7 @@ func (r *Router) Send(ctx context.Context, chain []Target, req Request, onEvent 
 			if r.OnUsage != nil {
 				r.OnUsage(ctx, t, resp.Usage)
 			}
+			r.recovered(ep.Name)
 			return resp, nil
 		}
 		errs = append(errs, fmt.Errorf("%s: %w", t, err))
@@ -114,21 +129,26 @@ func (r *Router) Send(ctx context.Context, chain []Target, req Request, onEvent 
 		if act.Kind == ErrCanceled || ctx.Err() != nil {
 			return nil, errors.Join(errs...)
 		}
+		if errors.As(err, new(refreshError)) {
+			refused.other = true // a login refresh can fail for a passing reason
+		} else {
+			refused.add(ep.Name, act.Kind)
+		}
 		if !act.Fallback {
-			return nil, errors.Join(errs...)
+			return nil, refused.err(errs)
 		}
 		if i < len(chain)-1 {
 			r.Log.Warn("falling back", "from", t.String(), "to", chain[i+1].String(), "reason", act.Kind)
 			onEvent(Event{Type: EventRetry, Text: fmt.Sprintf("%s failed (%s); trying %s", t, act.Kind, chain[i+1])})
 		}
 	}
-	return nil, errors.Join(errs...)
+	return nil, refused.err(errs)
 }
 
 func (r *Router) sendTarget(ctx context.Context, ep *Endpoint, t Target, req Request, onEvent func(Event)) (*Response, error) {
 	creds := r.usableCredentials(ep)
 	if len(creds) == 0 {
-		return nil, &APIError{Status: 429, Message: "all credentials cooling down for " + ep.Name}
+		return nil, r.noCredentials(ep)
 	}
 	req.Model = t.Model
 	var lastErr error
@@ -142,8 +162,14 @@ func (r *Router) sendTarget(ctx context.Context, ep *Endpoint, t Target, req Req
 				}
 				// A login that cannot produce a token is an auth failure
 				// (fall back), unless the refresh only hit the network.
-				if Classify(err).Kind != ErrNetwork {
+				// It's wrapped as a refresh error so a refresh that failed
+				// for a passing reason (the login server down) is never
+				// taken for an outage.
+				switch {
+				case LoginGone(err):
 					err = &APIError{Status: 401, Message: c.Name + ": " + err.Error(), Err: err}
+				case Classify(err).Kind != ErrNetwork:
+					err = &APIError{Status: 401, Message: c.Name + ": " + err.Error(), Err: refreshError{err}}
 				}
 				lastErr = err
 				continue
@@ -181,6 +207,12 @@ func (r *Router) sendTarget(ctx context.Context, ep *Endpoint, t Target, req Req
 			}
 		}
 	}
+	// Every key tried is now set aside: say why for the provider as a
+	// whole, so the answer is the same whichever key failed last and on
+	// later calls (a key set aside for a rate limit makes it no outage).
+	if lastErr != nil && len(r.usableCredentials(ep)) == 0 {
+		return nil, r.noCredentials(ep)
+	}
 	return nil, lastErr
 }
 
@@ -208,6 +240,7 @@ func (r *Router) coolDown(endpoint, cred string, kind ErrorKind) {
 	}
 	r.mu.Lock()
 	r.cooldown[endpoint+"/"+cred] = time.Now().Add(d)
+	r.coolKind[endpoint+"/"+cred] = kind
 	r.mu.Unlock()
 	r.Log.Warn("credential cooling down", "endpoint", endpoint, "credential", cred, "reason", kind, "for", d)
 }

@@ -1,0 +1,43 @@
+# A synthetic Codex config for the import tests.
+model = "gpt-5.6-sol"
+model_provider = "openai"
+approval_policy = "on-request"
+notify = ["notify-send", "Codex"]
+
+[mcp_servers.docs]
+command = "npx"
+args = ["-y", "docs-mcp", "--root", "/Users/sam/docs"]
+env = { "DOCS_TOKEN" = "fixture-docs-Ab3dE5fG7h" }
+startup_timeout_sec = 20
+
+[mcp_servers.tracker]
+url = "https://mcp.tracker.example/mcp"
+bearer_token_env_var = "TRACKER_TOKEN"
+
+[mcp_servers.parked]
+command = "parked-server"
+enabled = false
+
+[profiles.fast]
+model = "gpt-5.6-luna"
+
+[model_providers.studio]
+name = "Studio"
+base_url = "https://studio.example.net/v1"
+env_key = "STUDIO_KEY"
+wire_api = "chat"
+
+[mcp_servers.files]
+command = "files-mcp"
+enabled_tools = ["search", "read"]
+disabled_tools = ["delete"]
+
+[mcp_servers.node_repl]
+command = "/Applications/ChatGPT.app/Contents/Resources/node_repl"
+
+[mcp_servers.shop]
+url = "https://shop.example/mcp?token=fixture-shop-Ab3dE5fG7h"
+
+[mcp_servers.git]
+command = "git-mcp"
+args = ["--token=fixture-git-Ab3dE5fG7h"]

@@ -315,6 +315,13 @@ type message struct {
 		Payload string `json:"payload"`
 		Text    string `json:"text"`
 	} `json:"button"`
+	// Context is set on a reply (id: the message it quotes) and on a
+	// forward.
+	Context *struct {
+		ID                  string `json:"id"`
+		Forwarded           bool   `json:"forwarded"`
+		FrequentlyForwarded bool   `json:"frequently_forwarded"`
+	} `json:"context"`
 }
 
 type reply struct {
@@ -339,6 +346,10 @@ func (a *Adapter) convert(msg *message) (channel.Message, bool) {
 		if msg.Text != nil {
 			m.Text = msg.Text.Body
 		}
+		// Plain text the sender typed: the Cloud API marks forwards and
+		// replies in context. A template button's text is not typed.
+		m.Forwarded = msg.Context != nil && (msg.Context.Forwarded || msg.Context.FrequentlyForwarded)
+		m.Plain = msg.Context == nil
 	case "interactive":
 		if it := msg.Interactive; it != nil {
 			switch {

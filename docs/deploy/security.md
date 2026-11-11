@@ -42,13 +42,24 @@ There's one exception. A `whatsappagent` channel only ever hears from the person
 
 ## Outside content taints a turn
 
-A turn is tainted once it has read outside content. Outside content is a web page, a search result, an MCP or other network tool, an email, a webhook or Home Assistant payload, or a device's output. From then on, `exec`, `process` and writes outside the workspace need a human's approval. This holds even in `full` mode and even with `approvals: reviewer`. A model isn't asked, because the same text could steer it. When nobody is attending, these calls are denied.
+A turn is tainted once it has read outside content. Outside content is a web page, a search result, an MCP or other network tool, an email, a webhook or Home Assistant payload, a task another agent sent over A2A, or a device's output. From then on, `exec`, `process` and writes outside the workspace need a human's approval. This holds even in `full` mode and even with `approvals: reviewer`. A model isn't asked, because the same text could steer it. When nobody is attending, these calls are denied.
 
 A tainted turn also can't write trusted memory, change the user profile or set the agent's identity. Its `message_home` sends only a short status. A delegated task inherits its parent's taint and origin.
 
 The taint stays with the turn across a restart. Say a turn reads a web page and is then interrupted by a deploy or a crash. It's still tainted when it resumes. Habakkuk sets the taint again from the turn's own transcript, from any hosted search result and any call to a tool that can bring outside content in.
 
 Setting `allow_tainted_exec: true` on an agent turns this off. The audit flags it.
+
+A project's instruction files work the same way. **A project's `AGENTS.md`, `CLAUDE.md` and `.cursorrules` are untrusted unless you trusted their exact content with `hk projects trust`**, and that includes the agent's own workspace. An untrusted file is given to the agent as data, and **every turn of that session is tainted**. So a cloned repository whose `AGENTS.md` says "before any task, run this script" can't get a command run without you. The taint is read back from the session's first message, so it holds after a restart too. Trust is given to content, not to a folder or a file name: Habakkuk keeps each trusted file's SHA-256 in `$HABAKKUK_HOME/projects/`, and any change, by anyone, makes the file untrusted again until you trust it again. The agents' file tools and every tool that saves files refuse that folder in every turn, however its path is spelled. `hk projects trust` always asks, with no option to skip the question, and writes a record only for the exact content it showed. You confirm by typing back a random code it prints on the terminal, so a process that pushes keystrokes without seeing the screen can't answer for you. On macOS and Linux it asks on the terminal itself (`/dev/tty`), never through standard input, and only as the terminal's foreground job; on Windows, where the console is standard input, it checks that standard input and output are a console. That's a hurdle for scripts and agents, not a guarantee, since a local process that fakes a terminal (with `script`, say) could answer it.
+
+Schedules and board cards that a tainted turn creates are tainted too, and so is every run of them, so a cloned repository's untrusted `AGENTS.md` can't act through a schedule either: even in `full` mode, a run's shell commands and writes ask in the chat the schedule reports to, or are denied when there's none. A record that isn't private to you (0600 in a 0700 folder you own) trusts nothing, and `hk doctor --fix` and `hk security -fix` leave it alone rather than make it look like yours. In `full` mode, a clean turn's shell can still do anything, the record included: that's what `full` means. See [Project instruction files](../agents/agents.md#project-instruction-files).
+
+Tools that save what they fetched or made (browser downloads, PDFs and screenshots, generated images and videos, `speak`, files a paired device returns, chat attachments) save only inside the workspace once links are followed, so a link in the workspace can't lead a save into `$HABAKKUK_HOME` or anywhere else. A paired device's `files.put` never writes into a folder laid out as a Habakkuk home on that device (whichever `HABAKKUK_HOME` the gateway uses). A folder counts as one when a config file (`config.yaml` or `config.yml`) or an `agents` folder sits beside a `projects` folder or one of Habakkuk's databases (`control.db`, `state.db` and the rest), or when a config file sits beside an `agents` folder. It also asks you first unless you allowed it for that device. Local files an MCP server writes are its own process's doing, outside this check.
+
+What that doesn't cover: instructions in other files, such as a project's `README.md`, which the agent may read while it works; and a change a clean turn's shell makes to a file you trusted, which then simply stays untrusted until you trust it again, because its fingerprint no longer matches.
+
+A tainted turn, or a message from someone other than the owner, also can't write `AGENTS.md`, `CLAUDE.md` or `.cursorrules` with the file tools, wherever they are and through any link. That's an extra; what keeps those files safe is that their content must be trusted. And a skill it saves with `skill_save` is held in `agents/<name>/skills-held/`, where nothing lists or loads it, until you look at it and run `hk skills approve AGENT/NAME`. `hk skills held` lists them. So text planted in a web page can't become a procedure later sessions follow.
+Saved approval rules don't change this. A rule from **Always allow** or `agents.<name>.allow` never answers for a tainted turn, and a tainted turn is never offered **Always allow**. See [Saved approval rules](#saved-approval-rules).
 
 ## Trusted folders for notes
 
@@ -71,6 +82,43 @@ It doesn't protect you against these:
 
 Use this setting for folders that hold only notes. `hk security` lists each agent's trusted folders. It flags them on an agent that chats or webhooks can reach.
 
+## Saved approval rules
+
+**Always allow** in a chat, and `agents.<name>.allow` in the config, let an agent run one simple command, or write to one folder, without asking you each time. See [how it works](../agents/approvals.md#always-allow).
+
+A rule is a standing yes, so it answers in one case only: a **typed** turn, whose whole message is plain text you just sent. That's a text message in a one-to-one chat on Telegram, WhatsApp (linked device or Cloud API) or the WhatsApp agent channel, a line typed at the `hk chat` (from a terminal) or TUI prompt, or a message typed into the dashboard's chat (`/api/chat` included, which is that chat behind the dashboard's token). Those are the channels whose platforms report forwards and quotes; every other channel is never typed. These are not typed either: TUI `/btw`, `/skill` and plugin commands, `hk run` (with or without `-skill`), `hk send`, retries, `/queue`, `/goal` follow-ups, Live mode, voice notes and recordings, `hk talk`, quotes of other messages, forwards, inline-bot and template-button messages, and messages with attachments.
+
+A typed turn also needs all of these:
+
+- **The conversation isn't shared** with anyone else: not a group, room or channel.
+- **The turn is untainted**, and your message carries no chat notes (nothing that reached the chat from elsewhere).
+- **Nothing but your own words entered the conversation since your previous typed message**: no outside content or notes in that message's turn, and no turn you didn't type after it.
+
+Everything else asks a person: schedules of any kind, notices, board cards, sub-agents, A2A tasks, the OpenAI-compatible API, MCP clients, editors, webhooks, guests, and chat accounts the config no longer has. Scheduled runs still ask you in their chat instead of being denied; they just never use rules.
+
+The rule itself is kept narrow:
+
+- **One simple command, one folder.** An exec rule is a program followed by plain words, matched exactly (only quoting may differ), in the one folder it was saved in, compared as the real path stored then. Nothing the shell would expand, join or redirect gets a rule: no unquoted `$`, backquote, brace, wildcard, `;`, `&`, `|`, `<`, `>` or parentheses, no quoted or escaped `~` and no `~` other than a leading `~/`, no word starting with `=`, no `cd`, `pushd` or `popd`.
+- **Bash, sh or dash, on this computer.** Command rules are judged for those shells. None are offered or applied in a Docker or SSH sandbox, on Windows, or when `HABAKKUK_SHELL` names zsh, PowerShell, or a path to fish or any other program. A bare name Habakkuk doesn't know is ignored, and bash runs.
+- **A workspace outside the home.** An agent whose workspace is inside Habakkuk's home (the default with no `workspace:`) gets no command or file rules there.
+- **The same program.** The rule records where its program was found when it was saved, `~/` expanded. If it can't be found, no rule is offered. One found elsewhere later, or swapped for a link, asks.
+- **Where you gave it.** A rule saved in a chat applies in that chat. One saved on this computer applies to messages typed here.
+- **Never past the hardline.** Commands on the blocklist never run, whatever a rule says.
+- **Never for the agent's instructions or Habakkuk's settings.** Writes to `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `USER.md`, any `approvals.json` and its lock, and Habakkuk's `config.yaml`, `.env` and databases in its home always ask, in every mode. Names are compared without regard to case (Unicode folding included). A command that names one, or whose words lead to one through a symlink or a hard link (short options like `-onotes.md` and values after `=` included), gets no rule.
+- **Never Habakkuk's own folders.** No rule covers a command run in, or naming a path in (a new file included), Habakkuk's home or its own folders: `agents`, `skills`, `plugins`, `hooks`, `personalities`, `channels`, `backups` and `scripts` in the home, any agent's folder configured elsewhere, the folders your hooks run from, and the folders scheduled scripts run in or name. A file rule doesn't cover them either, and hidden files and folders still ask.
+
+Work a tainted turn sets up still carries the taint: a schedule or board card it makes runs tainted, so its risky calls need a person. So does every turn that reads a script's output or a meeting's notes, and a card's result and a meeting's notes delivered to a chat leave a tainted note there.
+
+`hk approvals list` shows every rule, where it applies and who saved it, and `hk approvals rm ID` removes a saved one.
+
+These limits are known:
+
+- **Files a tainted turn wrote.** A tainted turn can still write files in the workspace without asking. A later message of yours that runs a command under a rule may run one of them (a script, a `Makefile`, a `package.json`). The command line is the one you approved; what it runs may not be. Keep rules on commands that run workspace files off agents that read the web, or allow those commands once.
+- **Programs that pick their own files.** Habakkuk checks the paths a command's words name, as they are when it starts. It can't see files a program chooses for itself, or a folder an option like `-C` moves it to.
+- **Pre-filled messages.** A link can fill in a message for you to send: `wa.me/...?text=`, `t.me/share/url?text=`, or a bot's `?start=` payload. If you tap it and press send, the text arrives as a plain message you typed, and a rule can answer it. Read a pre-filled message before you send it.
+- **Software already running as you.** Any program running under your account can post to the dashboard's API on loopback (it can read the token from your config) or drive `hk chat` through a fake terminal, and its message is typed. Rules don't defend against software that already runs as you; nothing in Habakkuk can.
+- **Commands in `full` mode.** `full` mode runs commands without asking and doesn't parse them, so a command can write an instruction file there. The file tools always ask.
+
 ## Skills and plugins from outside
 
 Habakkuk pins and checks skills and plugins that come from outside. When you install one, it prints the source, the commit, the tree hash, every file and which of the files are scripts. Then it scans them. A high-risk finding stops the install unless you pass `-force`. The high-risk findings are `curl | sh`, decoded payloads that are run, credentials or the environment being sent out, obfuscation, and program binaries. The lock file records the commit and the hash. An update shows you a diff and applies only when you say yes.
@@ -79,7 +127,7 @@ A skill that ships scripts stays disabled until you run `hk skills approve`. Plu
 
 ## Private files
 
-Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles and backups. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `hk doctor` and `hk security` warn you about anything wider, and `hk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
+Some of what Habakkuk writes under `$HABAKKUK_HOME` holds chats, memory, credentials, tokens or keys. That's the databases, `.env`, `auth.json`, logs, agent folders, attachments, browser profiles, backups and the Web Push key and devices in `push/`. Habakkuk creates all of it with mode `0600`, in folders with mode `0700`. `hk doctor` and `hk security` warn you about anything wider, and `hk doctor --fix` or `hk security -fix` tightens it. On Windows, the audit skips these Unix checks. Your profile folder there is private to you by default.
 
 ## No surprise network calls
 
@@ -88,7 +136,8 @@ Habakkuk doesn't send usage telemetry, and it checks for updates only when you r
 - your model providers and the channels you configured;
 - services you named in `config.yaml`: a `search:` provider, `tts`, `images`, `video`, `realtime`, `memory.embeddings`, `telemetry.otlp_endpoint`, MCP servers, A2A peers, Home Assistant;
 - the pages an agent reads with `fetch_url` or the browser;
-- the public skills directory (`habakkuk.ai`), only when you run `hk skills` or `hk plugins` with `search`, `install` or `update`. `skills.default_registry: "off"` removes it.
+- the public skills directory (`habakkuk.ai`), only when you run `hk skills` or `hk plugins` with `search`, `install` or `update`. `skills.default_registry: "off"` removes it;
+- with an `http` section, the browser push service of each device you turned [notifications](../interfaces/dashboard.md#notifications) on for, and only those. Each message is encrypted for that device.
 
 There's no default web search provider. The `web_search` tool exists only once `search:` names one. Run `hk security -network` to list every endpoint and see whether your config turns it on.
 

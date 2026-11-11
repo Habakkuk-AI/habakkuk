@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +31,8 @@ const skillsUsage = `usage: hk skills [list] [-agent A]
        hk skills install [-y] [-force] [-name N] SOURCE
        hk skills update [-y] [-force] [NAME]
        hk skills remove NAME
-       hk skills approve NAME
+       hk skills approve [-agent A] NAME | approve AGENT/NAME
+       hk skills held                  skills an agent saved after reading outside content
        hk skills audit
        hk skills restore [-id ID] NAME | restore -list [NAME]
        hk skills curate [-dry-run] [-agent A]
@@ -101,13 +103,49 @@ func skillsCmd(ctx context.Context, home string, args []string) error {
 		}
 		return setSkillOff(cfg, lib, strings.ToLower(args[0]), off, os.Stdout)
 	case "approve", "trust":
-		if len(args) != 1 {
-			return errors.New("usage: hk skills approve NAME")
-		}
-		if err := h.Set(args[0], func(e *hub.Entry) { e.Trusted = true }); err != nil {
+		fs := flag.NewFlagSet("skills approve", flag.ContinueOnError)
+		agentName := fs.String("agent", "", "approve that agent's own skill (one brought in from a project) instead of a shared one")
+		if err := fs.Parse(args); err != nil {
 			return err
 		}
-		fmt.Printf("approved %s\n", args[0])
+		if fs.NArg() != 1 {
+			return errors.New("usage: hk skills approve [-agent A] NAME, or hk skills approve AGENT/NAME")
+		}
+		name := fs.Arg(0)
+		// Three sources, always named: -agent A NAME is a skill an import
+		// brought into that agent's own skills; AGENT/NAME is a skill an
+		// agent saved after reading outside content (held, skills/held.go);
+		// a plain NAME is an installed skill. One never stands in for another.
+		if *agentName != "" {
+			if err := lib.Approve(*agentName, name); err != nil {
+				return err
+			}
+			fmt.Printf("approved %s\n", name)
+			break
+		}
+		if strings.Contains(name, "/") {
+			return approveHeld(ctx, lib, name)
+		}
+		if held, ok, _ := lib.FindHeld(name); ok {
+			defer fmt.Printf("note: %s/%s, a skill an agent saved after reading outside content, is also waiting; it is approved only with hk skills approve %s/%s\n",
+				held.Agent, held.Name, held.Agent, held.Name)
+		}
+		if err := h.Set(name, func(e *hub.Entry) { e.Trusted, e.Held = true, false }); err != nil {
+			return err
+		}
+		fmt.Printf("approved %s\n", name)
+	case "held":
+		held, err := lib.Held()
+		if err != nil {
+			return err
+		}
+		if len(held) == 0 {
+			fmt.Println("No skills are held.")
+		}
+		for _, x := range held {
+			fmt.Printf("%-32s %s\n  %s\n  read %s, then: hk skills approve %s/%s (or delete the folder)\n",
+				x.Agent+"/"+x.Name, x.Saved.Local().Format("2006-01-02 15:04"), x.Description, x.Dir, x.Agent, x.Name)
+		}
 	case "restore":
 		return restoreBackups(h.Backups(), h.Restore, "skills", args)
 	case "curate":
@@ -170,7 +208,27 @@ func printSkills(w io.Writer, lib *skills.Library, agentName string) error {
 	if err != nil {
 		return err
 	}
+	// Skills an import brought into this agent's own folder wait for the
+	// owner. Nothing lists or loads them, so they are read from the lock.
+	own, err := hub.ReadLock(filepath.Join(lib.AgentDir(agentName), hub.LockName))
+	if err != nil {
+		return err
+	}
+	var pending []string
+	for _, skill := range slices.Sorted(maps.Keys(own.Packages)) {
+		e := own.Packages[skill]
+		s := skills.Skill{Name: skill, Dir: filepath.Join(lib.AgentDir(agentName), skill)}
+		if !e.Trusted && lib.Disabled(s) {
+			pending = append(pending, fmt.Sprintf("%-24s agent    disabled: from %s, needs your approval (hk skills approve -agent %s %s)", skill, e.Source, agentName, skill))
+		}
+	}
 	if len(list) == 0 {
+		for _, l := range pending {
+			fmt.Fprintln(w, l)
+		}
+		if len(pending) > 0 {
+			return nil
+		}
 		fmt.Fprintf(w, "no skills for agent %s; add folders with a SKILL.md under %s or %s, or hk skills install SOURCE\n", agentName, lib.SharedDir(), lib.AgentDir(agentName))
 		return nil
 	}
@@ -208,11 +266,14 @@ func printSkills(w io.Writer, lib *skills.Library, agentName string) error {
 			fmt.Fprintf(w, "%-24s note: %s\n", "", why)
 		}
 	}
-	if len(held) > 0 {
+	if len(held)+len(pending) > 0 {
 		fmt.Fprintf(w, "\nNot offered to %s:\n", agentName)
 	}
 	for _, e := range held {
 		fmt.Fprintf(w, "%-24s %s  %s\n", e.Name, origin(e.Skill), e.Reason())
+	}
+	for _, l := range pending {
+		fmt.Fprintln(w, l)
 	}
 	return nil
 }
@@ -735,5 +796,22 @@ func mcpAddCmd(home string, args []string) error {
 		fmt.Printf("It signs in with OAuth: run hk mcp login %s.\n", name)
 	}
 	fmt.Printf("Give it to an agent by adding \"mcp:%s\" to its toolsets, then check it with hk mcp.\n", name)
+	return nil
+}
+
+// approveHeld puts a held skill, named AGENT/NAME, in use.
+func approveHeld(ctx context.Context, lib *skills.Library, ref string) error {
+	held, ok, err := lib.FindHeld(ref)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("no held skill %s (hk skills held lists them)", ref)
+	}
+	s, err := lib.ApproveHeld(ctx, held)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("approved %s for agent %s; it is in %s and new sessions list it\n", s.Name, held.Agent, s.Dir)
 	return nil
 }

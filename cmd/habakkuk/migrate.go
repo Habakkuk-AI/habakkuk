@@ -15,20 +15,28 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/migrate"
 )
 
-// `hk migrate` moves a setup from Hermes Agent or OpenClaw into
+// `hk migrate` moves a setup from another agent or a coding tool into
 // Habakkuk. The work is in internal/migrate; this is the command: flags,
 // finding the source, the plan, the confirmation and the closing report.
 
-const migrateUsage = `usage: hk migrate [--from hermes|openclaw] [--source DIR] [--agent NAME]
-                        [--dry-run] [--secrets copy|skip] [--files copy|skip]
-                        [--files-dir DIR] [--files-max SIZE] [--force] [-y]
+const migrateUsage = `usage: hk migrate [--from hermes|openclaw|claude-code|codex] [--source DIR]
+                        [--agent NAME] [--project DIR] [--dry-run]
+                        [--secrets copy|skip] [--history copy|skip]
+                        [--files copy|skip] [--files-dir DIR] [--files-max SIZE]
+                        [--force] [-y]
 
 Moves an existing Hermes Agent or OpenClaw setup into Habakkuk: agents and
-their persona files, the user profile, memory notes, skills, scheduled tasks
-(imported paused), MCP servers, model providers, channels and, when you say
-so, their keys and tokens. It prints a plan first and writes nothing until you
-confirm. Running it again changes nothing that is already there; things that
-differ are left alone unless --force.
+their persona files, the user profile, memory notes, past conversations
+(as read-only sessions), skills, scheduled tasks (imported paused), MCP
+servers, model providers, channels and, when you say so, their keys and
+tokens. It prints a plan first and writes nothing until you confirm. Running
+it again changes nothing that is already there; things that differ are left
+alone unless --force.
+
+From Claude Code or Codex it brings the instruction files, MCP servers,
+skills, slash commands (as skills) and memory files. Their keys and sign-ins
+are never copied. --project DIR adds one project's own instructions, MCP
+servers and skills.
 
 The imported text often names files in the old folder: scripts that schedules
 run, folders of notes and reports. The plan lists them. With --files copy your
@@ -42,7 +50,9 @@ Flags:
 
 type migrateFlags struct {
 	from, source, agent, secrets string
+	project                      string
 	files, filesDir, filesMax    string
+	history                      string
 	dryRun, force, yes           bool
 	userHome                     string // tests point the source lookup elsewhere
 	// freeSpace replaces the file system's answer in tests.
@@ -60,13 +70,15 @@ func runMigrate(ctx context.Context, home string, args []string, in io.Reader, o
 	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
 	fs.SetOutput(out)
 	fs.StringVar(&fl.from, "from", "", "the agent to import from: "+strings.Join(migrate.Sources, " or ")+" (default: the one found on this computer)")
-	fs.StringVar(&fl.source, "source", "", "its home folder (default ~/.hermes or $HERMES_HOME; ~/.openclaw or $OPENCLAW_STATE_DIR)")
+	fs.StringVar(&fl.source, "source", "", "its home folder (default ~/.hermes or $HERMES_HOME; ~/.openclaw or $OPENCLAW_STATE_DIR; ~/.claude or $CLAUDE_CONFIG_DIR; ~/.codex or $CODEX_HOME)")
+	fs.StringVar(&fl.project, "project", "", "claude-code and codex: also bring this project folder's instructions (as a memory note), approved MCP servers and skills")
 	fs.StringVar(&fl.agent, "agent", "", `the Habakkuk agent the main agent becomes (default "habakkuk"); other agents keep their names`)
 	fs.BoolVar(&fl.dryRun, "dry-run", false, "print the plan and stop; nothing is written")
 	fs.StringVar(&fl.secrets, "secrets", "", "copy: put API keys and tokens in $HABAKKUK_HOME/.env; skip: only list their names (default: ask)")
 	fs.StringVar(&fl.files, "files", "", "copy: copy your files that the imported text names out of the old folder and rewrite the text to name the copies; skip: leave them (default: ask)")
 	fs.StringVar(&fl.filesDir, "files-dir", "", "where --files copy puts them (default $HABAKKUK_HOME/files)")
 	fs.StringVar(&fl.filesMax, "files-max", "", "the largest file --files copy takes, such as 500M or 4G; 0 is no limit (default 1G)")
+	fs.StringVar(&fl.history, "history", "", "copy: import past conversations as read-only sessions; skip: leave them (default copy)")
 	fs.BoolVar(&fl.force, "force", false, "replace agents, files, skills, notes, schedules and .env values that already exist and differ")
 	fs.BoolVar(&fl.yes, "y", false, "do not ask: import without confirming (keys are copied only with --secrets copy, files only with --files copy)")
 	fs.BoolVar(&fl.yes, "yes", false, "same as -y")
@@ -89,6 +101,9 @@ func runMigrate(ctx context.Context, home string, args []string, in io.Reader, o
 	if fl.files != "" && fl.files != migrate.FilesCopy && fl.files != migrate.FilesSkip {
 		return fmt.Errorf("--files %q: want copy or skip", fl.files)
 	}
+	if fl.history != "" && fl.history != migrate.HistoryCopy && fl.history != migrate.HistorySkip {
+		return fmt.Errorf("--history %q: want copy or skip", fl.history)
+	}
 	if fl.filesMax != "" {
 		if _, err := migrate.ParseSize(fl.filesMax); err != nil {
 			return fmt.Errorf("--files-max: %w", err)
@@ -99,6 +114,16 @@ func runMigrate(ctx context.Context, home string, args []string, in io.Reader, o
 	}
 	if strings.ContainsAny(fl.agent, `/\ :`) || fl.agent == "." || fl.agent == ".." {
 		return fmt.Errorf("--agent %q is not a valid agent name", fl.agent)
+	}
+	if fl.project != "" {
+		abs, err := filepath.Abs(fl.project)
+		if err != nil {
+			return err
+		}
+		if info, err := os.Stat(abs); err != nil || !info.IsDir() {
+			return fmt.Errorf("--project %s: not a folder", fl.project)
+		}
+		fl.project = abs
 	}
 	fl.userHome = userHome
 	m := &migration{fl: fl, home: home, in: bufio.NewReader(in), out: out, getenv: getenv}
@@ -119,13 +144,21 @@ func (m *migration) say(format string, args ...any) { fmt.Fprintf(m.out, format+
 
 func (m *migration) run(ctx context.Context) error {
 	o := migrate.Options{From: m.fl.from, Source: m.fl.source, Agent: m.fl.agent, Force: m.fl.force,
-		Getenv: m.getenv, UserHome: m.fl.userHome, Files: m.fl.files, FilesDir: m.fl.filesDir, FreeSpace: m.fl.freeSpace}
+		Getenv: m.getenv, UserHome: m.fl.userHome, Files: m.fl.files, FilesDir: m.fl.filesDir, FreeSpace: m.fl.freeSpace,
+		History: m.fl.history, Project: m.fl.project}
 	if m.fl.filesMax != "" {
 		o.FilesMax, _ = migrate.ParseSize(m.fl.filesMax) // checked with the flags
 	}
 	// Without --files a person is asked once, so the plan shows the copy;
 	// with -y the files are left where they are.
 	o.FilesAsk = m.fl.files == "" && !m.fl.yes
+	// MCP servers whose command line, URL or headers hold keys come along
+	// only with the keys. A person who has not answered yet sees them in
+	// the plan, and the plan is made again without them on a no.
+	o.Secrets = m.fl.secrets
+	if o.Secrets == "" && !m.fl.yes {
+		o.Secrets = "copy"
+	}
 	if o.From == "" {
 		from, err := m.pick(o)
 		if err != nil {
@@ -136,6 +169,13 @@ func (m *migration) run(ctx context.Context) error {
 	found, err := migrate.Read(o)
 	if err != nil {
 		return err
+	}
+	defer func() { _ = found.Close() }()
+	if o.Project != "" {
+		if !migrate.IsCodingTool(o.From) {
+			return errors.New("--project is for --from claude-code and --from codex")
+		}
+		m.say("Adding the project in %s.", o.Project)
 	}
 	plan, err := migrate.NewPlan(found, m.home, o)
 	if err != nil {
@@ -197,6 +237,21 @@ func (m *migration) run(ctx context.Context) error {
 		if copyKeys, err = m.ask(fmt.Sprintf("Copy the %d keys and tokens into %s (readable only by you)?", len(keys), filepath.Join(m.home, ".env")), true); err != nil {
 			return err
 		}
+		if !copyKeys {
+			o.Secrets = "skip"
+			if plan, err = migrate.NewPlan(found, m.home, o); err != nil {
+				return err
+			}
+			var left []string
+			for _, it := range plan.Items {
+				if it.Kind == "mcp" && it.Status == migrate.Rejected && strings.Contains(it.Detail, "--secrets copy") {
+					left = append(left, it.Name)
+				}
+			}
+			if len(left) > 0 {
+				m.say("Without the keys, these MCP servers are left out: %s.", strings.Join(left, ", "))
+			}
+		}
 	}
 	if fp := plan.Files; o.FilesAsk && fp.Pending() {
 		var names []string
@@ -229,7 +284,8 @@ func (m *migration) run(ctx context.Context) error {
 	return err
 }
 
-// pick finds the source when --from is not given: the one present.
+// pick finds the source when --from is not given: the one present. An
+// agent found beside coding tools is the one picked; the others are named.
 func (m *migration) pick(o migrate.Options) (string, error) {
 	var found []string
 	if o.Source != "" {
@@ -241,20 +297,83 @@ func (m *migration) pick(o migrate.Options) (string, error) {
 	} else {
 		found = migrate.Detect(o)
 	}
-	switch len(found) {
-	case 1:
-		return found[0], nil
-	case 0:
+	if len(found) == 0 {
 		var where []string
 		for _, from := range migrate.Sources {
 			where = append(where, fmt.Sprintf("%s (%s)", migrate.Label(from), migrate.DefaultSource(from, o)))
 		}
 		if o.Source != "" {
-			return "", fmt.Errorf("%s does not look like a %s or %s home; pass --from", o.Source, migrate.Label(migrate.Hermes), migrate.Label(migrate.OpenClaw))
+			return "", fmt.Errorf("%s does not look like the home of %s; pass --from", o.Source, orList(labels(migrate.Sources)))
 		}
-		return "", fmt.Errorf("found no setup to import: looked for %s; pass --from and --source", strings.Join(where, " and "))
+		return "", fmt.Errorf("found no setup to import: looked for %s; pass --from and --source", orList(where))
 	}
-	return "", fmt.Errorf("found both %s and %s; pass --from %s or --from %s", migrate.Label(found[0]), migrate.Label(found[1]), found[0], found[1])
+	from, others, err := choose(found)
+	if err != nil {
+		return "", err
+	}
+	if len(others) > 0 {
+		var hints []string
+		for _, o := range others {
+			hints = append(hints, "--from "+o)
+		}
+		m.say("Found %s too; run hk migrate again with %s to import it.", orList(labels(others)), orList(hints))
+	}
+	return from, nil
+}
+
+// choose picks one of the sources found: the only agent, or the only
+// coding tool when there is no agent. Two of a kind need --from.
+func choose(found []string) (string, []string, error) {
+	var agents, tools []string
+	for _, f := range found {
+		if migrate.IsCodingTool(f) {
+			tools = append(tools, f)
+		} else {
+			agents = append(agents, f)
+		}
+	}
+	tier := agents
+	if len(tier) == 0 {
+		tier = tools
+	}
+	if len(tier) > 1 {
+		var flags []string
+		for _, f := range tier {
+			flags = append(flags, "--from "+f)
+		}
+		if len(tier) == 2 {
+			return "", nil, fmt.Errorf("found both %s and %s; pass %s", migrate.Label(tier[0]), migrate.Label(tier[1]), orList(flags))
+		}
+		return "", nil, fmt.Errorf("found %s; pass %s", andList(labels(tier)), orList(flags))
+	}
+	var others []string
+	for _, f := range found {
+		if f != tier[0] {
+			others = append(others, f)
+		}
+	}
+	return tier[0], others, nil
+}
+
+func labels(froms []string) []string {
+	var out []string
+	for _, f := range froms {
+		out = append(out, migrate.Label(f))
+	}
+	return out
+}
+
+func orList(s []string) string  { return joinList(s, "or") }
+func andList(s []string) string { return joinList(s, "and") }
+
+func joinList(s []string, word string) string {
+	switch len(s) {
+	case 0:
+		return ""
+	case 1:
+		return s[0]
+	}
+	return strings.Join(s[:len(s)-1], ", ") + " " + word + " " + s[len(s)-1]
 }
 
 // ask is a yes/no question; end of input is no.
@@ -283,9 +402,9 @@ func (m *migration) ask(prompt string, def bool) (bool, error) {
 
 // report says what was done and what is next.
 func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
-	count := map[string]int{}
+	kinds := map[string]int{}
 	for _, it := range res.Done {
-		count[it.Kind]++
+		kinds[it.Kind]++
 	}
 	var parts []string
 	for _, k := range []struct{ kind, one, many string }{
@@ -293,13 +412,17 @@ func (m *migration) report(p *migrate.Plan, res *migrate.Result) {
 		{"note", "memory note", "memory notes"}, {"skill", "skill", "skills"}, {"schedule", "schedule", "schedules"},
 		{"mcp", "MCP server", "MCP servers"}, {"provider", "provider", "providers"}, {"channel", "channel", "channels"},
 	} {
-		switch n := count[k.kind]; n {
+		switch n := kinds[k.kind]; n {
 		case 0:
 		case 1:
 			parts = append(parts, "1 "+k.one)
 		default:
 			parts = append(parts, fmt.Sprintf("%d %s", n, k.many))
 		}
+	}
+	if res.Conversations > 0 {
+		parts = append(parts, fmt.Sprintf("%s (%s) as read-only sessions", count(res.Conversations, "past conversation", "past conversations"),
+			count(res.Messages, "message", "messages")))
 	}
 	m.say("")
 	if len(parts) == 0 {

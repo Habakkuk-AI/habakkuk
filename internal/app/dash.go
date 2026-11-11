@@ -27,6 +27,9 @@ func (a *App) openDash() {
 		d.BoardWake = a.Dispatcher.Wake
 	}
 	a.Web.Dash = d
+	if a.Scheduler != nil {
+		a.Scheduler.OnFailure = a.Web.ScheduleFailed // web push
+	}
 }
 
 // DoctorChecks checks what hk doctor checks that a running process can
@@ -109,16 +112,9 @@ func (a *App) DoctorChecks(ctx context.Context) []web.Check {
 	for _, name := range slices.Sorted(maps.Keys(cfg.MCP)) {
 		m := cfg.MCP[name]
 		var missing []string
-		for _, env := range slices.Sorted(maps.Values(m.Env)) {
+		for _, env := range mcp.ServerVars(m) {
 			if a.Secret(env) == "" {
 				missing = append(missing, env)
-			}
-		}
-		for _, spec := range slices.Sorted(maps.Values(m.Headers)) {
-			for _, env := range mcp.HeaderVars(spec) {
-				if a.Secret(env) == "" {
-					missing = append(missing, env)
-				}
 			}
 		}
 		if len(missing) > 0 {

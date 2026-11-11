@@ -6,7 +6,18 @@ order: 2
 
 Something not working? This page lists common problems by what you see, with the cause and the fix for each.
 
-Before you look one up, run `hk doctor`. It checks the config, every provider's keys, the databases, each channel's credentials, the HTTP section and MCP servers. It prints one line per item and exits non-zero when something is wrong. After that, run `hk channels` for live channel health, and `hk logs -f -level warn` to see what `serve` is doing.
+Before you look one up, run `hk doctor`. It checks the config, every provider's keys, the databases, each channel's credentials, the HTTP section and MCP servers. It prints one line per item and exits non-zero when something is wrong.
+
+Some problems have a fix that needs no decision from you. Run `hk doctor --fix` and it makes those fixes first, says what it changed, and then runs the usual checks:
+
+- An older `config.yaml` is rewritten in the current format. The old file is kept as `config.yaml.<time>.bak`.
+- Folders Habakkuk needs inside `$HABAKKUK_HOME` and can't find, such as an agent's folder or its default workspace, are created. A workspace elsewhere isn't: if it's missing, the drive it's on may not be mounted.
+- Files and folders under `$HABAKKUK_HOME` that other users can read are made owner-only, and skills and backups in it lose the write or read bits others had, as `hk security -fix` does.
+- A background service whose program no longer exists (you moved the binary) is pointed at the binary you just ran. Only the program's path changes; your other settings in the file stay. The old file is copied to `$HABAKKUK_HOME/service-backups/` with the time in its name, and the fix tells you the command that reloads the service. A service for another home, or a fix that would point at a temporary `go run` build, is left alone.
+
+Anything that needs a key, a login, a choice or a change outside `$HABAKKUK_HOME`, such as a hook script other users can change, stays as advice. A plain `hk doctor` ends with the list of what `--fix` would do.
+
+After that, run `hk channels` for live channel health, and `hk logs -f -level warn` to see what `serve` is doing.
 
 If the problem is with one chat app, look at its channel page too. Each one has its own troubleshooting table: [WhatsApp](../channels/whatsapp.md), [Telegram](../channels/telegram.md#troubleshooting), [Slack](../channels/slack.md#troubleshooting), [Discord](../channels/discord.md#troubleshooting), [Signal](../channels/signal.md#troubleshooting), [Matrix](../channels/matrix.md#troubleshooting).
 
@@ -32,7 +43,7 @@ If the problem is with one chat app, look at its channel page too. Each one has 
 |---|---|
 | `provider anthropic: 0/1 keys present` in `hk doctor` | The variable in `keys_env` is not set. Put it in `$HABAKKUK_HOME/.env` (not in `config.yaml`). |
 | `provider chatgpt: NOT LOGGED IN (run hk auth login chatgpt)` | Run the command it names. |
-| Turns fail with an auth or billing error | The key is wrong, revoked or out of credit. With several keys in `keys_env`, Habakkuk rotates to the next one; with `fallbacks`, it tries the next model. |
+| Turns fail with an auth or billing error, or "no model could answer" | The key is wrong, revoked or out of credit. With several keys in `keys_env`, Habakkuk rotates to the next one; with `fallbacks`, it tries the next model. When every model is refused, top up or fix one of them, or add a fallback on another provider. A schedule's chat is told once per outage. See [Providers](../models/providers.md). |
 | `mcp x: MISSING ...` or `not signed in; run hk mcp login x` | Set the variable the server needs, or sign in. |
 
 ## Channels
@@ -52,7 +63,7 @@ If the problem is with one chat app, look at its channel page too. Each one has 
 | You see | Cause and fix |
 |---|---|
 | `No answer, so I skipped that step.` | An approval waited 15 minutes. Answer **yes** or **no** sooner, or use an [approval reviewer](../agents/approvals.md#approvals) for routine steps. |
-| `... needs approval and no one is attending this run` | A schedule, sub-agent, webhook or API call needed approval. Give the agent `approvals: reviewer` or `reviewer_then_human`, or a wider `permission`. |
+| `... needs approval and no one is attending this run` | A sub-agent, webhook, API call or a schedule with no delivery chat needed approval. Saved approval rules never answer for these. Give the schedule a chat (`-to CHANNEL:CHAT`) so it can ask you, give the agent `approvals: reviewer` or `reviewer_then_human`, or a wider `permission`. |
 | `... is not allowed in read-only mode` | The agent is `permission: read-only`, which also denies network tools such as the browser. Use `workspace`. |
 | `... is not available to messages from people other than the owner` | The sender is a guest (let in by `allow_from: ["*"]`). Add their id to `allow_from` or pair them. |
 | Commands need approval even in `full` mode | Turns from chat apps and turns that read outside content always need approval for risky calls. Set `trust: full` on the agent to treat your own chat messages like the CLI. See [Security](../deploy/security.md). |
@@ -71,6 +82,7 @@ If the problem is with one chat app, look at its channel page too. Each one has 
 | `control.db has schema version N, but this habakkuk only knows up to version M` | A newer Habakkuk already upgraded the database. Run `hk update`, or restore with `hk update --rollback`. |
 | `hk update` stops after the upgrade check | The new release cannot run on your home as it is; nothing was changed. Read the message, or pass `-skip-upgrade-check` only if you are sure. |
 | Something broke after an update | Stop `serve` and run `hk update --rollback`. |
+| `service: ... runs /path/to/habakkuk, which no longer exists` | The background service still points at an old copy of the binary. Run `hk doctor --fix`, then the reload command it prints. |
 
 ## HTTP server, dashboard and desktop app
 

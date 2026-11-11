@@ -113,11 +113,14 @@ func TestSearchMigrationIndexesExistingMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := NewStore(db)
-	sess, _ := s.Create(ctx, "habakkuk", "sys")
-	s.Append(ctx, sess.ID, "j", 0, llm.UserText("remember the walrus"), "", nil)
-	s.Append(ctx, sess.ID, "j", 1, llm.Message{Role: llm.Assistant, Blocks: []llm.Block{
-		{Type: llm.Text, Text: "noted"}, {Type: llm.Text, Text: "the walrus again"}}}, "", nil)
+	// Written as that older binary wrote them: the Store of today expects
+	// the latest schema.
+	if _, err := db.ExecContext(ctx, `INSERT INTO sessions (id, agent, system_prompt, created_at, updated_at) VALUES ('s1', 'habakkuk', 'sys', 1, 1);
+		INSERT INTO messages (session_id, seq, role, blocks, created_at) VALUES
+			('s1', 0, 'user', '[{"type":"text","text":"remember the walrus"}]', 1),
+			('s1', 1, 'assistant', '[{"type":"text","text":"noted"},{"type":"text","text":"the walrus again"}]', 1);`); err != nil {
+		t.Fatal(err)
+	}
 	db.Close()
 
 	db, err = store.Open(ctx, path, Migrations)

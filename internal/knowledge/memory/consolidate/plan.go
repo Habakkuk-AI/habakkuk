@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/habakkuk-ai/habakkuk/internal/agent"
 	"github.com/habakkuk-ai/habakkuk/internal/core/session"
 	"github.com/habakkuk-ai/habakkuk/internal/knowledge/memory"
 	"github.com/habakkuk-ai/habakkuk/internal/llm"
@@ -397,12 +398,18 @@ func render(recs []session.Record) (string, string) {
 			var line string
 			switch b.Type {
 			case llm.Text:
-				if strings.TrimSpace(b.Text) == "" {
+				text := b.Text
+				if m.Role == llm.User {
+					// A project's instruction files are not something the
+					// user said.
+					text = agent.StripProjectFiles(text)
+				}
+				if strings.TrimSpace(text) == "" {
 					continue
 				}
-				line = fmt.Sprintf("[%s] %s", m.Role, cutText(b.Text, maxMessageText))
+				line = fmt.Sprintf("[%s] %s", m.Role, cutText(text, maxMessageText))
 				if m.Role == llm.User {
-					user.WriteString(b.Text + "\n")
+					user.WriteString(text + "\n")
 				}
 			case llm.ToolUse:
 				names[b.ToolUseID] = b.ToolName

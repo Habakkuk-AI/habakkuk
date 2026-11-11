@@ -27,6 +27,9 @@ type ChatNote struct {
 	What         string // what sent it, e.g. `scheduled task "inbox"`, or ""
 	Text         string
 	At           time.Time
+	// Tainted: outside content may have steered the turn that sent it, so
+	// the turn that takes it in gets no approval rules.
+	Tainted bool
 }
 
 // AddChatNote records a note. A second note for the same delivery is
@@ -36,9 +39,9 @@ func (s *Store) AddChatNote(ctx context.Context, n ChatNote) error {
 	if at.IsZero() {
 		at = s.now()
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO chat_notes (conversation, delivery, agent, what, text, created_at)
-		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (delivery) DO NOTHING`,
-		n.Conversation, n.Delivery, n.Agent, n.What, n.Text, at.UnixMilli())
+	_, err := s.db.ExecContext(ctx, `INSERT INTO chat_notes (conversation, delivery, agent, what, text, created_at, tainted)
+		VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (delivery) DO NOTHING`,
+		n.Conversation, n.Delivery, n.Agent, n.What, n.Text, at.UnixMilli(), n.Tainted)
 	return err
 }
 
@@ -57,7 +60,7 @@ func (s *Store) ClaimChatNotes(ctx context.Context, conversation, turn string, s
 		turn, s.now().UnixMilli(), conversation, turn, staleBefore.UnixMilli()); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id, delivery, agent, what, text, created_at FROM chat_notes
+	rows, err := tx.QueryContext(ctx, `SELECT id, delivery, agent, what, text, created_at, tainted FROM chat_notes
 		WHERE conversation = ? AND turn = ? AND seen = 0 ORDER BY created_at, id`, conversation, turn)
 	if err != nil {
 		return nil, err
@@ -66,7 +69,7 @@ func (s *Store) ClaimChatNotes(ctx context.Context, conversation, turn string, s
 	for rows.Next() {
 		n := ChatNote{Conversation: conversation}
 		var at int64
-		if err := rows.Scan(&n.ID, &n.Delivery, &n.Agent, &n.What, &n.Text, &at); err != nil {
+		if err := rows.Scan(&n.ID, &n.Delivery, &n.Agent, &n.What, &n.Text, &at, &n.Tainted); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -84,4 +87,11 @@ func (s *Store) ClaimChatNotes(ctx context.Context, conversation, turn string, s
 func (s *Store) ChatNotesSeen(ctx context.Context, turn string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE chat_notes SET seen = 1 WHERE turn = ? AND seen = 0`, turn)
 	return err
+}
+
+// ChatNotesTaken reports whether the turn claimed any note, seen or not.
+func (s *Store) ChatNotesTaken(ctx context.Context, turn string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM chat_notes WHERE turn = ?`, turn).Scan(&n)
+	return n > 0, err
 }

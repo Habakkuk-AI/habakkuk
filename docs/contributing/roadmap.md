@@ -16,7 +16,7 @@ Habakkuk ships in phases. Below is what goes into each one, and the gaps that ar
 
 ## Known gaps
 
-- A reply arrives when the turn finishes. Partial text isn't streamed into the chat. Progress shows up as a draft message that's edited with each tool step (Telegram, Slack; `progress: draft`, the default), a typing indicator (Telegram, WhatsApp), or one "still working" notice after 60 seconds (Slack with `progress: off`).
+- Replies stream into the chat only on Telegram and Slack, the two platforms where Habakkuk can edit messages. Elsewhere a reply arrives when the turn finishes, with a typing indicator or one "still working" notice while it runs.
 - A steering note (`/steer`) is lost if a turn takes it and then loses its lease before writing it. The window for this is one model call.
 - `send_file` delivery is at-least-once at the last step. If a crash happens after the platform accepted a file but before the job completed, the file is sent again. It's also sent again if a model repeats the call after a restart (a new tool call ID).
 - You can add script schedules with the CLI only. You can't declare them in `config.yaml` yet. There's no command to edit one in place, so remove it and add it again.
