@@ -91,3 +91,7 @@ func secretValue(v any, env map[string]string) (value, from string) {
 	}
 	return "", ""
 }
+
+// ReadDotEnv reads a .env file the way the import does; a missing file is
+// empty.
+func ReadDotEnv(path string) (map[string]string, error) { return readDotEnv(path) }

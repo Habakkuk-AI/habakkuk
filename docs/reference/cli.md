@@ -45,6 +45,12 @@ hk migrate [-from SOURCE] [-source DIR] [-agent NAME] [-project DIR] [-dry-run]
                                     skills, slash commands and memory, never keys, and -project DIR
                                     adds one project's own: its instructions as a note, the MCP
                                     servers you approved for it, its skills (see Move from another agent)
+hk migrate finish [-from SOURCE] [-source DIR] [-agent NAME] [-dry-run] [-force] [-y]
+                                    switch over: stop the old agent's services and processes, pause
+                                    its schedules in its own store, resume the imported ones; refuses
+                                    the last step while its scheduler runs, unless -force
+hk migrate rollback [-from SOURCE] [-y]
+                                    undo hk migrate finish from its record
 hk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped
@@ -114,7 +120,9 @@ hk rollback [-agent A] [-y] ID [PATH]
 hk models                           list providers and the models each one serves
 hk auth [login|list|logout]         subscription logins (login chatgpt|copilot)
 hk usage [-days N] [-agent A] tokens and cost by model and agent, and spend against the limits
-hk doctor [--fix]                   check config, credentials and storage; each problem line ends with its fix
+hk doctor [--fix]                   check config, credentials and storage, and warn when an old agent
+                                    still runs schedules or channels Habakkuk has; each problem line
+                                    ends with its fix
                                     (--fix first applies the safe ones: config format, missing folders,
                                     file permissions, a stale service file)
 hk status                           version, serve uptime, channels, queue, recent errors, today's cost

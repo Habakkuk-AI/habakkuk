@@ -57,6 +57,9 @@ Usage:
   hk migrate [--from SOURCE] [--dry-run] [--secrets copy|skip] [--force] [-y]
                                     move agents, memory, skills, schedules, MCP servers, channels
                                     and keys over from another agent (sources: hk migrate -h)
+  hk migrate finish [--from SOURCE] [--dry-run] [--force] [-y]
+                                    stop the old agent, pause its schedules and resume the
+                                    imported ones; hk migrate rollback undoes it
   hk chat [-agent A] [-session ID] [-resume] [-plain]
                                     interactive conversation: the terminal UI on a terminal,
                                     line by line with -plain or when piped
@@ -883,6 +886,7 @@ func doctor(ctx context.Context, home string) error {
 	problems += computerDoctor(cfg, os.Stdout)
 	problems += permissionsDoctor(home, cfg, os.Stdout)
 	problems += serviceDoctor(defaultRepairEnv(home), os.Stdout)
+	problems += cutoverDoctor(ctx, home, os.Stdout)
 	if problems > 0 {
 		return fmt.Errorf("%d problem(s) found; each one above says how to fix it", problems)
 	}

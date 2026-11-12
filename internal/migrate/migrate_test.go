@@ -934,3 +934,32 @@ func TestAllowListsStayBehind(t *testing.T) {
 		})
 	}
 }
+
+// A Hermes Agent job paused with its own pause command keeps "enabled"
+// in some versions' files but carries a pause marker; it does not fire
+// there, so it is not imported as one of its running schedules.
+func TestHermesPausedJobIsOff(t *testing.T) {
+	src := fixture(t, Hermes)
+	path := filepath.Join(src, "cron", "jobs.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(string(data), `"deliver": "telegram:4242",`, `"deliver": "telegram:4242", "state": "paused",`, 1)
+	text = strings.Replace(text, `"deliver": "telegram",`, `"deliver": "telegram", "paused_at": "2026-11-01T09:00:00+00:00",`, 1)
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Read(options(Hermes, src, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range f.Schedules {
+		if s.Name == "Morning brief" || s.Name == "Inbox sweep" {
+			t.Errorf("paused job %q was imported as running", s.Name)
+		}
+	}
+	if !slices.ContainsFunc(f.Skipped, func(s string) bool { return strings.Contains(s, "3 schedules") && strings.Contains(s, "turned off") }) {
+		t.Errorf("skipped = %v", f.Skipped)
+	}
+}

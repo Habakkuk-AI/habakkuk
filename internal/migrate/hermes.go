@@ -581,7 +581,7 @@ func (r *hermesReader) schedules() {
 		if name == "" {
 			name, _ = j["id"].(string)
 		}
-		if on, ok := j["enabled"].(bool); ok && !on {
+		if on, ok := j["enabled"].(bool); ok && !on || hermesPaused(j) {
 			disabled++
 			continue
 		}
@@ -651,6 +651,19 @@ func (r *hermesReader) schedules() {
 	if disabled > 0 {
 		r.f.skip("%s of agent %s: turned off", plural(disabled, "schedule"), r.agent.Name)
 	}
+}
+
+// hermesPaused reports a job Hermes Agent does not fire although its
+// "enabled" flag is on: one marked paused (state or paused_at), or one
+// that has completed. A recurring job in its error state may still run,
+// so it counts as on.
+func hermesPaused(j map[string]any) bool {
+	switch st, _ := j["state"].(string); strings.TrimSpace(st) {
+	case "paused", "completed":
+		return true
+	}
+	p, ok := j["paused_at"]
+	return ok && p != nil && p != ""
 }
 
 // deliverTo maps a job's delivery target onto an imported channel.
