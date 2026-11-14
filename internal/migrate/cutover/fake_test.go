@@ -29,6 +29,8 @@ type fakeSystem struct {
 	info map[int]ProcInfo
 	// scopes are systemd scopes and the pids in them.
 	scopes map[string][]int
+	// scopeDesc is a scope's description: the command systemd-run started.
+	scopeDesc map[string]string
 	// procErr makes the process list fail.
 	procErr error
 	// fail makes a command fail once: command line prefix -> error.
@@ -45,7 +47,7 @@ type fakeService struct {
 
 func newFake(home string) *fakeSystem {
 	return &fakeSystem{goos: "linux", home: home, services: map[string]*fakeService{},
-		respawn: map[int]bool{}, ignoreTerm: map[int]bool{}, info: map[int]ProcInfo{}, scopes: map[string][]int{}, fail: map[string]error{}}
+		respawn: map[int]bool{}, ignoreTerm: map[int]bool{}, info: map[int]ProcInfo{}, scopes: map[string][]int{}, scopeDesc: map[string]string{}, fail: map[string]error{}}
 }
 
 func (f *fakeSystem) GOOS() string     { return f.goos }
@@ -146,7 +148,11 @@ func (f *fakeSystem) Run(_ context.Context, name string, args ...string) (string
 		if slices.Contains(args, "list-units") {
 			var b strings.Builder
 			for n := range f.scopes {
-				fmt.Fprintf(&b, "%s loaded active running Hermes worker\n", n)
+				desc := f.scopeDesc[n]
+				if desc == "" {
+					desc = "Hermes worker"
+				}
+				fmt.Fprintf(&b, "%s loaded active running %s\n", n, desc)
 			}
 			return b.String(), nil
 		}
