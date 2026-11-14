@@ -529,11 +529,22 @@ func (l *Log) track(ctx context.Context, data []byte, t Target, hash string) err
 	return tx.Commit()
 }
 
+// racyWindow is how recent a file's mtime must be for it to say nothing.
+// File systems stamp mtimes from a coarse clock (a few milliseconds on
+// Linux), so a same-size edit soon after a write can keep the old mtime.
+const racyWindow = 2 * time.Second
+
 func (l *Log) trackTx(ctx context.Context, tx *sql.Tx, t Target, hash string) error {
 	var mtime, size int64
 	if hash != "" {
 		if info, err := os.Lstat(t.Path); err == nil {
 			mtime, size = info.ModTime().UnixNano(), info.Size()
+			// A file written just now could change again within the same
+			// mtime tick: store no mtime, so the next look reads it.
+			// File times are wall-clock times, hence time.Now, not l.now.
+			if time.Since(info.ModTime()) < racyWindow {
+				mtime = 0
+			}
 		}
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO files (path, agent, kind, name, hash, mtime, size) VALUES (?, ?, ?, ?, ?, ?, ?)
