@@ -42,7 +42,7 @@ func (f *fakeTMI) serve(t *testing.T) {
 			say(":tmi.twitch.tv 001 habakkuk_bot :Welcome, GLHF!")
 			say("PING :tmi.twitch.tv")
 		case strings.HasPrefix(l, "JOIN "):
-			say(`@badge-info=;display-name=Ay;id=m1;user-id=101 :ay!ay@ay.tmi.twitch.tv PRIVMSG #streamer :@habakkuk_bot what's the plan?`)
+			say(`@badge-info=;display-name=Sam;id=m1;user-id=101 :sam!sam@sam.tmi.twitch.tv PRIVMSG #streamer :@habakkuk_bot what's the plan?`)
 			say(`@display-name=Bo;id=m2;user-id=102 :bo!bo@bo.tmi.twitch.tv PRIVMSG #streamer :just chatting`)
 			say(`@display-name=Cy;id=m3;user-id=103 :cy!cy@cy.tmi.twitch.tv PRIVMSG #streamer :habakkuk_bot: hi`)
 			say(`@display-name=habakkuk_bot;id=m4;user-id=9 :habakkuk_bot!habakkuk_bot@habakkuk_bot.tmi.twitch.tv PRIVMSG #streamer :my own`)
@@ -119,7 +119,7 @@ func TestTwitch(t *testing.T) {
 	if len(msgs) != 3 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Conversation != "#streamer" || m.Sender != "101" || m.SenderAlt != "ay" || m.SenderName != "Ay" ||
+	if m := msgs[0]; m.Conversation != "#streamer" || m.Sender != "101" || m.SenderAlt != "sam" || m.SenderName != "Sam" ||
 		!m.Mentioned || m.Text != "what's the plan?" || m.ID != "m1" || m.Direct {
 		t.Fatalf("mention = %+v", m)
 	}

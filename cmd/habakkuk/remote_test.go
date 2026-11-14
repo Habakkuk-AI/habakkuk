@@ -64,7 +64,7 @@ func TestRemoteCmd(t *testing.T) {
 	if out, err := run(); err != nil || !strings.Contains(out, "No remotes") {
 		t.Fatalf("empty list: %q %v", out, err)
 	}
-	if out, err := run("add", "srv", "ssh://ay@srv.example.com", "-home", "/var/lib/habakkuk", "-identity", "/k/id"); err != nil || !strings.Contains(out, "hk -r srv status") {
+	if out, err := run("add", "srv", "ssh://sam@srv.example.com", "-home", "/var/lib/habakkuk", "-identity", "/k/id"); err != nil || !strings.Contains(out, "hk -r srv status") {
 		t.Fatalf("add: %q %v", out, err)
 	}
 	if _, err := run("add", "-token-env", "HK_TOKEN", "web", "https://hk.example.com", "-default"); err != nil {
@@ -85,7 +85,7 @@ func TestRemoteCmd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"srv", "ssh://ay@srv.example.com", "home=/var/lib/habakkuk", "identity=/k/id", "* ", "web", "token-env=HK_TOKEN"} {
+	for _, want := range []string{"srv", "ssh://sam@srv.example.com", "home=/var/lib/habakkuk", "identity=/k/id", "* ", "web", "token-env=HK_TOKEN"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("list lacks %q:\n%s", want, out)
 		}
@@ -117,7 +117,7 @@ func TestRemoteCmd(t *testing.T) {
 func TestDispatchRemote(t *testing.T) {
 	path := useRegistry(t)
 	reg := &remote.Registry{Remotes: map[string]remote.Remote{}}
-	if err := reg.Add("srv", remote.Remote{Target: "ssh://ay@srv"}, false); err != nil {
+	if err := reg.Add("srv", remote.Remote{Target: "ssh://sam@srv"}, false); err != nil {
 		t.Fatal(err)
 	}
 	dispatch := func(env string, args ...string) ([]string, int, bool, string) {
@@ -143,7 +143,7 @@ func TestDispatchRemote(t *testing.T) {
 		t.Fatal(err)
 	}
 	// hk remote runs here even with a remote selected.
-	if _, code, done, out := dispatch("srv", "-r", "srv", "remote", "list"); !done || code != 0 || !strings.Contains(out, "ssh://ay@srv") {
+	if _, code, done, out := dispatch("srv", "-r", "srv", "remote", "list"); !done || code != 0 || !strings.Contains(out, "ssh://sam@srv") {
 		t.Fatalf("remote list: %d %v %q", code, done, out)
 	}
 	// Commands that change the server's install need --yes-remote; the

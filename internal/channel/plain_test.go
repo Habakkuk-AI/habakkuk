@@ -114,7 +114,7 @@ func TestPlainPhraseForEachKindOfWork(t *testing.T) {
 	}
 	r.g.Runner.Agents["eng"] = &named
 	for _, c := range []struct{ tool, input, want string }{
-		{"exec", `{"command":"ls ~/.habakkuk/workspaces/corner-bakery/ && tail -20 ~/x"}`, "Looking through your files"},
+		{"exec", `{"command":"ls ~/.habakkuk/workspaces/bramblecrest-bakery/ && tail -20 ~/x"}`, "Looking through your files"},
 		{"read_file", `{"path":"/Users/sam/secret.txt"}`, "Looking through your files"},
 		{"apply_patch", `{"patch":"*** Begin Patch"}`, "Looking through your files"},
 		{"process_output", `{"id":"proc_1"}`, "Looking through your files"},
@@ -206,7 +206,7 @@ func TestPlainWordsInEveryLanguage(t *testing.T) {
 
 func TestDescribeCallInEverydayWords(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	ws := filepath.Join(t.TempDir(), "workspaces", "corner-bakery")
+	ws := filepath.Join(t.TempDir(), "workspaces", "bramblecrest-bakery")
 	other := filepath.Join(t.TempDir(), "workspaces", "bookkeeping")
 	g := &Gateway{Runner: &agent.Runner{Agents: map[string]*agent.Spec{
 		"bakery": {Name: "bakery", Workspace: ws}, "books": {Name: "books", Workspace: other}}}}
@@ -218,17 +218,17 @@ func TestDescribeCallInEverydayWords(t *testing.T) {
 		want       string
 	}{
 		{"a note added after a cd", "exec", cmd("cd " + filepath.ToSlash(ws) + " && cat >> decisions.md <<'EOF'\n\n## 2026-11-10 Spring menu\n- add two breads\nEOF"),
-			"I'd like to add a note to decisions.md in your Corner Bakery workspace."},
+			"I'd like to add a note to decisions.md in your Bramblecrest Bakery workspace."},
 		{"echo append", "exec", cmd(`echo "- call the plumber" >> notes/todo.txt`),
-			"I'd like to add a note to todo.txt in your Corner Bakery workspace."},
+			"I'd like to add a note to todo.txt in your Bramblecrest Bakery workspace."},
 		{"append in another agent's workspace", "exec", cmd("cd " + filepath.ToSlash(other) + " && echo x >> ledger.md"),
 			"I'd like to add a note to ledger.md in your Bookkeeping workspace."},
 		{"append to a settings file", "exec", cmd("echo 'x=1' >> settings.env"),
-			"I'd like to add text to settings.env in your Corner Bakery workspace."},
+			"I'd like to add text to settings.env in your Bramblecrest Bakery workspace."},
 		{"append outside any workspace", "exec", cmd("echo 'alias x=y' >> ~/.bashrc"),
 			"I'd like to add text to a file outside my workspace: ~/.bashrc"},
 		{"plain command", "exec", cmd("ls -la"), "I'd like to run a command on your computer."},
-		{"delete one file", "exec", cmd("rm old-draft.md"), "I'd like to delete old-draft.md in your Corner Bakery workspace."},
+		{"delete one file", "exec", cmd("rm old-draft.md"), "I'd like to delete old-draft.md in your Bramblecrest Bakery workspace."},
 		{"delete a tree", "exec", cmd("rm -rf ~/Documents"), "I'd like to delete a folder and everything in it: ~/Documents"},
 		{"delete many", "exec", cmd("rm *.log"), "I'd like to delete several files on your computer."},
 		{"git push", "exec", cmd("cd " + filepath.ToSlash(ws) + " && git push origin main"), "I'd like to push code to its online repository."},
@@ -249,7 +249,7 @@ func TestDescribeCallInEverydayWords(t *testing.T) {
 		{"write deep under home", "write_file", in(map[string]any{"path": filepath.Join(home, "a", "b", "c", "d.txt")}),
 			"I'd like to change a file outside my workspace: ~/…/c/d.txt"},
 		{"write inside", "write_file", in(map[string]any{"path": "plan.md", "content": "x"}),
-			"I'd like to change plan.md in your Corner Bakery workspace."},
+			"I'd like to change plan.md in your Bramblecrest Bakery workspace."},
 		{"mcp email", "mcp__gmail__send_email", in(map[string]any{"to": "a@b.c"}), "I'd like to send an email with Gmail."},
 		{"mcp message", "mcp__twilio__send_sms_message", in(map[string]any{}), "I'd like to send a message with Twilio."},
 		{"mcp other", "mcp__invoices__create_invoice", in(map[string]any{"template": 4}), "I'd like to use Invoices: create invoice."},

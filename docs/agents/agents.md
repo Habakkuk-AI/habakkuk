@@ -103,7 +103,7 @@ How they're read:
 ```yaml
 agents:
   coder:
-    workspace: ~/code/corner-bakery
+    workspace: ~/code/bramblecrest-bakery
     project_files: on   # on (default) | off
 ```
 

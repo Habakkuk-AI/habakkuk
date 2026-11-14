@@ -96,9 +96,9 @@ func TestPromptIdentityAndWelcome(t *testing.T) {
 		}
 	}
 	// A hand-written SOUL.md stays first; the chosen name is stated after it.
-	os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte("You are Habakkuk, AY's assistant."), 0o600)
+	os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte("You are Habakkuk, SAM's assistant."), 0o600)
 	p = BuildSystemPrompt("habakkuk", dir, "/ws", Snapshot{})
-	if !strings.HasPrefix(p, "You are Habakkuk, AY's assistant.") || !strings.Contains(p, "- Name: Jarvis") {
+	if !strings.HasPrefix(p, "You are Habakkuk, SAM's assistant.") || !strings.Contains(p, "- Name: Jarvis") {
 		t.Fatalf("soul and identity:\n%s", p)
 	}
 }

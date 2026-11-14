@@ -16,7 +16,7 @@ func incoming(msg *waE2E.Message) *events.Message {
 	user := types.NewJID("15550002", types.DefaultUserServer)
 	return &events.Message{Info: types.MessageInfo{
 		MessageSource: types.MessageSource{Chat: user, Sender: user},
-		ID:            "MSG1", PushName: "Ay", Timestamp: time.Now(),
+		ID:            "MSG1", PushName: "Sam", Timestamp: time.Now(),
 	}, Message: msg}
 }
 
@@ -39,7 +39,7 @@ func TestConvertQuotedReply(t *testing.T) {
 	}
 
 	m, _ = convert(cli, incoming(reply("15550002@s.whatsapp.net", &waE2E.Message{ImageMessage: &waE2E.ImageMessage{}})))
-	if m.Quote == nil || m.Quote.Self || m.Quote.From != "Ay" || m.Quote.Text != "(photo)" {
+	if m.Quote == nil || m.Quote.Self || m.Quote.From != "Sam" || m.Quote.Text != "(photo)" {
 		t.Fatalf("reply to own photo: %+v", m.Quote)
 	}
 

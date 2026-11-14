@@ -258,7 +258,7 @@ func TestWhoamiAndAgentSwitch(t *testing.T) {
 	spec.Name = "scout"
 	r.g.Runner.Agents["scout"] = &spec
 	send(r, "m1", "/whoami")
-	waitFor(t, "whoami", hasText(r.a, "You: Ay (7)"))
+	waitFor(t, "whoami", hasText(r.a, "You: Sam (7)"))
 	if !hasText(r.a, "listed in allow_from")() || !hasText(r.a, "Agent: habakkuk")() {
 		t.Fatalf("whoami = %q", r.a.texts())
 	}

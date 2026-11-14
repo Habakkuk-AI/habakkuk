@@ -138,7 +138,7 @@ func TestDingTalk(t *testing.T) {
 	}
 
 	ts := strconv.FormatInt(now.UnixMilli(), 10)
-	dm := `{"conversationId":"cidDM","conversationType":"1","msgId":"m1","msgtype":"text","senderNick":"Ay",
+	dm := `{"conversationId":"cidDM","conversationType":"1","msgId":"m1","msgtype":"text","senderNick":"Sam",
 "senderStaffId":"staff1","senderId":"$:enc","robotCode":"ding1","text":{"content":" hello "}}`
 	if code := hook(a, ts, Sign("other", ts), dm); code != http.StatusForbidden {
 		t.Fatalf("bad signature: %d", code)
@@ -164,7 +164,7 @@ func TestDingTalk(t *testing.T) {
 	if len(msgs) != 4 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Text != "hello" || !m.Direct || m.Conversation != "staff1" || m.Sender != "staff1" || m.SenderName != "Ay" {
+	if m := msgs[0]; m.Text != "hello" || !m.Direct || m.Conversation != "staff1" || m.Sender != "staff1" || m.SenderName != "Sam" {
 		t.Fatalf("dm = %+v", m)
 	}
 	if m := msgs[1]; m.Conversation != "cidGroup1" || m.Direct || !m.Mentioned || m.Text != "what's up" {

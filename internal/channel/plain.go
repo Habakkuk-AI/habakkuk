@@ -144,8 +144,8 @@ var wellKnown = map[string]string{
 	"cal": "Calendar", "db": "Database",
 }
 
-// humanName turns an identifier (google_calendar, corner-bakery) into
-// words with capitals (Google Calendar, Corner Bakery).
+// humanName turns an identifier (google_calendar, bramblecrest-bakery) into
+// words with capitals (Google Calendar, Bramblecrest Bakery).
 func humanName(id string) string {
 	if n, ok := wellKnown[strings.ToLower(id)]; ok {
 		return n
@@ -280,7 +280,7 @@ func readCommand(cmd string) shellIntent {
 	return in
 }
 
-// place names the workspace a path is in, in lang ("your Corner Bakery
+// place names the workspace a path is in, in lang ("your Bramblecrest Bakery
 // workspace"), or "" when it is in none: the workspace of the agent that
 // asks, or of another configured agent.
 func (g *Gateway) place(lang, path, workspace string) string {

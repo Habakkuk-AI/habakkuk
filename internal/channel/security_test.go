@@ -109,7 +109,7 @@ func TestCommandTurnsCarrySenderTrust(t *testing.T) {
 func TestPairedSenderIsOwner(t *testing.T) {
 	r := newRig(t, &config.Channel{})
 	ctx := context.Background()
-	code, _, err := r.g.Store.PairCode(ctx, "tg", "7", "Ay")
+	code, _, err := r.g.Store.PairCode(ctx, "tg", "7", "Sam")
 	if err != nil {
 		t.Fatal(err)
 	}

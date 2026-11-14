@@ -233,7 +233,7 @@ func openRig(t *testing.T, dir string, ch *config.Channel, prepare ...func(*rig)
 }
 
 func dm(id, text string) Message {
-	return Message{Account: "tg", Conversation: "100", ID: id, Sender: "7", SenderName: "Ay", Text: text, Direct: true, Plain: true} // as Telegram sends a typed DM
+	return Message{Account: "tg", Conversation: "100", ID: id, Sender: "7", SenderName: "Sam", Text: text, Direct: true, Plain: true} // as Telegram sends a typed DM
 }
 
 // waitFor polls until cond holds or fails the test.

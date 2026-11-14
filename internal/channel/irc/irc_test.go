@@ -123,7 +123,7 @@ func (i *inbox) Connected(d string) {
 
 func TestRegisterJoinReceiveSend(t *testing.T) {
 	f := newFake(t, "pw",
-		":ay!a@host PRIVMSG habakkuk_ :hello there",
+		":sam!a@host PRIVMSG habakkuk_ :hello there",
 		"@account=bo;msgid=m1 :bo!b@host PRIVMSG #Habakkuk :habakkuk_: what's the weather?",
 		":bo!b@host PRIVMSG #habakkuk :just chatting",
 		":bo!b@host PRIVMSG #habakkuk :ask habakkuk_ maybe",
@@ -155,7 +155,7 @@ func TestRegisterJoinReceiveSend(t *testing.T) {
 	if len(msgs) != 4 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; !m.Direct || m.Conversation != "ay" || m.Sender != "ay" || m.Text != "hello there" {
+	if m := msgs[0]; !m.Direct || m.Conversation != "sam" || m.Sender != "sam" || m.Text != "hello there" {
 		t.Fatalf("dm = %+v", m)
 	}
 	if m := msgs[1]; m.Direct || !m.Mentioned || m.Conversation != "#habakkuk" || m.SenderAlt != "bo" || m.ID != "m1" || m.Text != "what's the weather?" {

@@ -71,7 +71,7 @@ func hook(a *Adapter, sec, body string) int {
 
 func create(actorType, actor, id, content string) string {
 	c, _ := json.Marshal(content)
-	return `{"type":"Create","actor":{"type":"` + actorType + `","id":"` + actor + `","name":"Ay"},
+	return `{"type":"Create","actor":{"type":"` + actorType + `","id":"` + actor + `","name":"Sam"},
 "object":{"type":"Note","id":"` + id + `","name":"message","content":` + string(c) + `,"mediaType":"text/markdown"},
 "target":{"type":"Collection","id":"room1","name":"Team"}}`
 }
@@ -89,13 +89,13 @@ func TestTalk(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	dm := create("Person", "users/ay", "11", `{"message":"hello","parameters":[]}`)
+	dm := create("Person", "users/sam", "11", `{"message":"hello","parameters":[]}`)
 	if code := hook(a, "wrong", dm); code != http.StatusUnauthorized {
 		t.Fatalf("bad signature: %d", code)
 	}
 	for _, body := range []string{
 		dm,
-		create("Person", "users/ay", "12", `{"message":"@habakkuk ask {mention-user1} about {file}","parameters":{"mention-user1":{"type":"user","id":"bo","name":"Bo"},"file":{"type":"file","id":"9","name":"r.pdf"}}}`),
+		create("Person", "users/sam", "12", `{"message":"@habakkuk ask {mention-user1} about {file}","parameters":{"mention-user1":{"type":"user","id":"bo","name":"Bo"},"file":{"type":"file","id":"9","name":"r.pdf"}}}`),
 		create("Application", "bots/other", "13", `{"message":"from a bot","parameters":[]}`),
 		`{"type":"Join","actor":{"type":"Application","id":"bots/habakkuk"},"object":{"type":"Collection","id":"room1"},"target":{"id":"room1"}}`,
 	} {
@@ -107,7 +107,7 @@ func TestTalk(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Conversation != "room1" || m.Sender != "ay" || m.Text != "hello" || m.Mentioned || m.ID != "11" {
+	if m := msgs[0]; m.Conversation != "room1" || m.Sender != "sam" || m.Text != "hello" || m.Mentioned || m.ID != "11" {
 		t.Fatalf("first = %+v", m)
 	}
 	if m := msgs[1]; !m.Mentioned || m.Text != "ask @Bo about [shared file: r.pdf]" {

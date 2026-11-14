@@ -49,7 +49,7 @@ func (m *methods) body(method string) map[string]any {
 
 func TestButtonsAndPress(t *testing.T) {
 	api := &methods{bodies: map[string]map[string]any{}, updates: `[
-		{"update_id":1,"callback_query":{"id":"q1","from":{"id":7,"first_name":"Ay"},"data":"fy|abc|0",
+		{"update_id":1,"callback_query":{"id":"q1","from":{"id":7,"first_name":"Sam"},"data":"fy|abc|0",
 			"message":{"message_id":55,"chat":{"id":7,"type":"private"},"text":"Approval needed"}}}]`}
 	srv := httptest.NewServer(api)
 	defer srv.Close()

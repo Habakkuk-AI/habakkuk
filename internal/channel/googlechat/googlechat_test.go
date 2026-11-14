@@ -152,7 +152,7 @@ func deliver(a *Adapter, tok string, ev string) int {
 
 const roomEvent = `{"type":"MESSAGE","space":{"name":"spaces/S","type":"ROOM","spaceType":"SPACE"},
 "message":{"name":"spaces/S/messages/M1","text":"@Habakkuk summarize the doc","argumentText":" summarize the doc",
-"sender":{"name":"users/42","displayName":"Ay","email":"Ay@Example.com","type":"HUMAN"},
+"sender":{"name":"users/42","displayName":"Sam","email":"Sam@Example.com","type":"HUMAN"},
 "thread":{"name":"spaces/S/threads/T1"},
 "annotations":[{"type":"USER_MENTION","userMention":{"user":{"name":"users/app","type":"BOT"}}}],
 "attachment":[{"contentName":"pic.png","contentType":"image/png","attachmentDataRef":{"resourceName":"res-1"}}]}}`
@@ -193,7 +193,7 @@ func TestEndpointURLAudience(t *testing.T) {
 	}
 	m := msgs[0]
 	if m.Conversation != "spaces/S" || m.Thread != "spaces/S/threads/T1" || m.ID != "spaces/S/messages/M1" || m.Direct ||
-		!m.Mentioned || m.Text != "summarize the doc" || m.Sender != "users/42" || m.SenderAlt != "ay@example.com" {
+		!m.Mentioned || m.Text != "summarize the doc" || m.Sender != "users/42" || m.SenderAlt != "sam@example.com" {
 		t.Fatalf("room message = %+v", m)
 	}
 	data, err := m.Attachments[0].Fetch(context.Background())

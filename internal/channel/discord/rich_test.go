@@ -55,9 +55,9 @@ func TestDiscordButtonsPressReactAndPoll(t *testing.T) {
 	}
 
 	raw := json.RawMessage(`{"id":"777","token":"tkn","type":3,"channel_id":"123","guild_id":"9",
-		"data":{"custom_id":"fy|n|1"},"member":{"nick":"Ay","user":{"id":"42","username":"ay"}},"message":{"content":"Approve?"}}`)
+		"data":{"custom_id":"fy|n|1"},"member":{"nick":"Sam","user":{"id":"42","username":"sam"}},"message":{"content":"Approve?"}}`)
 	m, ok := a.press(ctx, raw)
-	if !ok || m.Callback != "fy|n|1" || m.Sender != "42" || m.SenderName != "Ay" || m.Conversation != "123" || m.Direct {
+	if !ok || m.Callback != "fy|n|1" || m.Sender != "42" || m.SenderName != "Sam" || m.Conversation != "123" || m.Direct {
 		t.Fatalf("press = %+v %v", m, ok)
 	}
 	if last := log.calls[len(log.calls)-1]; last != "POST /interactions/777/tkn/callback" || log.bodies[len(log.bodies)-1]["type"] != float64(7) {

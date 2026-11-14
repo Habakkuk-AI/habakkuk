@@ -27,7 +27,7 @@ func TestImportedSessions(t *testing.T) {
 		Source: "other", SourceID: "main/abc", Agent: "habakkuk", Title: "Sunday   hours", Started: start,
 		Account: "telegram", Conversation: "12025550142",
 		Messages: []ImportedMessage{
-			{Role: llm.User, Text: "When does Corner Bakery open on Sundays?", At: start.Add(time.Minute)},
+			{Role: llm.User, Text: "When does Bramblecrest Bakery open on Sundays?", At: start.Add(time.Minute)},
 			{Role: "tool", Text: "left out"},
 			{Role: llm.Assistant, Text: "  "},
 			{Role: llm.Assistant, Text: "At nine.", At: start.Add(2 * time.Minute)},

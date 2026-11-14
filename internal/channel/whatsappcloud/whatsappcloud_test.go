@@ -151,7 +151,7 @@ func post(a *Adapter, secret, body string) int {
 func inbound(from, id, ts, msg string) string {
 	return `{"object":"whatsapp_business_account","entry":[{"id":"WABA","changes":[{"field":"messages","value":{
 "messaging_product":"whatsapp","metadata":{"display_phone_number":"15550100","phone_number_id":"PN1"},
-"contacts":[{"profile":{"name":"Ay"},"wa_id":"` + from + `"}],
+"contacts":[{"profile":{"name":"Sam"},"wa_id":"` + from + `"}],
 "messages":[{"from":"` + from + `","id":"` + id + `","timestamp":"` + ts + `",` + msg + `}]}}]}]}`
 }
 
@@ -175,7 +175,7 @@ func TestInboundAndSend(t *testing.T) {
 	ts := "1800000000"
 	body := `{"object":"whatsapp_business_account","entry":[{"id":"WABA","changes":[{"field":"messages","value":{
 "messaging_product":"whatsapp","metadata":{"phone_number_id":"PN1"},
-"contacts":[{"profile":{"name":"Ay"},"wa_id":"15550000001"}],
+"contacts":[{"profile":{"name":"Sam"},"wa_id":"15550000001"}],
 "messages":[
  {"from":"15550000001","id":"wamid.1","timestamp":"` + ts + `","type":"text","text":{"body":" hello "}},
  {"from":"15550000001","id":"wamid.2","timestamp":"` + ts + `","type":"image","image":{"id":"MEDIA1","mime_type":"image/jpeg","caption":"look"}},
@@ -195,7 +195,7 @@ func TestInboundAndSend(t *testing.T) {
 	if len(msgs) != 4 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Text != "hello" || !m.Direct || m.Conversation != "15550000001" || m.SenderName != "Ay" || m.ID != "wamid.1" {
+	if m := msgs[0]; m.Text != "hello" || !m.Direct || m.Conversation != "15550000001" || m.SenderName != "Sam" || m.ID != "wamid.1" {
 		t.Fatalf("text = %+v", m)
 	}
 	if m := msgs[1]; m.Text != "look" || m.Attachments[0].Name != "image.jpg" {

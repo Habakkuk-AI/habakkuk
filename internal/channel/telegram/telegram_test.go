@@ -113,7 +113,7 @@ func (i *inbox) Connected(d string) { i.mu.Lock(); i.conn = d; i.mu.Unlock() }
 
 func TestRunReceivesMessages(t *testing.T) {
 	api := &fakeAPI{token: "T", updates: []string{
-		`{"update_id":1,"message":{"message_id":10,"from":{"id":7,"first_name":"Ay"},"chat":{"id":7,"type":"private"},"text":"hello"}}`,
+		`{"update_id":1,"message":{"message_id":10,"from":{"id":7,"first_name":"Sam"},"chat":{"id":7,"type":"private"},"text":"hello"}}`,
 		`{"update_id":2,"message":{"message_id":11,"from":{"id":8,"first_name":"Bo"},"chat":{"id":-5,"type":"supergroup"},"text":"hey @Habakkuk_Bot what's up"}}`,
 		`{"update_id":3,"message":{"message_id":12,"from":{"id":8,"first_name":"Bo"},"chat":{"id":-5,"type":"group"},"text":"just chatting"}}`,
 		`{"update_id":4,"message":{"message_id":13,"from":{"id":8,"first_name":"Bo"},"chat":{"id":-5,"type":"group"},"photo":[{"file_id":"small","file_size":10},{"file_id":"big","file_size":20}],"caption":"look","reply_to_message":{"message_id":3,"from":{"id":99,"is_bot":true},"chat":{"id":-5,"type":"group"}}}}`,

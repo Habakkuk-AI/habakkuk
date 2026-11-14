@@ -153,18 +153,18 @@ func TestWeCom(t *testing.T) {
 		t.Fatalf("bad verify: %d", w.Code)
 	}
 
-	if code := push(a, c, inner("ay", "text", "<Content><![CDATA[hello]]></Content>"), true); code != http.StatusForbidden {
+	if code := push(a, c, inner("sam", "text", "<Content><![CDATA[hello]]></Content>"), true); code != http.StatusForbidden {
 		t.Fatalf("tampered: %d", code)
 	}
 	other, _ := NewCrypt("cbtok", aesKey, "corp2")
-	if code := push(a, other, inner("ay", "text", "<Content><![CDATA[hi]]></Content>"), false); code != http.StatusForbidden {
+	if code := push(a, other, inner("sam", "text", "<Content><![CDATA[hi]]></Content>"), false); code != http.StatusForbidden {
 		t.Fatalf("another corp: %d", code)
 	}
 	for _, m := range []string{
-		inner("ay", "text", "<Content><![CDATA[ hello 你好 ]]></Content>"),
-		inner("ay", "image", "<PicUrl><![CDATA[http://x]]></PicUrl><MediaId><![CDATA[media1]]></MediaId>"),
-		inner("ay", "voice", "<MediaId><![CDATA[media2]]></MediaId><Format><![CDATA[amr]]></Format>"),
-		inner("ay", "event", "<Event><![CDATA[enter_agent]]></Event>"),
+		inner("sam", "text", "<Content><![CDATA[ hello 你好 ]]></Content>"),
+		inner("sam", "image", "<PicUrl><![CDATA[http://x]]></PicUrl><MediaId><![CDATA[media1]]></MediaId>"),
+		inner("sam", "voice", "<MediaId><![CDATA[media2]]></MediaId><Format><![CDATA[amr]]></Format>"),
+		inner("sam", "event", "<Event><![CDATA[enter_agent]]></Event>"),
 	} {
 		if code := push(a, c, m, false); code != http.StatusOK {
 			t.Fatalf("push: %d", code)
@@ -176,7 +176,7 @@ func TestWeCom(t *testing.T) {
 	if len(msgs) != 3 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Text != "hello 你好" || !m.Direct || m.Conversation != "ay" {
+	if m := msgs[0]; m.Text != "hello 你好" || !m.Direct || m.Conversation != "sam" {
 		t.Fatalf("text = %+v", m)
 	}
 	if data, err := msgs[1].Attachments[0].Fetch(ctx); err != nil || string(data) != "JPEG" {
@@ -192,10 +192,10 @@ func TestWeCom(t *testing.T) {
 	fake.valid = "revoked"
 	fake.mu.Unlock()
 	long := strings.Repeat("字", 1000) // 3000 bytes: two messages
-	if err := a.Send(ctx, channel.Address{Conversation: "ay"}, long, ""); err != nil {
+	if err := a.Send(ctx, channel.Address{Conversation: "sam"}, long, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.SendFile(ctx, channel.Address{Conversation: "ay"}, "c.png", "image/png", []byte("PNG"), "chart"); err != nil {
+	if err := a.SendFile(ctx, channel.Address{Conversation: "sam"}, "c.png", "image/png", []byte("PNG"), "chart"); err != nil {
 		t.Fatal(err)
 	}
 	calls := fake.take()

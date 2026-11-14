@@ -115,7 +115,7 @@ func (i *inbox) Connected(d string) { i.mu.Lock(); i.conn = d; i.mu.Unlock() }
 func TestReceiveEvents(t *testing.T) {
 	group := `"groupInfo":{"groupId":"R3JvdXA=","type":"DELIVER"}`
 	f := &fakeDaemon{events: []string{
-		env("+1555", "u1", "Ay", 10, `{"timestamp":10,"message":"hello"}`),
+		env("+1555", "u1", "Sam", 10, `{"timestamp":10,"message":"hello"}`),
 		env("+1666", "u2", "Bo", 11, `{"timestamp":11,"message":"￼ what's up","mentions":[{"name":"+1000","number":"+1000","uuid":"bot-uuid","start":0,"length":1}],`+group+`}`),
 		env("+1666", "u2", "Bo", 12, `{"timestamp":12,"message":"just chatting",`+group+`}`),
 		env("+1666", "u2", "Bo", 13, `{"timestamp":13,"message":"Habakkuk, deploy it",`+group+`}`),

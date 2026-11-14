@@ -1,0 +1,14 @@
+# gitleaks configuration: the default rules, plus the known non-secrets in
+# this repository so a scan of the history reports only real findings.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "test fixtures and a public client token"
+paths = [
+  '''_test\.go$''',
+  '''/testdata/''',
+]
+# The Edge read-aloud client token is public: every copy of the Edge
+# browser carries it, and open-source Edge TTS clients use the same one.
+regexes = ['''6A5AA1D4EAFF4E9FB37E23D68491D6F4''']

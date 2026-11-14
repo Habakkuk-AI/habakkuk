@@ -148,7 +148,7 @@ func TestActivitiesInRepliesOut(t *testing.T) {
 	svc := f.srv.URL + "/"
 	dm := map[string]any{
 		"type": "message", "id": "m1", "channelId": "msteams", "serviceUrl": svc, "text": "hello there",
-		"from":         map[string]any{"id": "29:user", "name": "Ay", "aadObjectId": "aad-ay"},
+		"from":         map[string]any{"id": "29:user", "name": "Sam", "aadObjectId": "aad-sam"},
 		"recipient":    map[string]any{"id": "28:app-1", "name": "Habakkuk"},
 		"conversation": map[string]any{"id": "a:dm1", "conversationType": "personal"},
 	}
@@ -187,7 +187,7 @@ func TestActivitiesInRepliesOut(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("delivered %d", len(msgs))
 	}
-	if m := msgs[0]; m.Conversation != "a:dm1" || m.Sender != "aad-ay" || m.SenderAlt != "29:user" || !m.Direct || m.Text != "hello there" {
+	if m := msgs[0]; m.Conversation != "a:dm1" || m.Sender != "aad-sam" || m.SenderAlt != "29:user" || !m.Direct || m.Text != "hello there" {
 		t.Fatalf("dm = %+v", m)
 	}
 	if m := msgs[1]; m.Direct || !m.Mentioned || m.Text != "what's on today?" || m.Sender != "29:bo" {

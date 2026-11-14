@@ -134,7 +134,7 @@ func send(a *Adapter, plain string, sign bool) *httptest.ResponseRecorder {
 func event(token, chatType, chat, msgType, content, mentions, thread string) string {
 	c, _ := json.Marshal(content)
 	return `{"schema":"2.0","header":{"event_id":"ev1","event_type":"im.message.receive_v1","token":"` + token + `","app_id":"cli_1"},
-"event":{"sender":{"sender_id":{"open_id":"ou_ay","user_id":"ay"},"sender_type":"user"},
+"event":{"sender":{"sender_id":{"open_id":"ou_sam","user_id":"sam"},"sender_type":"user"},
 "message":{"message_id":"om_1","chat_id":"` + chat + `","chat_type":"` + chatType + `","message_type":"` + msgType + `",` + thread + `
 "content":` + string(c) + `,"mentions":[` + mentions + `]}}}`
 }
@@ -194,7 +194,7 @@ func TestFeishu(t *testing.T) {
 	if len(msgs) != 4 {
 		t.Fatalf("delivered %d: %+v", len(msgs), msgs)
 	}
-	if m := msgs[0]; m.Text != "hello" || !m.Direct || m.Conversation != "oc_dm" || m.Sender != "ou_ay" {
+	if m := msgs[0]; m.Text != "hello" || !m.Direct || m.Conversation != "oc_dm" || m.Sender != "ou_sam" {
 		t.Fatalf("dm = %+v", m)
 	}
 	if m := msgs[1]; m.Text != "what about @Bo?" || m.Direct || !m.Mentioned || m.Thread != "" {
