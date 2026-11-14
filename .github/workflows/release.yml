@@ -17,7 +17,7 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -38,7 +38,7 @@ jobs:
   # The release notes are the tag's section of CHANGELOG.md.
   binaries:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
     steps:
@@ -160,11 +160,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: blacksmith-6vcpu-macos-latest
             target: darwin
-          - os: windows-latest
+          - os: blacksmith-4vcpu-windows-2025
             target: windows
-          - os: ubuntu-24.04
+          - os: blacksmith-4vcpu-ubuntu-2404
             target: linux
     runs-on: ${{ matrix.os }}
     permissions:
@@ -207,7 +207,7 @@ jobs:
   # not leave an image tagged with its version.
   docker:
     needs: binaries
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
