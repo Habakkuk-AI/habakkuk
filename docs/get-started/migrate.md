@@ -368,8 +368,8 @@ It works for Hermes Agent and OpenClaw. Claude Code and Codex don't run in the b
 
 The import plan and `hk migrate finish` both show what of the old agent still runs. They only read, and they look at:
 
-- its processes: the gateway, workers, a scheduler, its dashboard and channel bridges such as Hermes Agent's WhatsApp bridge;
-- its services: systemd user and system units, the systemd scopes its workers run in, launchd agents on macOS, and scheduled tasks and Startup folder launchers on Windows;
+- its processes: the gateway, workers, a scheduler, its dashboard and channel bridges such as Hermes Agent's WhatsApp bridge, and anything a worker started that still runs in the worker's scope;
+- its services: systemd user and system units (for Hermes Agent, its gateway's and its dashboard's), the systemd scopes its workers run in, launchd agents on macOS, and scheduled tasks and Startup folder launchers on Windows;
 - its pid and lock files, so a process still counts when the process list doesn't show it plainly;
 - its own schedules that are still on.
 
@@ -380,6 +380,8 @@ Hermes Agent is still running: gateway (systemd hermes-gateway), 1 worker, 37 ac
 ```
 
 Only your own processes count, never another user's. A process also has to be tied to the home you're moving from. What it says about its own home comes first: its `HERMES_HOME` (or `OPENCLAW_STATE_DIR` or OpenClaw profile), a profile flag, or the session folder a WhatsApp bridge serves. That decides either way, because every home's processes can run the same program installed in the default home. Otherwise it's tied when its pid file is in the home, when its command line names a file or folder there, when its working folder is there, when it runs under one of the home's services or worker scopes, or when its parent is tied. A process whose environment names no home uses the default home, except a bare `cron.scheduler` module, a name other programs use too, which needs one of those ties. When a process looks like the old agent but can't be tied to this home, it's listed as one that may be the old agent's and never stopped for you. That includes one whose only link is that its program is installed in the home. So does a live process named by a pid file in the home whose command line doesn't look like the old agent's.
+
+A worker scope is checked on its own, because whatever a worker starts stays in its scope after the worker ends. The scope is tied to the home when a process of the home runs in it. It's also tied when the command that started it, or the processes in it, name this home and none names another. Stopping it stops everything in it. A scope that can't be tied to the home is never stopped, and its processes are listed for you.
 
 The plan also names each channel both agents would use: the same Telegram, Slack or Discord token, which only one program at a time can poll, or a WhatsApp number that's still linked in the old agent. Token values are never shown, only the channel.
 

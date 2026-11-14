@@ -94,7 +94,7 @@ type Job struct {
 // Live reports whether anything of the old agent runs, or would start by
 // itself.
 func (s *Status) Live() bool {
-	if len(s.Processes) > 0 {
+	if len(s.Processes) > 0 || len(s.Scopes) > 0 {
 		return true
 	}
 	for _, sv := range s.Services {
@@ -147,6 +147,9 @@ const (
 	RoleScheduler = "scheduler"
 	RoleDashboard = "dashboard" // ticks the schedules, polls no channel
 	RoleBridge    = "bridge"
+	// RoleLeftover is a process a worker started that still runs in the
+	// worker's scope: stopped with the scope, but it fires no schedule.
+	RoleLeftover = "leftover"
 )
 
 // Summary is the one line the plan shows: "Hermes Agent is still running:
@@ -159,35 +162,53 @@ func (s *Status) Summary() string {
 		roles[p.Role]++
 		pids[p.PID] = true
 	}
-	var svcs []string
+	// Active services, by what they run: a dashboard's unit is named with
+	// the dashboard, every other with the gateway.
+	var svcs, dashSvcs []string
 	for _, sv := range s.Services {
-		if sv.Active {
+		switch {
+		case !sv.Active:
+		case sv.Role == RoleDashboard:
+			dashSvcs = append(dashSvcs, sv.String())
+		default:
 			svcs = append(svcs, sv.String())
 		}
+	}
+	withUnits := func(what string, units []string) string {
+		if len(units) > 0 {
+			what += " (" + strings.Join(units, ", ") + ")"
+		}
+		return what
 	}
 	if n := roles[RoleGateway]; n > 0 || len(svcs) > 0 {
 		g := "gateway"
 		if n > 1 {
 			g = fmt.Sprintf("%d gateways", n)
 		}
-		if len(svcs) > 0 {
-			g += " (" + strings.Join(svcs, ", ") + ")"
-		}
-		parts = append(parts, g)
+		parts = append(parts, withUnits(g, svcs))
 	}
 	for _, r := range []struct{ role, one, many string }{
 		{RoleWorker, "worker", "workers"}, {RoleScheduler, "scheduler", "schedulers"}, {RoleDashboard, "dashboard", "dashboards"},
-		{RoleBridge, "channel bridge", "channel bridges"},
+		{RoleBridge, "channel bridge", "channel bridges"}, {RoleLeftover, "process left by a worker", "processes left by its workers"},
 	} {
-		if n := roles[r.role]; n > 0 {
+		n := roles[r.role]
+		switch {
+		case r.role == RoleDashboard && (n > 0 || len(dashSvcs) > 0):
+			parts = append(parts, withUnits(count(max(n, 1), r.one, r.many), dashSvcs))
+		case n > 0:
 			parts = append(parts, count(n, r.one, r.many))
 		}
+	}
+	svcs = append(svcs, dashSvcs...)
+	if n := len(s.Scopes); n > 0 && roles[RoleWorker]+roles[RoleLeftover] == 0 {
+		// A scope whose processes could not be seen still runs something.
+		parts = append(parts, count(n, "worker scope", "worker scopes"))
 	}
 	if len(s.Jobs) > 0 {
 		parts = append(parts, count(len(s.Jobs), "active schedule", "active schedules"))
 	}
 	switch {
-	case len(s.Processes) > 0 || len(svcs) > 0:
+	case len(s.Processes) > 0 || len(svcs) > 0 || len(s.Scopes) > 0:
 		return s.Label + " is still running: " + strings.Join(parts, ", ")
 	case s.Live():
 		var on []string
@@ -321,9 +342,18 @@ func Detect(ctx context.Context, sys System, o Options) (*Status, error) {
 			st.Maybe = append(st.Maybe, r)
 		}
 	}
-	if sp.scopes != nil {
-		st.Scopes = sp.scopes(ctx, w, st.Processes)
+	listed := map[int]bool{}
+	for _, r := range st.Maybe {
+		listed[r.PID] = true
 	}
+	sc := findScopes(ctx, sp, w, procs, st.Processes, listed)
+	st.Scopes = sc.scopes
+	for _, r := range sc.found {
+		// In a scope of this home: no longer only one that may be.
+		st.Maybe = slices.DeleteFunc(st.Maybe, func(m Running) bool { return m.PID == r.PID })
+		st.Processes = append(st.Processes, r)
+	}
+	st.Maybe = append(st.Maybe, sc.unsure...)
 	slices.SortFunc(st.Processes, func(a, b Running) int { return a.PID - b.PID })
 	slices.SortFunc(st.Maybe, func(a, b Running) int { return a.PID - b.PID })
 	jobs, err := sp.jobs(dir)

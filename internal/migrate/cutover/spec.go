@@ -1,7 +1,6 @@
 package cutover
 
 import (
-	"context"
 	"path/filepath"
 	"strings"
 	"time"
@@ -29,7 +28,8 @@ type spec struct {
 	// programs are the arguments that name the program run (the
 	// interpreter, the script), which prove nothing about the home.
 	programs func(p Process) []string
-	// scopePrefix starts the names of the systemd scopes its workers run in.
+	// scopePrefix starts the names of the systemd user scopes its workers
+	// run in, when it runs them in scopes (see scopes.go).
 	scopePrefix string
 	// mayBe reports whether a process could be the agent at all, to tell
 	// a live pid file from a pid the system gave to another program.
@@ -46,8 +46,6 @@ type spec struct {
 	brakes func(dir string) []string
 	// brakeText is what a stop switch file holds.
 	brakeText func(now time.Time) string
-	// scopes are the systemd scopes its workers of this home run in.
-	scopes func(ctx context.Context, w where, procs []Running) []string
 }
 
 type pidFile struct{ path, role string }

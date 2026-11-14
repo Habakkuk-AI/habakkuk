@@ -332,6 +332,9 @@ func (m *migration) writeStatus(st *cutover.Status) {
 	for _, p := range st.Processes {
 		m.say("  %s, pid %d: %s", p.Role, p.PID, shorten(p.Cmdline, 90))
 	}
+	for _, s := range st.Scopes {
+		m.say("  worker scope %s: stopping it stops everything in it", s)
+	}
 	for _, p := range st.Maybe {
 		m.say("  may be its %s, pid %d (not stopped: %s): %s", p.Role, p.PID, p.Why, shorten(p.Cmdline, 90))
 	}

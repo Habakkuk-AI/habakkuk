@@ -336,7 +336,7 @@ func (f *finisher) pauseStore(sp *spec, path string, jobs []Job, names nameMap) 
 
 // roleOrder stops the gateway first: it may start workers again.
 func roleOrder(role string) int {
-	return slices.Index([]string{RoleGateway, RoleScheduler, RoleDashboard, RoleWorker, RoleBridge}, role)
+	return slices.Index([]string{RoleGateway, RoleScheduler, RoleDashboard, RoleWorker, RoleLeftover, RoleBridge}, role)
 }
 
 // stopProcess asks a process to end, waits, then forces it.

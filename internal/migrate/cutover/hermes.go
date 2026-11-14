@@ -1,7 +1,6 @@
 package cutover
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,7 +24,19 @@ import (
 //     ai.hermes.gateway[-<suffix>] that start at login and restart on a
 //     crash; Windows scheduled tasks Hermes_Gateway[_<suffix>] that run
 //     <home>\gateway-service\<task>.vbs, or the same .vbs or .cmd in the
-//     Startup folder.
+//     Startup folder. Its dashboard backend (`hermes dashboard`, or
+//     `hermes serve`, the same backend) may run as a systemd user unit too:
+//     hermes-dashboard.service and hermes-serve.service for the default
+//     home, hermes-dashboard-<profile> and hermes-serve-<profile> for a
+//     profile.
+//   - It may relaunch itself under its own Python as
+//     `python -I -c "import sys, runpy; ...; sys.argv = ['.../hermes_cli/main.py',
+//     'dashboard', ...]; runpy.run_module('hermes_cli.main', ...)"`.
+//   - Its board runs each worker in a transient systemd scope,
+//     hermes-worker-<suffix>.scope, made with systemd-run, so the scope's
+//     description is the command it started (`... -p PROFILE ... chat -q
+//     "work kanban task ID"`). Whatever the worker starts stays in the
+//     scope, with its environment, after the worker itself ends.
 //   - Pid files in each home: gateway.pid (JSON with "pid", or a number),
 //     cron.pid, and the WhatsApp bridge's <session>/bridge.pid.
 //   - Schedules: cron/jobs.json in each home (profiles/<name>/ for the
@@ -95,7 +106,6 @@ var hermesSpec = &spec{
 	brakeText: func(now time.Time) string {
 		return `{"engaged_at": "` + now.Format("2006-01-02T15:04:05.000000-07:00") + `", "reason": "` + pauseReason + `"}` + "\n"
 	},
-	scopes: hermesScopes,
 }
 
 type hermesHome struct{ name, dir string }
@@ -125,8 +135,9 @@ func hermesWASessionDirs(home string) []string {
 }
 
 // hermesish reports a command line of the Hermes Agent program: its
-// command, or a Python interpreter running its modules or its command.
-// Python's own flags (-u, -X utf8) may come first.
+// command, or a Python interpreter running its modules or its command,
+// by name or from a -c relaunch. Python's own flags (-u, -X utf8, -I) may
+// come first.
 func hermesish(p Process) bool {
 	switch exe := p.Exe(); {
 	case exe == "hermes" || exe == "hermes-agent":
@@ -134,14 +145,15 @@ func hermesish(p Process) bool {
 	case !isPython(exe):
 		return false
 	}
+	if code, ok := pythonCode(p); ok {
+		if hermesModule(codeModule(code)) {
+			return true
+		}
+		argv := codeArgv(code)
+		return len(argv) > 0 && hermesProgram(argv[0])
+	}
 	args := p.Args()
-	switch m := wordAfter(args, "-m"); {
-	case strings.HasPrefix(m, "hermes_cli."), m == "gateway.run":
-		return true
-	case m == "cron.scheduler":
-		// Its scheduler, alone or as a job worker. Other projects may
-		// have a module of that name: ownership is proved separately, and
-		// one that can't be tied to the home is only listed.
+	if hermesModule(wordAfter(args, "-m")) {
 		return true
 	}
 	// python [flags] /path/to/hermes ...: the first word that is not a
@@ -162,6 +174,108 @@ func hermesish(p Process) bool {
 
 func isPython(exe string) bool {
 	return exe == "python" || exe == "pythonw" || exe == "py" || strings.HasPrefix(exe, "python3") || strings.HasPrefix(exe, "python2")
+}
+
+// hermesModule reports one of its Python modules run as a program: its
+// command line package, its gateway, or its scheduler (alone or as a job
+// worker). Other projects may have a cron.scheduler module too: ownership
+// is proved separately, and one that can't be tied to the home is only
+// listed.
+func hermesModule(m string) bool {
+	return strings.HasPrefix(m, "hermes_cli.") || m == "gateway.run" || m == "cron.scheduler"
+}
+
+// hermesProgram reports its command, or the script of its command line
+// package, as a program path.
+func hermesProgram(a string) bool {
+	p := program(a)
+	return p == "hermes" || p == "hermes-agent" || strings.HasSuffix(slashes(strings.Trim(a, `"'`)), "hermes_cli/main.py")
+}
+
+// pythonCode is the code a `python [flags] -c CODE` command line runs, as
+// one string. ok is false for a module or a script.
+func pythonCode(p Process) (code string, ok bool) {
+	if !isPython(p.Exe()) {
+		return "", false
+	}
+	args := p.Args()
+	for i := 1; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "-c":
+			return strings.Join(args[i+1:], " "), true
+		case a == "-m":
+			return "", false
+		case a == "-X" || a == "-W":
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			return "", false
+		}
+	}
+	return "", false
+}
+
+// codeModule is the module Python code runs with runpy.run_module('NAME').
+func codeModule(code string) string {
+	_, rest, ok := strings.Cut(code, "run_module(")
+	if !ok {
+		return ""
+	}
+	items := pyStrings(strings.TrimSpace(rest), ')')
+	if len(items) == 0 {
+		return ""
+	}
+	return items[0]
+}
+
+// codeArgv is the list Python code sets sys.argv to: the command line the
+// relaunched program sees, its own path first.
+func codeArgv(code string) []string {
+	i := strings.Index(code, "sys.argv")
+	if i < 0 {
+		return nil
+	}
+	rest := strings.TrimSpace(code[i+len("sys.argv"):])
+	rest, ok := strings.CutPrefix(rest, "=")
+	if !ok {
+		return nil
+	}
+	rest, ok = strings.CutPrefix(strings.TrimSpace(rest), "[")
+	if !ok {
+		return nil
+	}
+	return pyStrings(rest, ']')
+}
+
+// pyStrings reads the quoted strings of a Python list or argument list up
+// to its closing bracket. Anything that is not a string literal ends it.
+func pyStrings(s string, closing byte) []string {
+	var out []string
+	for i := 0; i < len(s); {
+		switch c := s[i]; c {
+		case ' ', ',':
+			i++
+		case closing:
+			return out
+		case '\'', '"':
+			var b strings.Builder
+			j := i + 1
+			for ; j < len(s) && s[j] != c; j++ {
+				if s[j] == '\\' && j+1 < len(s) {
+					j++
+				}
+				b.WriteByte(s[j])
+			}
+			if j >= len(s) {
+				return out
+			}
+			out = append(out, b.String())
+			i = j + 1
+		default:
+			return out
+		}
+	}
+	return out
 }
 
 // hermesExplicit: HERMES_HOME names the home a process uses; a profile
@@ -211,7 +325,7 @@ func hermesImplicit(w where, p Process, env map[string]string) (verdict, string)
 
 // programArgs are the program a command line runs: its first word and,
 // for an interpreter, the script (the first word that is not a flag or a
-// flag's value, unless -m names a module).
+// flag's value, unless -m names a module), or all of the code -c runs.
 func programArgs(p Process) []string {
 	args := p.Args()
 	if len(args) == 0 {
@@ -222,6 +336,10 @@ func programArgs(p Process) []string {
 		for i := 1; i < len(args); i++ {
 			a := args[i]
 			switch {
+			case a == "-c" && isPython(exe):
+				// The code holds the program's own paths (sys.path,
+				// sys.argv[0]); its arguments say nothing about a home.
+				return args
 			case a == "-m" || a == "-c":
 				return out
 			case a == "-X" || a == "-W":
@@ -258,7 +376,12 @@ func hermesRole(p Process, dir, userHome string) (string, bool) {
 	if !hermesish(p) {
 		return "", false
 	}
-	switch wordAfter(args, "-m") {
+	module := wordAfter(args, "-m")
+	if code, ok := pythonCode(p); ok {
+		// A relaunch: the module it runs and the command line it gives it.
+		module, args = codeModule(code), codeArgv(code)
+	}
+	switch module {
 	case "hermes_cli.kanban_worker_client":
 		return RoleWorker, true
 	case "cron.scheduler":
@@ -282,14 +405,25 @@ func hermesRole(p Process, dir, userHome string) (string, bool) {
 		if wordAfterSub(args, "kanban") == "daemon" {
 			return RoleWorker, true
 		}
-	case "dashboard", "web":
+	case "chat":
+		// A board worker is a one-shot chat its board starts on a task;
+		// a chat you run yourself is not a background process.
+		if strings.Contains(strings.Join(args, " "), "work kanban task") {
+			return RoleWorker, true
+		}
+	case "dashboard", "web", "serve":
 		return RoleDashboard, true
 	}
 	return "", false
 }
 
-// hermesSubcommand is the first word after the program and its global
-// flags (-p PROFILE, --profile PROFILE).
+// hermesValueFlags are its top-level flags that take a value, which
+// comes before the subcommand: hermes -p work --toolsets web,file chat.
+var hermesValueFlags = []string{"-p", "--profile", "-z", "--oneshot", "-m", "--model", "--provider",
+	"--reasoning", "-t", "--toolsets", "-r", "--resume", "-s", "--skills", "--usage-file", "--in"}
+
+// hermesSubcommand is the first word after the program and its top-level
+// flags and their values.
 func hermesSubcommand(args []string) string {
 	start := 1
 	for i, a := range args {
@@ -301,8 +435,14 @@ func hermesSubcommand(args []string) string {
 	for i := start; i < len(args); i++ {
 		a := args[i]
 		switch {
-		case a == "-p" || a == "--profile":
+		case slices.Contains(hermesValueFlags, a):
 			i++
+		case a == "-c" || a == "--continue":
+			// Its value is optional: a session name, or nothing before the
+			// subcommand.
+			if i+1 < len(args) && !slices.Contains([]string{"gateway", "kanban", "chat", "dashboard", "web", "serve"}, args[i+1]) {
+				i++
+			}
 		case strings.HasPrefix(a, "-"):
 		default:
 			return a
@@ -319,7 +459,30 @@ func wordAfterSub(args []string, sub string) string {
 	return args[i+1]
 }
 
-// hermesServices finds the gateway services installed for this home.
+// hermesUnit is what a systemd unit's name says: what it runs, and the
+// suffix after its base name (a profile, or a hash for another home).
+// ok is false for a name that isn't one of its units.
+func hermesUnit(name string) (role, suffix string, ok bool) {
+	base := strings.TrimSuffix(name, ".service")
+	if base == "hermes" {
+		return RoleGateway, "", true
+	}
+	if rest, found := strings.CutPrefix(base, "hermes-gateway"); found {
+		return RoleGateway, strings.TrimPrefix(rest, "-"), true
+	}
+	for _, b := range []string{"hermes-dashboard", "hermes-serve"} {
+		if base == b {
+			return RoleDashboard, "", true
+		}
+		if rest, found := strings.CutPrefix(base, b+"-"); found {
+			return RoleDashboard, rest, true
+		}
+	}
+	return "", "", false
+}
+
+// hermesServices finds the services installed for this home: its
+// gateway's, and on Linux its dashboard's.
 func hermesServices(w where) []Service {
 	defaultHome := filepath.Join(w.sys.UserHome(), ".hermes")
 	isDefault := under(w.dir, defaultHome) && under(defaultHome, w.dir)
@@ -342,14 +505,11 @@ func hermesServices(w where) []Service {
 	switch w.sys.GOOS() {
 	case "linux":
 		for _, d := range []struct{ dir, manager string }{{w.userUnits(), Systemd}, {"/etc/systemd/system", SystemdSystem}} {
-			for _, f := range globAll(d.dir, "hermes-gateway*.service", "hermes.service") {
+			for _, f := range globAll(d.dir, "hermes-gateway*.service", "hermes.service", "hermes-dashboard*.service", "hermes-serve*.service") {
 				name := filepath.Base(f)
-				suffix := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSuffix(name, ".service"), "hermes-gateway"), "-")
-				if name == "hermes.service" {
-					suffix = ""
-				}
-				if ours(readSmall(f), suffix) {
-					out = append(out, Service{Manager: d.manager, Name: name, File: f, Role: RoleGateway})
+				role, suffix, ok := hermesUnit(name)
+				if ok && ours(readSmall(f), suffix) {
+					out = append(out, Service{Manager: d.manager, Name: name, File: f, Role: role})
 				}
 			}
 		}
@@ -381,34 +541,4 @@ func hermesServices(w where) []Service {
 		}
 	}
 	return out
-}
-
-// hermesScopes are the systemd scopes (hermes-worker-*) its job and board
-// workers run in, when a worker of this home is in one. Stopping a scope
-// stops everything in it; there is nothing to disable.
-func hermesScopes(ctx context.Context, w where, procs []Running) []string {
-	if w.sys.GOOS() != "linux" || len(procs) == 0 {
-		return nil
-	}
-	out, err := w.sys.Run(ctx, "systemctl", "--user", "list-units", "--type=scope", "--all", "--plain", "--no-legend", "--no-pager", "hermes-worker-*")
-	if err != nil {
-		return nil
-	}
-	var cgroups []string
-	for _, p := range procs {
-		if cg := w.sys.Inspect(ctx, p.PID).Cgroup; cg != "" {
-			cgroups = append(cgroups, cg)
-		}
-	}
-	var scopes []string
-	for _, line := range strings.Split(out, "\n") {
-		f := strings.Fields(line)
-		if len(f) == 0 || !strings.HasPrefix(f[0], "hermes-worker-") || !strings.HasSuffix(f[0], ".scope") {
-			continue
-		}
-		if slices.ContainsFunc(cgroups, func(cg string) bool { return strings.Contains(cg, "/"+f[0]) }) {
-			scopes = append(scopes, f[0])
-		}
-	}
-	return scopes
 }
