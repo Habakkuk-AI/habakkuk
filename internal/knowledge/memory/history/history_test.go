@@ -284,6 +284,31 @@ func TestCrashAfterWriteCommitsTheChange(t *testing.T) {
 	}
 }
 
+func TestSameSizeEditInOneMtimeTick(t *testing.T) {
+	l, _ := newLog(t)
+	tg := NoteTarget(l.home, "ann", "coffee")
+	put(t, l, context.Background(), tg, "v1\n")
+	info, err := os.Stat(tg.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An edit of the same size that the file system stamps with the same
+	// mtime, as Linux does for writes within one clock tick.
+	if err := os.WriteFile(tg.Path, []byte("v2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(tg.Path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Scan(context.Background(), "ann"); err != nil {
+		t.Fatal(err)
+	}
+	cs := list(t, l, Filter{})
+	if len(cs) != 2 || cs[0].By != ByHand || content(t, l, cs[0].New) != "v2\n" {
+		t.Fatalf("edit missed: %+v", cs)
+	}
+}
+
 func TestFailedWriteRecordsNothing(t *testing.T) {
 	l, _ := newLog(t)
 	tg := NoteTarget(l.home, "ann", "coffee")

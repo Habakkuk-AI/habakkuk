@@ -152,9 +152,11 @@ func (r *searchResults) String() string {
 }
 
 // searchRipgrep runs rg, which honors .gitignore fully and is fast on big
-// trees. Its regex dialect is close to RE2.
+// trees. Its regex dialect is close to RE2. --no-require-git makes it honor
+// .gitignore in a folder that is not a git repository too, as the built-in
+// search does.
 func searchRipgrep(ctx context.Context, rg, root string, in searchInput, res *searchResults) error {
-	args := []string{"--no-heading", "--with-filename", "--line-number", "--color=never", "--no-messages", "--null",
+	args := []string{"--no-require-git", "--no-heading", "--with-filename", "--line-number", "--color=never", "--no-messages", "--null",
 		"--max-filesize", "5M", "--max-columns", fmt.Sprint(searchMaxLine), "--max-columns-preview"}
 	if in.IgnoreCase {
 		args = append(args, "--ignore-case")
