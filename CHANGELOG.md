@@ -4,7 +4,9 @@ All notable changes to Habakkuk are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-Version in development: `0.3.0-dev`. No release has been tagged yet; this section summarises what the code does today.
+## [0.3.0] - 2026-11-14
+
+The first public release. This section sums up what Habakkuk does at release.
 
 ### Changed
 
@@ -94,4 +96,5 @@ Version in development: `0.3.0-dev`. No release has been tagged yet; this sectio
 - **Slow startup.** `hk serve` waited for MCP servers (up to 20 seconds) before any channel connected. MCP servers now connect in the background; a turn that needs one still connecting waits up to 15 seconds, then goes on and the model is told the server is still starting. The log says how long it took to the first channel.
 - **`hk status` during startup.** It said "not running" while `serve` was starting. It now says "starting" and what serve waits for, until channels have connected.
 
-[Unreleased]: https://github.com/habakkuk-ai/habakkuk/commits/main
+[Unreleased]: https://github.com/habakkuk-ai/habakkuk/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/habakkuk-ai/habakkuk/releases/tag/v0.3.0

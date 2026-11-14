@@ -36,7 +36,7 @@ import (
 	"github.com/habakkuk-ai/habakkuk/internal/work/schedule"
 )
 
-var version = "0.3.0-dev"
+var version = "0.3.0"
 
 const usage = `Habakkuk: a durable personal AI agent.
 
