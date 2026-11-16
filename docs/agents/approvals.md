@@ -31,7 +31,8 @@ agents:
 - **In the terminal UI**, a prompt lets you allow the call once, allow it for the session, or deny it.
 - **In the dashboard and desktop app**, the Approvals page lets you answer approvals that are waiting in any chat. It also lists each agent's saved rules, and you can remove one there.
 - **Scheduled runs** ask you in the chat the schedule delivers to, and wait as a chat does. Saved rules never answer for them. See [Approvals in scheduled runs](#approvals-in-scheduled-runs).
-- **Other unattended runs** have nobody to ask. These are sub-agents, board cards, webhooks, tasks from other agents (A2A), MCP clients and the OpenAI-compatible API. Calls that need approval are denied there, unless a reviewer decides. [Saved rules](#always-allow) never answer for them.
+- **Sub-agents and board cards** ask you in a home chat: the agent's own `home`, or the home of the agent that handed it the work. The request names the agent that's asking and the work it's for. See [Approvals in handed-off work](#approvals-in-handed-off-work).
+- **Other unattended runs** have nobody to ask. These are webhooks, tasks from other agents (A2A), MCP clients and the OpenAI-compatible API, plus sub-agents and board cards with no home chat to ask in. Calls that need approval are denied there, unless a reviewer decides. [Saved rules](#always-allow) never answer for them.
 
 ### Approvals and restarts
 
@@ -55,7 +56,10 @@ agents:
 
 - **`human`** (default): you answer in the chat or the terminal. In a run that nobody is watching, the call is denied.
 - **`reviewer`**: a model decides in your place. Habakkuk makes one model call with a fixed, strict prompt, and shows it the task, the tool call and the workspace. The reviewer allows routine work. It denies actions that destroy things or send data out, such as `rm -rf` outside the workspace, `curl | sh`, sending secrets to the network or editing system files. If the reviewer is unsure, the call is denied.
-- **`reviewer_then_human`**: this works like `reviewer`, except that a call the reviewer is unsure about goes to you, if you're in a chat.
+- **`reviewer_then_human`**: this works like `reviewer`, except that a call the reviewer is unsure about goes to you, in the chat, the terminal, or the home chat for [handed-off work](#approvals-in-handed-off-work).
+
+> [!TIP]
+> Give the agents you hand work to `reviewer_then_human` and a home chat to report to. With `reviewer`, a call the reviewer is unsure about is simply denied, and a "yes" you type to the agent that handed the work over can't reach it.
 
 | `approvals` | Reviewer says allow | deny | unsure |
 |---|---|---|---|
@@ -191,6 +195,17 @@ Some runs can't get a yes:
 - A schedule with no delivery chat has nobody to ask, so the call is denied.
 - A run on an account that's open to everyone (`allow_from: ["*"]`) counts as a guest's turn, so risky calls are refused.
 - A run that has read outside content asks you every time, as does every run of a schedule that wasn't made by a clean message you typed, and every turn that reads a script's output. A message you type in a session that started with an untrusted project file (see [Project instruction files](agents.md#project-instruction-files)) isn't clean, so a schedule it makes asks too.
+
+## Approvals in handed-off work
+
+A sub-agent's task or a board card runs where nobody is watching. When one of its calls needs you, Habakkuk asks in a home chat (see [Teams and home chats](multi-agent.md#teams-and-home-chats)):
+
+1. the home of the agent doing the work, if it has one;
+2. otherwise, the home of the agent that handed it the work: the agent that delegated the task, or the one that made the card.
+
+The request says which agent is asking and what the work is, then waits up to 15 minutes, as any request does. Answer it right there. A "yes" typed anywhere else, such as in a message to the agent that handed the work over, can't reach the call. Saved rules never answer for handed-off work, and **Always allow** isn't offered.
+
+With no home chat on either agent, the call is denied, and the agent is told why: it should work inside its workspace, or you can add a home. Tasks from other agents over A2A never ask in a home chat: they're another system's requests.
 
 ## Instruction files
 

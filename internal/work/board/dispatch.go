@@ -235,7 +235,7 @@ func (d *Dispatcher) Handle(ctx context.Context, j *jobs.Job, owner string) (str
 	}
 	turn := *j
 	if turn.Payload, err = json.Marshal(agent.TurnPayload{Session: c.Session, Text: text,
-		Source: agent.SourceBoard, Task: fmt.Sprintf("card %s %q", c.ID, c.Title), Tainted: tainted}); err != nil {
+		Source: agent.SourceBoard, Task: fmt.Sprintf("card %s %q", c.ID, c.Title), Tainted: tainted, From: c.CreatedBy}); err != nil {
 		return "", jobs.Permanent{Err: err}
 	}
 	final, err := d.Runner.HandleTurn(ctx, &turn, owner)

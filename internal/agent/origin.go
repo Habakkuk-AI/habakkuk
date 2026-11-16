@@ -72,6 +72,12 @@ type TurnInfo struct {
 	// Background: nobody sent it a fresh message (TurnPayload.Background);
 	// Delegated: a sub-agent's task; Tainted: it starts tainted.
 	Background, Delegated, Tainted bool
+	// AskHome is the chat that asks the owner about this run's calls when
+	// it is a delegated task or a board card: the agent's home, or the
+	// home of the agent that handed the work over. "" when there is none.
+	AskHome string
+	// From is the agent that handed the work over, for the prompt.
+	From string
 }
 
 // OwnerMessage reports whether the turn answers a fresh message: not
