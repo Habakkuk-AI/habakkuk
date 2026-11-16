@@ -4,7 +4,7 @@ All notable changes to Habakkuk are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-11-14
+## [0.3.0] - 2026-11-16
 
 The first public release. This section sums up what Habakkuk does at release.
 
