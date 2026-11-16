@@ -1032,7 +1032,19 @@ func (c *chatApprover) where(ctx context.Context, req tools.ApprovalRequest) (to
 	if conv != nil {
 		return conv.Address, conv.Agent, true, nil
 	}
-	if agent.SourceFrom(ctx) != agent.SourceSchedule {
+	info := agent.TurnInfoFrom(ctx)
+	if info.AskHome != "" && (info.Delegated || info.Source == agent.SourceBoard) {
+		// A delegated task or a board card: nobody watches it where it
+		// started, so it asks in the owner's home chat (agent.askHome).
+		home, err := c.g.home(info.AskHome)
+		if err != nil {
+			c.g.Log.Warn("approval not asked: home chat unavailable", "agent", req.Agent, "home", info.AskHome, "err", err)
+			return Address{}, "", false, nil
+		}
+		home.ReplyTo = ""
+		return home, req.Agent, true, nil
+	}
+	if info.Source != agent.SourceSchedule {
 		return Address{}, "", false, nil
 	}
 	origin := agent.OriginFrom(ctx)
@@ -1054,7 +1066,17 @@ func (g *Gateway) approvalPrompt(ctx context.Context, to Address, req tools.Appr
 	if why := g.why(lang, req); why != "" {
 		b.WriteString("\n" + why)
 	}
-	if task := agent.TaskFrom(ctx); task != "" && agent.SourceFrom(ctx) != "" {
+	info := agent.TurnInfoFrom(ctx)
+	if info.Delegated || info.Source == agent.SourceBoard {
+		// Asked in a home chat: say which agent wants it, and who handed
+		// it the work.
+		if info.From != "" {
+			b.WriteString("\n" + i18n.T(lang, "approval.by_agent_from", req.Agent, info.From))
+		} else {
+			b.WriteString("\n" + i18n.T(lang, "approval.by_agent", req.Agent))
+		}
+	}
+	if task := info.Task; task != "" && (info.Source != "" || info.Delegated) {
 		b.WriteString("\n" + i18n.T(lang, "approval.for_task", clean(task, 120)))
 	}
 	full := g.Display(to.Account).ApprovalsDetail == config.ApprovalsFull

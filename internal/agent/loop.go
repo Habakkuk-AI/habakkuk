@@ -99,6 +99,10 @@ type TurnPayload struct {
 	// not imply it: hk run, hk talk, /btw and skill prompts are local but
 	// carry text the owner did not just type.
 	Typed bool `json:"typed,omitempty"`
+	// From is the agent that handed this work over when it is not a
+	// delegated task: a board card's creator. Its home chat asks the
+	// owner about the run's calls when the agent has no home (askHome).
+	From string `json:"from,omitempty"`
 }
 
 // Attachment is a file that came with a user message. The bytes live in the
@@ -165,6 +169,8 @@ type Turn struct {
 	Local bool
 	// Typed: the owner sent it just now in a direct chat (TurnPayload.Typed).
 	Typed bool
+	// From: the agent that handed the work over (TurnPayload.From).
+	From string
 }
 
 // Sender is the model call. *llm.Router implements it; tests use fakes.
@@ -302,7 +308,7 @@ func (r *Runner) SubmitTurn(ctx context.Context, t Turn) (string, error) {
 	return r.Queue.Enqueue(ctx, jobs.NewJob{
 		ID: t.ID, Kind: kind, Agent: sess.Agent, SerialKey: t.Session, Priority: 10,
 		Payload: TurnPayload{Session: t.Session, Text: t.Text, Media: t.Media, Origin: t.Origin, Compact: t.Compact, Sub: t.Sub,
-			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted, Local: t.Local, Typed: t.Typed},
+			Source: t.Source, Task: t.Task, Background: t.Background, Tainted: t.Tainted, Local: t.Local, Typed: t.Typed, From: t.From},
 	})
 }
 
@@ -335,6 +341,10 @@ func (r *Runner) HandleTurn(ctx context.Context, j *jobs.Job, owner string) (str
 	ctx = withOrigin(ctx, p.Origin)
 	info := TurnInfo{Source: p.Source, Task: p.Task, Local: p.Local, Typed: p.Typed, Background: p.Background || p.Compact,
 		Delegated: p.Sub != nil, Tainted: p.Tainted || p.Source == SourceA2A}
+	info.AskHome, info.From = r.askHome(ctx, p, spec)
+	if info.Task == "" && p.Sub != nil {
+		info.Task = "task: " + cutRunes(strings.Join(strings.Fields(p.Sub.Task), " "), 100)
+	}
 	ctx = WithTurnInfo(ctx, info)
 	chain, overridden := r.chainFor(ctx, sess.ID, spec)
 	t := &turn{r: r, ctx: ctx, job: j, owner: owner, sess: sess, spec: spec, chain: chain, overridden: overridden, info: info}

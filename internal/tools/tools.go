@@ -642,7 +642,8 @@ func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
 	if !rulesApply(env) {
 		req.Rule = nil
 	}
-	unattended := fmt.Errorf("%w: %s needs approval and no one is attending this run", ErrDenied, req.Tool)
+	unattended := fmt.Errorf("%w: %s needs approval and no one is attending this run; a yes typed in another chat cannot reach this call, "+
+		"so work inside the workspace, or tell the owner that giving this agent (or the one that handed it the work) a home chat lets it ask there", ErrDenied, req.Tool)
 	if (env.Approvals == ApproveReviewer || env.Approvals == ApproveReviewerThenHuman) && env.Reviewer != nil {
 		rv := env.Reviewer.Review(ctx, req)
 		switch rv.Verdict {
@@ -652,7 +653,8 @@ func Ask(ctx context.Context, env *Env, req ApprovalRequest) (string, error) {
 			return "", fmt.Errorf("%w: the reviewer denied %s: %s (find a safer way, or ask the user)", ErrDenied, req.Tool, rv.Reason)
 		}
 		if env.Approvals == ApproveReviewer {
-			return "", fmt.Errorf("%w: the reviewer would not approve %s on its own (%s) and no human reviews this agent's calls", ErrDenied, req.Tool, rv.Reason)
+			return "", fmt.Errorf("%w: the reviewer would not approve %s on its own (%s) and no human reviews this agent's calls (approvals: reviewer); "+
+				"a yes typed in a chat cannot reach this call, so work inside the workspace, or tell the owner that approvals: reviewer_then_human lets it ask them", ErrDenied, req.Tool, rv.Reason)
 		}
 		req.Review = rv.Reason
 	}

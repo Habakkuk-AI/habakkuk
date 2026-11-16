@@ -124,3 +124,33 @@ func withoutHomeTool(specs []llm.ToolSpec) []llm.ToolSpec {
 	}
 	return out
 }
+
+// askHome is the home chat where a delegated task or a board card asks
+// its owner about a call that needs a person, and the agent that handed
+// the work over. Nobody watches such work where it started, so without
+// this it could only be denied. The agent's own home comes first, then
+// the home of the agent that handed it over: the delegating turn's agent,
+// or the card's creator. Schedules ask in the chat they deliver to, and an
+// A2A task is another system's request, so neither uses it.
+func (r *Runner) askHome(ctx context.Context, p TurnPayload, spec *Spec) (home, from string) {
+	switch {
+	case p.Sub != nil:
+		if parent, err := r.Sessions.Get(ctx, p.Sub.Parent); err == nil {
+			from = parent.Agent
+		}
+	case p.Source == SourceBoard:
+		from = p.From
+	default:
+		return "", ""
+	}
+	if from == spec.Name {
+		from = ""
+	}
+	if spec.Home != "" {
+		return spec.Home, from
+	}
+	if s, ok := r.Agents[from]; ok && s.Home != "" {
+		return s.Home, from
+	}
+	return "", from
+}
