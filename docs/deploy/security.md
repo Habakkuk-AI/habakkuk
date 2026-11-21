@@ -38,6 +38,8 @@ agents:
 
 A sender who is let in by `allow_from: ["*"]`, and not by id or `hk pair`, is a **guest**. A guest's turn is refused every risky capability, with or without approval. Guests can't answer your pending approvals, and they can't use `/remember`, `/forget` or `/agent`. A turn with no sender behind it (a schedule) counts as a guest's turn when it runs on an account that's open to everyone.
 
+You can let a guest's request reach you instead. With `guest_approvals: home` on the channel, each risky call in a guest's turn asks you in the agent's home chat, with where they asked and what they wrote. Only you can answer, every call asks, and no reviewer or saved rule answers for it. A schedule on the channel is still refused. `hk security` lists the channels set this way. See [Guests who need something risky](../channels/settings.md#guests-who-need-something-risky).
+
 There's one exception. A `whatsappagent` channel only ever hears from the person who created the agent, because WhatsApp refuses everyone else. So its sender is always treated as the owner, even with `allow_from: "*"`. Its schedules run as the owner's too, and the audit never counts it as an open channel.
 
 ## Outside content taints a turn

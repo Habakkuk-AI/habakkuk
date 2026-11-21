@@ -4,6 +4,10 @@ All notable changes to Habakkuk are recorded here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+
+- **Guests' risky requests can ask you.** A sender let in by `allow_from: ["*"]` used to be refused anything risky, such as a command, and you never heard about it. Set `guest_approvals: home` on the channel and each such call asks you in the agent's home chat instead. It says that someone else asked, where, and what they wrote. The guest is told it's waiting on you. Every call asks: no reviewer, no saved rule and no **Always allow**. It needs a `home` on the agent; without one, or with the default `deny`, guests are refused as before. `hk security` lists the channels set this way. See [Guests who need something risky](docs/channels/settings.md#guests-who-need-something-risky).
+
 ## [0.3.0] - 2026-11-16
 
 The first public release. This section sums up what Habakkuk does at release.

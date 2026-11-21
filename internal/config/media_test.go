@@ -68,3 +68,22 @@ func TestMediaValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestGuestApprovalsValidation(t *testing.T) {
+	const slack = "channels: {s: {type: slack, app_token_env: A, bot_tokens_env: [B], %s}}\n"
+	cases := map[string]string{
+		`allow_from: ["*"], guest_approvals: maybe`: "must be deny or home",
+		`allow_from: ["U1"], guest_approvals: home`: `needs allow_from "*"`,
+		`allow_from: ["*"], guest_approvals: home`:  "needs a home chat on agent",
+	}
+	for extra, want := range cases {
+		_, err := Parse([]byte(mediaBase + strings.Replace(slack, "%s", extra, 1)))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: want %q, got %v", extra, want, err)
+		}
+	}
+	withHome := strings.Replace(mediaBase, "{model: p/m}", "{model: p/m, home: \"s:D1\"}", 1)
+	if _, err := Parse([]byte(withHome + strings.Replace(slack, "%s", `allow_from: ["*"], guest_approvals: home`, 1))); err != nil {
+		t.Errorf("guest_approvals: home with a home chat: %v", err)
+	}
+}

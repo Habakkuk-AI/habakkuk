@@ -57,8 +57,14 @@ type Policy struct {
 	Channel string
 	// Guest is set when the message came from someone who is not the
 	// owner (let in by allow_from "*", not by id or pairing). A guest's
-	// turn gets none of the capabilities, whoever would approve.
+	// turn gets none of the capabilities, whoever would approve, unless
+	// GuestAsk is set.
 	Guest bool
+	// GuestAsk lets a guest's turn ask the owner, in the agent's home
+	// chat, for each call that uses a capability, instead of being
+	// refused (channels.<name>.guest_approvals: home). No reviewer and no
+	// saved rule answers for it.
+	GuestAsk bool
 	// Allowed are the capabilities the owner let channel turns use without
 	// approval (agents.<name>.trust: full, or channel_allow).
 	Allowed map[Capability]bool
@@ -159,6 +165,10 @@ func gate(ctx context.Context, env *Env, t Tool, cp Capability, risk Risk, call 
 		p = &Policy{}
 	}
 	if p.Guest {
+		if p.GuestAsk {
+			why := fmt.Sprintf("the message came from someone other than the owner, so %s needs the owner's approval", cp)
+			return "", true, confirmByHuman(ctx, env, call, why, CauseGuest)
+		}
 		return "", true, fmt.Errorf("%w: %s (%s) is not available to messages from people other than the owner; tell the user the owner has to do this", ErrDenied, call.ToolName, cp)
 	}
 	if env.Mode == ModeReadOnly && risk != RiskRead {

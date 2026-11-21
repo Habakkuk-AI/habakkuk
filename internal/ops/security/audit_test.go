@@ -311,3 +311,15 @@ channels:
 		t.Error("no finding for the ignored entry")
 	}
 }
+
+func TestPolicyShowsGuestApprovals(t *testing.T) {
+	cfg := parse(t, `agents:
+  habakkuk: {model: anthropic/claude-opus-5-5, home: "team:D1"}
+channels:
+  team: {type: slack, app_token_env: A, bot_tokens_env: [B], allow_from: ["*"], guest_approvals: home}
+`)
+	text := strings.Join(Policies(cfg)[0].Lines(), "\n")
+	if !strings.Contains(text, "except on team (guest_approvals: home): each such call asks the owner in team:D1") {
+		t.Fatalf("policy lacks the guest_approvals line:\n%s", text)
+	}
+}

@@ -176,3 +176,37 @@ func TestTurnPlaceForRules(t *testing.T) {
 		}
 	}
 }
+
+// guest_approvals: home lets a guest's turn ask the owner, only on an open
+// account and only for an agent with a home chat.
+func TestTurnPolicyGuestAsk(t *testing.T) {
+	cfg := &config.Config{
+		Agents: map[string]*config.Agent{
+			"main":   {Home: "tg:1"},
+			"nohome": {},
+		},
+		Channels: map[string]*config.Channel{
+			"open":   {Type: "slack", AllowFrom: []string{"*"}, GuestApprovals: config.GuestApprovalsHome},
+			"closed": {Type: "slack", AllowFrom: []string{"*"}},
+		},
+	}
+	origin := func(acct, trust string) json.RawMessage {
+		b, _ := json.Marshal(channel.Address{Account: acct, Conversation: "c", Trust: trust})
+		return b
+	}
+	for _, c := range []struct {
+		name, agent, acct, trust string
+		ask                      bool
+	}{
+		{"guest, setting on", "main", "open", channel.TrustGuest, true},
+		{"guest, setting off", "main", "closed", channel.TrustGuest, false},
+		{"guest, agent without a home", "nohome", "open", channel.TrustGuest, false},
+		{"owner", "main", "open", channel.TrustOwner, false},
+		{"no sender (a schedule)", "main", "open", "", false},
+	} {
+		p, _ := TurnPolicy(cfg, c.agent, origin(c.acct, c.trust))
+		if p.GuestAsk != c.ask {
+			t.Errorf("%s: GuestAsk = %v, want %v", c.name, p.GuestAsk, c.ask)
+		}
+	}
+}

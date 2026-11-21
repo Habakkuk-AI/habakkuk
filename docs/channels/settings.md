@@ -22,7 +22,32 @@ hk pair 4KX9QT
 Once you run that, the sender can talk from then on. To see who you are to the bot and how you got access, send `/whoami` in a chat.
 
 > [!WARNING]
-> `allow_from: ["*"]` lets everyone in. Those senders are **guests**. A guest never gets the risky tools: commands, writes outside the workspace, the browser on private addresses, and computer use. A guest also can't answer your approvals, and can't use `/remember`, `/forget` or `/agent`. `hk security` flags open channels. See [Security](../deploy/security.md).
+> `allow_from: ["*"]` lets everyone in. Those senders are **guests**. A guest never gets the risky tools on their own: commands, writes outside the workspace, the browser on private addresses, and computer use. A guest also can't answer your approvals, and can't use `/remember`, `/forget` or `/agent`. `hk security` flags open channels. See [Security](../deploy/security.md).
+
+### Guests who need something risky
+
+By default a guest's risky request is refused, and you don't hear about it. On a team chat that's often not what you want: someone asks the agent to run a report, it says only you can do that, and nobody tells you.
+
+Set `guest_approvals: home` on the channel and the agent asks you instead:
+
+```yaml
+agents:
+  habakkuk:
+    home: whatsapp:15551234567@s.whatsapp.net   # your own chat with the agent
+channels:
+  team:
+    type: slack
+    allow_from: ["U0OWNER", "*"]
+    guest_approvals: home        # deny (default) | home
+```
+
+- The request comes to the agent's **home chat**, not the guest's chat. It says what the agent wants to do, that someone else asked for it, where they asked and what they wrote. Reply **details** to see the exact command.
+- The guest is told the agent is waiting on you. On **yes** the call runs once. On **no**, or no answer within 15 minutes, it's skipped and the guest is told.
+- Every call asks. A reviewer never answers for a guest, saved rules never apply, and **Always allow** isn't offered.
+- It needs `allow_from: ["*"]` on the channel and a `home` on the agent that answers there. Without a home, guests are refused as before.
+- A schedule that runs on the channel isn't a guest's request, so it's unaffected.
+
+Read what they wrote before you say yes. The guest chose the words, so treat it as you'd treat a request from anyone else on your team.
 
 Only allowed senders can answer approvals and clarifying questions. A `whatsappagent` channel only ever hears from the person who created the agent, so Habakkuk always treats its sender as the owner.
 
@@ -49,6 +74,7 @@ What counts as addressing the bot depends on the platform. The table [below](#wh
 | `groups` | `off`, `mention` (default) or `all` |
 | `session_idle` | Start a fresh session after this much silence (default `24h`; the web chat never; `0` never) |
 | `progress` | What a chat shows while the agent works: `plain` (default), `detailed` or `off`. See [below](#what-a-chat-shows-while-the-agent-works) |
+| `guest_approvals` | What a guest's risky request does: `deny` (default) refuses it, `home` asks you in the agent's home chat. See [Guests who need something risky](#guests-who-need-something-risky). |
 | `approvals_detail` | What an approval request shows: `summary` (default) or `full`. See [below](#approval-requests-in-plain-words) |
 | `stream` | Show the reply while it's being written (default `true`). See [below](#replies-as-theyre-written) |
 | `reactions` | `true` reacts to the user's message when its turn starts and ends (Telegram, Slack, Discord, Nextcloud Talk) |

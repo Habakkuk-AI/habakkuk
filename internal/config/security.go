@@ -266,6 +266,18 @@ func (ch *Channel) MessagingChannel() bool { return ch != nil && ch.Type != "web
 // who created it, because the platform refuses everyone else.
 func (ch *Channel) OwnerOnly() bool { return ch != nil && ch.Type == "whatsappagent" }
 
+// Values of a channel's guest_approvals.
+const (
+	GuestApprovalsDeny = "deny" // a guest's risky request is refused (default)
+	GuestApprovalsHome = "home" // it asks the owner in the agent's home chat
+)
+
+// GuestsAskHome reports whether a guest's risky request on the account
+// asks the owner in the agent's home chat instead of being refused.
+func (ch *Channel) GuestsAskHome() bool {
+	return ch.OpenToAll() && ch.GuestApprovals == GuestApprovalsHome
+}
+
 // OpenToAll reports whether anyone may talk on the account (allow_from
 // "*"). Such senders are guests unless their id is listed or paired. An
 // owner-only account is never open, even with "*".

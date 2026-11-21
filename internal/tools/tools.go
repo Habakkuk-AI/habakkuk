@@ -144,6 +144,7 @@ const (
 	CauseTainted Cause = "tainted" // the turn read outside content, so the risky capabilities need a human
 	CauseChannel Cause = "channel" // the turn came from a messaging channel that may not use the capability unasked
 	CauseConfirm Cause = "confirm" // the tool always asks for this call (ConfirmTool)
+	CauseGuest   Cause = "guest"   // a guest asked for it, so the owner is asked in the agent's home chat
 )
 
 // Approver decides calls the mode does not allow outright. Unattended runs
@@ -714,6 +715,11 @@ func saveRule(env *Env, req ApprovalRequest, by string) string {
 // no mode, and no reviewer, allows it alone.
 func confirmByHuman(ctx context.Context, env *Env, call llm.Block, why string, cause Cause) error {
 	unattended := fmt.Errorf("%w: %s needs a human's approval (%s) and no one is attending this run", ErrDenied, call.ToolName, why)
+	declined := fmt.Errorf("%w: the user declined %s", ErrDenied, call.ToolName)
+	if cause == CauseGuest {
+		unattended = fmt.Errorf("%w: %s needs the owner's approval (%s) and the owner could not be asked; tell the user the owner has to do this", ErrDenied, call.ToolName, why)
+		declined = fmt.Errorf("%w: the owner declined %s or did not answer in time; tell the user", ErrDenied, call.ToolName)
+	}
 	if env.Approver == nil {
 		return unattended
 	}
@@ -727,7 +733,7 @@ func confirmByHuman(ctx context.Context, env *Env, call llm.Block, why string, c
 	case err != nil:
 		return err
 	case !ok:
-		return fmt.Errorf("%w: the user declined %s", ErrDenied, call.ToolName)
+		return declined
 	}
 	return nil
 }
