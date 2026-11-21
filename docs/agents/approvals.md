@@ -31,6 +31,7 @@ agents:
 - **In the terminal UI**, a prompt lets you allow the call once, allow it for the session, or deny it.
 - **In the dashboard and desktop app**, the Approvals page lets you answer approvals that are waiting in any chat. It also lists each agent's saved rules, and you can remove one there.
 - **Scheduled runs** ask you in the chat the schedule delivers to, and wait as a chat does. Saved rules never answer for them. See [Approvals in scheduled runs](#approvals-in-scheduled-runs).
+- **Guests' requests** are refused, unless the channel has `guest_approvals: home`. Then each one asks you in the agent's home chat, with who asked and where. See [Guests who need something risky](../channels/settings.md#guests-who-need-something-risky).
 - **Sub-agents and board cards** ask you in a home chat: the agent's own `home`, or the home of the agent that handed it the work. The request names the agent that's asking and the work it's for. See [Approvals in handed-off work](#approvals-in-handed-off-work).
 - **Other unattended runs** have nobody to ask. These are webhooks, tasks from other agents (A2A), MCP clients and the OpenAI-compatible API, plus sub-agents and board cards with no home chat to ask in. Calls that need approval are denied there, unless a reviewer decides. [Saved rules](#always-allow) never answer for them.
 
@@ -180,7 +181,7 @@ Saved rules live in `approvals.json` in the agent's folder and apply across rest
 
 Rules sit next to the permission mode. They answer only for calls that would otherwise ask you. In `read-only` mode nothing runs, rule or not.
 
-On an account that's open to everyone, a guest's turn is refused every risky capability. Calls that use none, such as a network tool in `ask` mode, still ask in the chat, and only you can answer. **Always allow** isn't offered for a guest's turn.
+On an account that's open to everyone, a guest's turn is refused every risky capability, unless the channel has `guest_approvals: home`, which asks you in the agent's home chat instead. Calls that use none, such as a network tool in `ask` mode, still ask in the chat, and only you can answer. **Always allow** isn't offered for a guest's turn.
 
 The known limits are listed under [Security](../deploy/security.md#saved-approval-rules).
 

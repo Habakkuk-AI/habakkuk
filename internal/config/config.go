@@ -205,6 +205,11 @@ type Channel struct {
 	// while serve runs (hooks.go).
 	Progress        string `yaml:"progress"`
 	ApprovalsDetail string `yaml:"approvals_detail"`
+	// GuestApprovals is what happens when a guest (a sender let in by
+	// allow_from "*") asks for something risky: deny (default) refuses
+	// it; home asks the owner in the agent's home chat, which names who
+	// asked, and does it only on the owner's yes.
+	GuestApprovals string `yaml:"guest_approvals"`
 	// Stream shows the reply while it is being written, in one message
 	// edited as the text arrives, where the platform can edit messages
 	// (default true). Can be changed while serve runs, like progress.
@@ -590,6 +595,18 @@ func (c *Config) validateChannel(name string, ch *Channel) []error {
 	default:
 		bad("groups %q must be off, mention or all", ch.Groups)
 	}
+	switch ch.GuestApprovals {
+	case "", GuestApprovalsDeny:
+	case GuestApprovalsHome:
+		if !ch.OpenToAll() {
+			bad("guest_approvals: home needs allow_from \"*\": without it the account has no guests")
+		}
+		if ac := c.Agents[ch.Agent]; ac != nil && ac.Home == "" {
+			bad("guest_approvals: home needs a home chat on agent %q (agents.%s.home), where guests' requests are asked", ch.Agent, ch.Agent)
+		}
+	default:
+		bad("guest_approvals %q must be deny or home", ch.GuestApprovals)
+	}
 	if ch.SessionIdle < 0 {
 		bad("session_idle must not be negative")
 	}
@@ -801,6 +818,8 @@ agents:
 # (Telegram, Slack). Per channel: progress: plain (default) | detailed (a
 # line per tool step) | off (only the typing indicator), and
 # approvals_detail: summary (default) | full (also the exact command).
+# On an account with allow_from: ["*"], guest_approvals: home asks you in the
+# agent's home chat when a guest asks for something risky (default: deny).
 #   mail:
 #     type: email           # IMAP in (IDLE or polling), SMTP out; each thread is a conversation
 #     allow_from: [you@example.com]

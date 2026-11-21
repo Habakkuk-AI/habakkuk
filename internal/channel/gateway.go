@@ -993,6 +993,13 @@ func (c *chatApprover) Decide(ctx context.Context, req tools.ApprovalRequest) (t
 		return deny, nil // could not ask, so do not allow
 	}
 	g.rememberAsked(to, p.hash)
+	if req.Cause == tools.CauseGuest {
+		// Tell the guest it is waiting on the owner, so the chat is not
+		// silent for up to the approval timeout.
+		if conv, err := g.Store.BySession(ctx, c.session); err == nil && conv != nil && conv.key() != to.key() {
+			g.reply(conv.Address, g.t(conv.Address, "approval.guest_waiting"))
+		}
+	}
 	select {
 	case a := <-p.answer:
 		g.forgetAsked(to)
@@ -1025,6 +1032,22 @@ func (g *Gateway) canOfferRule(to Address, req tools.ApprovalRequest) bool {
 // scheduled run, the chat the schedule delivers to. ok is false when there
 // is none, and the call is decided as in any unattended run.
 func (c *chatApprover) where(ctx context.Context, req tools.ApprovalRequest) (to Address, agentName string, ok bool, err error) {
+	info := agent.TurnInfoFrom(ctx)
+	if req.Cause == tools.CauseGuest {
+		// A guest asked (guest_approvals: home). Only the owner may answer,
+		// and the owner may not be watching the guest's chat, so it asks
+		// in the agent's home chat (agent.askHome).
+		if info.AskHome == "" {
+			return Address{}, "", false, nil
+		}
+		home, err := c.g.home(info.AskHome)
+		if err != nil {
+			c.g.Log.Warn("approval not asked: home chat unavailable", "agent", req.Agent, "home", info.AskHome, "err", err)
+			return Address{}, "", false, nil
+		}
+		home.ReplyTo = ""
+		return home, req.Agent, true, nil
+	}
 	conv, err := c.g.Store.BySession(ctx, c.session)
 	if err != nil {
 		return Address{}, "", false, err
@@ -1032,7 +1055,6 @@ func (c *chatApprover) where(ctx context.Context, req tools.ApprovalRequest) (to
 	if conv != nil {
 		return conv.Address, conv.Agent, true, nil
 	}
-	info := agent.TurnInfoFrom(ctx)
 	if info.AskHome != "" && (info.Delegated || info.Source == agent.SourceBoard) {
 		// A delegated task or a board card: nobody watches it where it
 		// started, so it asks in the owner's home chat (agent.askHome).
@@ -1078,6 +1100,17 @@ func (g *Gateway) approvalPrompt(ctx context.Context, to Address, req tools.Appr
 	}
 	if task := info.Task; task != "" && (info.Source != "" || info.Delegated) {
 		b.WriteString("\n" + i18n.T(lang, "approval.for_task", clean(task, 120)))
+	}
+	if req.Cause == tools.CauseGuest {
+		// Asked in the home chat for someone else: where they asked, and
+		// what they wrote.
+		place := "?"
+		if conv, err := g.Store.BySession(ctx, req.Session); err == nil && conv != nil {
+			place = conv.Account
+		}
+		if msg := strings.TrimSpace(req.Task); msg != "" {
+			b.WriteString("\n" + i18n.T(lang, "approval.guest_message", place, clean(g.redact(msg), 200)))
+		}
 	}
 	full := g.Display(to.Account).ApprovalsDetail == config.ApprovalsFull
 	if full {

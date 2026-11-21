@@ -504,6 +504,8 @@ func (g *Gateway) why(lang string, req tools.ApprovalRequest) string {
 		return i18n.T(lang, "approval.why.channel")
 	case tools.CauseConfirm:
 		return i18n.T(lang, "approval.why.confirm")
+	case tools.CauseGuest:
+		return i18n.T(lang, "approval.why.guest")
 	}
 	if r := strings.TrimSpace(req.Review); r != "" { // the reviewer handed it over
 		return i18n.T(lang, "approval.why.review", clean(g.redact(r), 300))

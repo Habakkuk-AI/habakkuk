@@ -131,9 +131,14 @@ func withoutHomeTool(specs []llm.ToolSpec) []llm.ToolSpec {
 // this it could only be denied. The agent's own home comes first, then
 // the home of the agent that handed it over: the delegating turn's agent,
 // or the card's creator. Schedules ask in the chat they deliver to, and an
-// A2A task is another system's request, so neither uses it.
+// A2A task is another system's request, so neither uses it. A guest's
+// message (a sender let in by allow_from "*") asks in the agent's own
+// home, for channels set to (guest_approvals: home); the policy decides
+// whether it may ask at all.
 func (r *Runner) askHome(ctx context.Context, p TurnPayload, spec *Spec) (home, from string) {
 	switch {
+	case p.Sub == nil && p.Source == "" && guestOrigin(p.Origin):
+		return spec.Home, ""
 	case p.Sub != nil:
 		if parent, err := r.Sessions.Get(ctx, p.Sub.Parent); err == nil {
 			from = parent.Agent
@@ -153,4 +158,13 @@ func (r *Runner) askHome(ctx context.Context, p TurnPayload, spec *Spec) (home, 
 		return s.Home, from
 	}
 	return "", from
+}
+
+// guestOrigin reports whether a turn's origin (a channel address, opaque
+// to the runner) says a guest sent its message.
+func guestOrigin(origin json.RawMessage) bool {
+	var o struct {
+		Trust string `json:"trust"`
+	}
+	return len(origin) > 0 && json.Unmarshal(origin, &o) == nil && o.Trust == "guest"
 }

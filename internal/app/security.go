@@ -58,6 +58,9 @@ func TurnPolicy(cfg *config.Config, agentName string, origin json.RawMessage) (p
 	switch addr.Trust {
 	case channel.TrustGuest:
 		p.Guest = true
+		// A sender the owner let in by "*": on an account set to ask, the
+		// owner answers in the agent's home chat (agent.askHome).
+		p.GuestAsk = ch.GuestsAskHome() && ac != nil && ac.Home != ""
 	case "":
 		// A turn with no sender behind it (a schedule, a goal carried on): on an
 		// account anyone can talk to, assume a guest asked for it.

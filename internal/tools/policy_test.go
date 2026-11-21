@@ -171,6 +171,36 @@ func TestGuestNeverGetsRiskyTools(t *testing.T) {
 	}
 }
 
+// With guest_approvals: home, a guest's risky call asks the owner instead
+// of being refused: every time, with no reviewer, rule or Always allow.
+func TestGuestAsksOwnerWhenSet(t *testing.T) {
+	ap := &countingApprover{yes: true}
+	r, env := setup(t, ModeFull, ap)
+	env.Approvals, env.Reviewer = ApproveReviewer, &allowAll{}
+	env.Policy = &Policy{Channel: "slack", Guest: true, GuestAsk: true, Allowed: map[Capability]bool{CapExec: true}}
+	if res := r.Execute(context.Background(), env, call("exec", map[string]any{"command": "true"})); res.IsError {
+		t.Fatalf("approved guest exec: %+v", res)
+	}
+	if ap.asks != 1 || ap.last.Cause != CauseGuest || ap.last.Rule != nil {
+		t.Fatalf("asks=%d cause=%q rule=%v", ap.asks, ap.last.Cause, ap.last.Rule)
+	}
+	if rev := env.Reviewer.(*allowAll); rev.reviews != 0 {
+		t.Fatal("the reviewer answered for a guest")
+	}
+
+	ap.yes = false
+	res := r.Execute(context.Background(), env, call("exec", map[string]any{"command": "true"}))
+	if !res.IsError || !strings.Contains(res.Text, "the owner declined exec") {
+		t.Fatalf("declined guest exec: %+v", res)
+	}
+
+	env.Approver = nil
+	res = r.Execute(context.Background(), env, call("exec", map[string]any{"command": "true"}))
+	if !res.IsError || !strings.Contains(res.Text, "the owner could not be asked") {
+		t.Fatalf("guest exec with nobody to ask: %+v", res)
+	}
+}
+
 func TestChannelComputerReadAsksEvenInReadOnly(t *testing.T) {
 	ap := &countingApprover{yes: false}
 	r, env := setup(t, ModeReadOnly, ap)

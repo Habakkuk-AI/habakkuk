@@ -18,6 +18,10 @@ type AgentPolicy struct {
 	// those that let anyone talk (allow_from "*"), whose unknown senders
 	// are guests.
 	Channels, Open []string
+	// GuestAsk are the open channels whose guests' risky requests ask the
+	// owner in the agent's home chat (guest_approvals: home).
+	GuestAsk []string
+	Home     string // the agent's home chat
 	Webhooks       []string
 	// Allowed are the capabilities the owner's channel turns use without
 	// approval; Gated those that need it.
@@ -35,12 +39,15 @@ func Policies(c *config.Config) []AgentPolicy {
 	var out []AgentPolicy
 	for _, name := range c.AgentNames() {
 		a := c.Agents[name]
-		p := AgentPolicy{Agent: name, Permission: a.Permission, Approvals: a.Approvals, AllowTaintedExec: a.AllowTaintedExec}
+		p := AgentPolicy{Agent: name, Permission: a.Permission, Approvals: a.Approvals, AllowTaintedExec: a.AllowTaintedExec, Home: a.Home}
 		p.TrustedWrite, p.TrustedIgnored = c.TrustedWriteDirs(name)
 		for _, ch := range c.ChannelsOf(name) {
 			p.Channels = append(p.Channels, ch)
 			if c.Channels[ch].OpenToAll() {
 				p.Open = append(p.Open, ch)
+				if c.Channels[ch].GuestsAskHome() && a.Home != "" {
+					p.GuestAsk = append(p.GuestAsk, ch)
+				}
 			}
 		}
 		if c.HTTP != nil {
@@ -89,6 +96,9 @@ func (p AgentPolicy) Lines() []string {
 			guests = "senders let in by allow_from \"*\" on " + strings.Join(p.Open, ", ")
 		}
 		out = append(out, fmt.Sprintf("  guests (%s): %s denied", guests, strings.Join(config.SecurityCapabilities, ", ")))
+		if len(p.GuestAsk) > 0 {
+			out = append(out, fmt.Sprintf("    except on %s (guest_approvals: home): each such call asks the owner in %s", strings.Join(p.GuestAsk, ", "), p.Home))
+		}
 	}
 	if len(p.Webhooks) > 0 {
 		out = append(out, "  webhooks "+strings.Join(p.Webhooks, ", ")+": payloads are outside content (tainted turn)")
