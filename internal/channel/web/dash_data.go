@@ -689,6 +689,9 @@ type skillView struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Shared      bool     `json:"shared"`
+	Off         bool     `json:"off,omitempty"`           // turned off for every agent
+	OffInConfig bool     `json:"off_in_config,omitempty"` // in config.yaml, so only an edit there turns it on
+	Note        string   `json:"note,omitempty"`          // why agents cannot use it, when not because it is off
 	Body        string   `json:"body,omitempty"`
 	Files       []string `json:"files,omitempty"`
 }
@@ -706,14 +709,20 @@ func (s *Server) skillList(w http.ResponseWriter, r *http.Request) {
 	if !s.knownAgent(w, agentName) {
 		return
 	}
-	list, err := d.Skills.List(agentName)
+	// Every skill the agent could have: the ones in use, and the ones
+	// turned off (so they can be turned back on) or held back, with why.
+	list, err := d.Skills.Inventory(agentName)
 	if err != nil {
 		s.fail(w, "list skills", err)
 		return
 	}
 	out := make([]skillView, 0, len(list))
-	for _, sk := range list {
-		out = append(out, skillView{Name: sk.Name, Description: sk.Description, Shared: sk.Shared})
+	for _, e := range list {
+		v := skillView{Name: e.Name, Description: e.Description, Shared: e.Shared, Off: e.Off != "", OffInConfig: e.Off == "config"}
+		if !e.Usable() && e.Off == "" {
+			v.Note = e.Reason()
+		}
+		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"skills": out})
 }

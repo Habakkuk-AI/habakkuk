@@ -48,6 +48,17 @@ type Dash struct {
 	Secret func(name string) string
 	// Doctor checks config, credentials and storage, like hk doctor.
 	Doctor func(ctx context.Context) []Check
+
+	// The control panel (dash_team.go). Home is where config.yaml lives;
+	// empty means agents and routing cannot be changed from here.
+	Home string
+	// Pending names the config sections saved but not yet in effect.
+	Pending func() []string
+	// Restart restarts the serving process, so saved changes apply; nil
+	// when this process cannot.
+	Restart func() error
+	// Models lists what each provider offers, for the model picker.
+	Models func(ctx context.Context) []ModelList
 }
 
 // Check is one line of the doctor's report.
@@ -63,6 +74,7 @@ func (s *Server) dashRoutes(mux *http.ServeMux) {
 		http.Redirect(w, r, "/app/", http.StatusMovedPermanently)
 	})
 	mux.HandleFunc("GET /app/{file...}", s.uiFile)
+	mux.HandleFunc("GET /app/ext/{plugin}/{file...}", s.extFile)
 
 	api := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, s.auth(dashGuard(h))) }
 	api("GET /api/app", s.appInfo)
@@ -107,6 +119,7 @@ func (s *Server) dashRoutes(mux *http.ServeMux) {
 	api("POST /api/realtime/transcript", s.realtimeTranscript)
 	api("POST /api/realtime/end", s.realtimeEnd)
 	s.pushRoutes(api)
+	s.controlRoutes(api)
 }
 
 // dashGuard refuses requests a browser marks as coming from another site,
@@ -229,6 +242,8 @@ func (s *Server) appInfo(w http.ResponseWriter, _ *http.Request) {
 		"speech":        s.Gateway.Speech != nil,
 		"realtime":      s.realtimeConfig() != nil,
 		"timezone":      s.location().String(),
+		"extensions":    s.extensions(),
+		"restart":       s.restartInfo(),
 	})
 }
 

@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -72,6 +73,8 @@ Usage:
                                     one turn, print the answer, exit (-skill: follow that skill)
   hk serve                            run workers: resumes interrupted turns, applies retention;
                                     with an http section, also the chat page, API and webhooks
+  hk dashboard [link]                 print the dashboard's address; link prints a sign-in link
+                                    for your own devices (it carries the dashboard token)
   hk channels                         show channel health
   hk mcp                              connect to MCP servers and list their status and tools
   hk mcp serve                        be an MCP server on stdio (habakkuk_ask, sessions, board, schedules)
@@ -215,6 +218,10 @@ func main() {
 		err = run(ctx, home, args)
 	case "serve":
 		err = serve(ctx, home)
+		if errors.Is(err, errRestart) {
+			stop()
+			err = restartSelf()
+		}
 	case "sessions":
 		err = sessions(ctx, home, args)
 	case "show":
@@ -287,6 +294,8 @@ func main() {
 		err = usageCmd(ctx, home, args)
 	case "models":
 		err = modelsCmd(ctx, home)
+	case "dashboard":
+		err = dashboardCmd(ctx, home, args)
 	case "version":
 		err = versionCmd(ctx, home, os.Stdout)
 	case "help", "-h", "--help":
@@ -592,6 +601,26 @@ func serve(ctx context.Context, home string) error {
 	defer closeApp()
 	a.Telemetry.SetVersion(version)
 	progress.setLog(a.Log)
+	// The dashboard can ask for a restart, so changes saved there apply:
+	// everything below stops as it would on Ctrl-C, then main starts this
+	// binary again with the same arguments.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var restarting atomic.Bool
+	a.RequestRestart = func() error {
+		if _, err := config.Load(home); err != nil {
+			return fmt.Errorf("config.yaml does not load, so a restart would not come back up: %w", err)
+		}
+		if !restarting.CompareAndSwap(false, true) {
+			return context.Canceled
+		}
+		a.Log.Info("restarting to apply saved changes")
+		go func() {
+			time.Sleep(500 * time.Millisecond) // let the dashboard get its answer first
+			cancel()
+		}()
+		return nil
+	}
 	fmt.Fprintf(os.Stderr, "habakkuk %s serving agents %v, channels %v; logs at %s/habakkuk.log\n",
 		version, a.Cfg.AgentNames(), channelNames(a), home)
 	var ln net.Listener
@@ -645,6 +674,10 @@ func serve(ctx context.Context, home string) error {
 	for {
 		select {
 		case <-ctx.Done():
+			if restarting.Load() {
+				fmt.Fprintln(os.Stderr, "restarting to apply saved changes; in-flight turns resume on start")
+				return errRestart
+			}
 			fmt.Fprintln(os.Stderr, "shutting down; in-flight turns resume on next start")
 			return nil
 		case <-tick.C:

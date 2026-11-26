@@ -94,6 +94,7 @@ func withoutBudgets(agents map[string]*config.Agent) map[string]config.Agent {
 		if ac != nil {
 			c := *ac
 			c.Budget = nil
+			c.Description = "" // shown in the dashboard only
 			out[name] = c
 		}
 	}

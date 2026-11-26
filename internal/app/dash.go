@@ -3,10 +3,15 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/habakkuk-ai/habakkuk/internal/config"
 
 	"github.com/habakkuk-ai/habakkuk/internal/channel/web"
 	"github.com/habakkuk-ai/habakkuk/internal/protocols/mcp"
@@ -25,6 +30,15 @@ func (a *App) openDash() {
 	}
 	if a.Dispatcher != nil {
 		d.BoardWake = a.Dispatcher.Wake
+	}
+	d.Home = a.Cfg.Home
+	d.Pending = a.PendingRestart
+	d.Models = a.cachedModels()
+	d.Restart = func() error {
+		if a.RequestRestart == nil {
+			return errNoRestart
+		}
+		return a.RequestRestart()
 	}
 	a.Web.Dash = d
 	if a.Scheduler != nil {
@@ -131,4 +145,50 @@ func (a *App) DoctorChecks(ctx context.Context) []web.Check {
 		}
 	}
 	return out
+}
+
+var errNoRestart = errors.New("this process cannot restart itself; restart hk serve")
+
+// PendingRestart names the config sections that changed in config.yaml and
+// take effect only when hk serve restarts. A file that does not load counts
+// as no change: the running config stays in charge.
+func (a *App) PendingRestart() []string {
+	next, err := config.Load(a.Cfg.Home)
+	if err != nil {
+		return nil
+	}
+	return restartNeeded(a.Cfg, next)
+}
+
+// cachedModels lists providers' models for the dashboard's model picker,
+// asking the providers at most once every ten minutes.
+func (a *App) cachedModels() func(ctx context.Context) []web.ModelList {
+	var (
+		mu   sync.Mutex
+		at   time.Time
+		last []web.ModelList
+	)
+	return func(ctx context.Context) []web.ModelList {
+		mu.Lock()
+		defer mu.Unlock()
+		if last != nil && time.Since(at) < 10*time.Minute {
+			return last
+		}
+		out := []web.ModelList{}
+		for _, pm := range a.ListModels(ctx) {
+			m := web.ModelList{Provider: pm.Name, Type: pm.Type, Models: pm.Models}
+			if m.Models == nil {
+				m.Models = []string{}
+			}
+			switch {
+			case pm.Unsupported:
+				m.Error = "this provider has no model list; type the model name"
+			case pm.Err != nil:
+				m.Error = "could not list models: " + pm.Err.Error()
+			}
+			out = append(out, m)
+		}
+		last, at = out, time.Now()
+		return out
+	}
 }

@@ -18,17 +18,31 @@ http:
 
 ## The dashboard
 
-Open `http://127.0.0.1:8484/app/` and you get a control dashboard. Its pages are overview, chat, sessions, board, schedules, memory, skills, usage, approvals and config. The dashboard is plain HTML, CSS and JavaScript embedded in the binary. It works over the JSON API under `/api/` and uses the same token (see [HTTP API](../reference/api.md)).
+Open `http://127.0.0.1:8484/app/` and you get a control dashboard. It's meant for anyone, not only people who edit config files: everything is in plain words, and the settings people change most are switches and boxes. It opens dark, a grid of glass cards over a night sky; **Theme** at the bottom of the menu switches to light. The dashboard is plain HTML, CSS and JavaScript embedded in the binary. It works over the JSON API under `/api/` and uses the same token (see [HTTP API](../reference/api.md)).
 
-- **Overview** opens with a **Get started** panel on a new install. The panel has three suggestions: say hi, turn on a morning brief, and teach your agent something. Each one opens Chat with the message ready to send. The panel goes away by itself once the agent has answered a message, or once you have a schedule or a second chat channel. To remove it sooner, use Hide.
-- **Empty pages explain themselves.** When Chat, Sessions, Schedules, Memory, Skills or the Board is empty, the page says what belongs there. It also offers a message you can send with one click to fill it.
+- **Home** shows the time and whether every channel is connected, a box to ask your main agent anything, what needs you (approvals you can answer with **Yes** or **No**), your team and what each agent spent today, your routines with an on/off switch each, today's spend (against the daily limit, when you set one) and recent work.
+- **Team** lists every agent: what it does, where it answers, its main and backup models, what it can do (each toolset is a checkbox with a sentence on what it gives), where it posts updates and its spending limits. Change what you need and press **Save**.
+- **Who answers where** picks the main agent of each chat channel and gives single chats (a Slack channel, a Telegram group) to another agent. Each chat gets a name for people, kept as a comment in `config.yaml`.
+- **Schedules** reads in plain words ("Tuesdays and Thursdays at 10am", "Every 15 minutes"), with what each one does; the exact command and prompt are under **Details**.
+- **Skills** has a **Turn off** and **Turn on** button for each skill. It applies to every agent at once, and nothing is deleted.
 - **Chat** shows tool calls as they happen. It sends files as attachments and voice recordings for transcription, and it reads replies aloud through `tts`. With `realtime:` it also offers Live mode (see [Voice](../tools/voice.md#live-mode-in-the-dashboard)).
 - **Approvals** that are waiting in any chat can be answered from the dashboard. The same page lists each agent's saved approval rules, the calls it makes without asking, and you can remove one. See [Always allow](../agents/approvals.md#always-allow).
-- **Notifications** on the Config page turn on Web Push for the device you're on. See [Notifications](#notifications).
-- **Config** shows your configuration. The values of every secret variable, secret-named field and URL credential are redacted. For each chat channel, there are two settings you can change on this page. The first is what the chat shows while the agent works: a short status line, every step, or nothing. The second is what approval requests show: a plain summary, or the exact command. When you save, the dashboard edits `config.yaml` in place. The change applies from the next message, and you don't need to restart.
+- **Status** has channel health, the queue, what is running and recent errors. **Sessions**, **Board**, **Memory**, **Usage** and **Nodes** are there too.
+- **Settings** shows your configuration with every secret redacted, the doctor's checks, notifications, and what each chat shows while the agent works and in approval requests.
+- **Empty pages explain themselves** and offer a message you can send with one click.
 - A service worker lets you install the dashboard as an app, and shows its notifications.
 
-Want the dashboard in a window of its own? [Habakkuk Desktop](desktop-app.md) wraps the same dashboard in a native window and adds notifications.
+### Saving and applying changes
+
+Every change made in the dashboard is written to `config.yaml` in place: comments, order and every other setting stay as they were, the edited file must load before it's written, and the previous file is kept as `config.yaml.bak`. Spending limits, schedules, skills and chat display settings apply at once. Models, tools, where an agent posts and who answers where apply when `hk serve` restarts, so the dashboard shows a bar: **You saved changes that take effect after a restart**, with **Apply now**. That restarts the server gently, the same as stopping it: turns that were running carry on when it's back, usually in a few seconds, and the page waits for it. A `config.yaml` that doesn't load is refused before anything stops. On Linux and macOS the server keeps its process id, so a service manager (systemd, launchd) sees it keep running.
+
+### Signing in from your phone
+
+Run `hk dashboard link`. It prints the dashboard's address with the token after a `#`, for example `https://agent.example.com/app/#token=...`. Open it once on each of your devices and that browser is signed in; the token is taken out of the address at once, and the part after `#` never reaches a server or its logs. Anyone with the link can use the dashboard, so keep it to your own devices; changing the token cuts every link off. `hk dashboard` alone prints the address. To reach the dashboard from outside your computer, see [Remote access](../deploy/remote-access.md).
+
+### Pages from plugins
+
+A plugin can add a page of its own to the dashboard, listed at the end of the menu. See [Dashboard pages](../tools/plugins.md#dashboard-pages).
 
 ## Notifications
 
