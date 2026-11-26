@@ -6,6 +6,10 @@ All notable changes to Habakkuk are recorded here. The format follows [Keep a Ch
 
 ### Added
 
+- **A control panel anyone can use.** The dashboard opens on a new **Home**: the time and channel health, a box to ask your main agent, what needs you with **Yes** and **No** buttons, your team and today's spend per agent, your routines with on/off switches, and recent work, in a grid of glass cards (dark by default; **Theme** switches to light). **Team** changes each agent's models, tools (as checkboxes in plain words), where it posts and its spending limits. **Who answers where** gives a channel's chats to different agents, with a name for each. Schedules read in plain words, and each skill has an on/off button. Changes are written to `config.yaml` in place, and the ones that need a restart get a bar with **Apply now**, which restarts `hk serve` gently and waits for it. See [Dashboard](docs/interfaces/dashboard.md).
+- **Plugins can add dashboard pages.** A `dashboard:` section in `habakkuk-plugin.yaml` serves the plugin's folder at `/app/ext/<plugin>/` and lists it in the menu. See [Dashboard pages](docs/tools/plugins.md#dashboard-pages).
+- **`hk dashboard link`** prints a sign-in link for your own devices, with the token after the `#` so it never reaches a server log.
+- **`agents.<name>.description`**: a sentence on what the agent does, shown in the dashboard and never sent to the model.
 - **Guests' risky requests can ask you.** A sender let in by `allow_from: ["*"]` used to be refused anything risky, such as a command, and you never heard about it. Set `guest_approvals: home` on the channel and each such call asks you in the agent's home chat instead. It says that someone else asked, where, and what they wrote. The guest is told it's waiting on you. Every call asks: no reviewer, no saved rule and no **Always allow**. It needs a `home` on the agent; without one, or with the default `deny`, guests are refused as before. `hk security` lists the channels set this way. See [Guests who need something risky](docs/channels/settings.md#guests-who-need-something-risky).
 
 ## [0.3.0] - 2026-11-16

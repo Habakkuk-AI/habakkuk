@@ -38,6 +38,42 @@ type PluginManifest struct {
 	Hooks []*Hook `yaml:"hooks"`
 	// Commands are chat slash commands: /<name>.
 	Commands map[string]*PluginCommand `yaml:"commands"`
+	// Dashboard adds a page of the plugin's own to the control dashboard.
+	Dashboard *PluginDashboard `yaml:"dashboard"`
+}
+
+// PluginDashboard is a page a plugin adds to the dashboard: a folder with an
+// index.html, served at /app/ext/<plugin>/ and listed in the dashboard's
+// menu under Title. The page runs with the dashboard's own access, like the
+// rest of the plugin, so install plugins you trust.
+type PluginDashboard struct {
+	Title string `yaml:"title"` // the menu entry (default the plugin's name)
+	Dir   string `yaml:"dir"`   // the folder inside the plugin (default "dashboard")
+}
+
+// DashboardDir is the folder a plugin's dashboard page is served from, or ""
+// when it has none.
+func (p *Plugin) DashboardDir() string {
+	if p == nil || p.Manifest == nil || p.Manifest.Dashboard == nil {
+		return ""
+	}
+	rel := p.Manifest.Dashboard.Dir
+	if rel == "" {
+		rel = "dashboard"
+	}
+	rel, err := relInside(rel)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(p.Dir, filepath.FromSlash(rel))
+}
+
+// DashboardTitle is a plugin's menu entry in the dashboard.
+func (p *Plugin) DashboardTitle() string {
+	if p.Manifest != nil && p.Manifest.Dashboard != nil && strings.TrimSpace(p.Manifest.Dashboard.Title) != "" {
+		return strings.TrimSpace(p.Manifest.Dashboard.Title)
+	}
+	return p.Name
 }
 
 // PluginCommand is a slash command a plugin adds: either a prompt the agent
@@ -101,6 +137,11 @@ func ParsePluginManifest(data []byte) (*PluginManifest, error) {
 	if m.Skills != "" {
 		if _, err := relInside(m.Skills); err != nil {
 			errs = append(errs, fmt.Errorf("skills: %w", err))
+		}
+	}
+	if m.Dashboard != nil && m.Dashboard.Dir != "" {
+		if _, err := relInside(m.Dashboard.Dir); err != nil {
+			errs = append(errs, fmt.Errorf("dashboard.dir: %w", err))
 		}
 	}
 	errs = append(errs, (&Config{Hooks: m.Hooks}).validateExtras()...)

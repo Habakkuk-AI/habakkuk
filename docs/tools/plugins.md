@@ -256,6 +256,20 @@ hk plugins remove NAME                   moved to the backups
 hk plugins restore [-id ID] NAME | restore -list [NAME]
 ```
 
+### Dashboard pages
+
+A plugin can add a page to the [dashboard](../interfaces/dashboard.md), for a report, a form or a view of its own data:
+
+```yaml
+dashboard:
+  title: Sales report     # the menu entry (default: the plugin's name)
+  dir: dashboard          # the folder with index.html (default: dashboard)
+```
+
+The folder is served at `/app/ext/<plugin>/`, and the page is listed at the end of the dashboard's menu. Files are served as they are, with the dashboard's content policy: scripts and styles must be files in the folder (no inline scripts), and the page may call only this server. Read data with the dashboard's own API under `/api/`: the token is in the browser's `localStorage` under `habakkuk.token` (a JSON string), sent as `Authorization: Bearer <token>`. Link back with `/app/`.
+
+The page has the dashboard's full access, like the rest of a plugin, so install plugins you trust. It appears once the plugin is enabled and `hk serve` restarts.
+
 ## Skills from outside
 
 ```

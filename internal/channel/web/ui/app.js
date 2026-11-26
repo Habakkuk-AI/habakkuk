@@ -101,7 +101,7 @@ function tokens(n) {
   if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
   return String(n);
 }
-function money(n) { return "$" + (n || 0).toFixed(n >= 100 ? 0 : n >= 1 ? 2 : 4); }
+function money(n) { return !n ? "$0" : "$" + n.toFixed(n >= 100 ? 0 : n >= 0.01 ? 2 : 4); }
 function badge(text, kind) { return h("span", { class: "badge " + (kind || "") }, text); }
 function stateKind(st) {
   return { connected: "ok", done: "ok", todo: "info", doing: "warn", running: "warn", blocked: "bad", failed: "bad",
@@ -206,14 +206,14 @@ $("tokenBtn").addEventListener("click", gate);
 
 // Theme: auto (the system's), light or dark.
 function applyTheme() {
-  const t = store.get("theme", "auto");
+  const t = store.get("theme", "dark");
   if (t === "auto") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", t);
   $("themeBtn").textContent = "Theme: " + t;
 }
 $("themeBtn").addEventListener("click", () => {
   const order = ["auto", "light", "dark"];
-  store.set("theme", order[(order.indexOf(store.get("theme", "auto")) + 1) % 3]);
+  store.set("theme", order[(order.indexOf(store.get("theme", "dark")) + 1) % 3]);
   applyTheme();
 });
 
@@ -225,6 +225,7 @@ $("scrim").addEventListener("click", () => navOpen(false));
 $("nav").addEventListener("click", e => { if (e.target.closest("a")) navOpen(false); });
 
 const pages = {};
+const PAGE_TITLES = { routing: "Who answers where", config: "Settings", overview: "Status" };
 function onLeave(fn) { cleanups.push(fn); }
 function every(ms, fn) {
   fn();
@@ -235,13 +236,13 @@ function route() {
   for (const fn of cleanups.splice(0)) { try { fn(); } catch {} }
   closeModal();
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
-  const name = pages[parts[0]] ? parts[0] : "overview";
+  const name = pages[parts[0]] ? parts[0] : "home";
   for (const a of document.querySelectorAll("nav a")) a.classList.toggle("on", a.dataset.page === name);
   const view = $("view");
   view.className = "";
   view.textContent = "";
   view.scrollTop = 0;
-  $("title").textContent = name[0].toUpperCase() + name.slice(1);
+  $("title").textContent = PAGE_TITLES[name] || name[0].toUpperCase() + name.slice(1);
   pages[name](view, parts.slice(1));
 }
 window.addEventListener("hashchange", route);
@@ -1115,9 +1116,10 @@ pages.schedules = view => {
           } catch (err) { fail(err); }
         };
         return h("tr", {},
-          h("td", {}, h("strong", {}, sc.name), h("div", { class: "small muted" }, sc.agent + (sc.command ? " · script" : "")),
-            h("div", { class: "small snippet" }, sc.command || sc.prompt)),
-          h("td", { class: "mono small" }, sc.spec),
+          h("td", {}, h("strong", {}, sc.name), h("div", { class: "small" }, plainWhat(sc)),
+            h("details", { class: "more" }, h("summary", {}, "Details"), h("div", { class: "small muted" }, "Agent: " + sc.agent),
+              sc.command ? h("div", { class: "small snippet mono" }, sc.command) : null, sc.prompt ? h("div", { class: "small snippet" }, sc.prompt) : null)),
+          h("td", { class: "small", title: sc.spec }, plainWhen(sc.spec)),
           h("td", { class: "small", title: when(sc.next_run) }, sc.enabled ? ago(sc.next_run) : badge("paused")),
           h("td", { class: "small hide-sm", title: sc.last_output || "" }, sc.last_run ? ago(sc.last_run) : "", sc.last_status ? h("div", { class: "muted" }, sc.last_status) : null),
           h("td", {}, h("div", { class: "row" },
@@ -1227,9 +1229,17 @@ pages.skills = (view, [agentName]) => {
     try {
       const j = await api("skills/" + encodeURIComponent(agent.value));
       out.textContent = "";
+      const flip = async (e, sk) => {
+        e.stopPropagation();
+        try { await api("skills-off/" + encodeURIComponent(sk.name), { method: "POST", body: { off: !sk.off } }); toast(sk.off ? "Turned on" : "Turned off"); load(); }
+        catch (err) { fail(err); }
+      };
+      out.append(h("div", { class: "muted small" }, "Turning a skill off turns it off for every agent. Nothing is deleted."));
       out.append(j.skills.length ? h("ul", { class: "list" }, j.skills.map(sk => h("li", { class: "click", onclick: () => viewSkill(agent.value, sk.name) },
-        h("div", { class: "row" }, h("strong", { class: "grow mono" }, sk.name), badge(sk.shared ? "shared" : "own", sk.shared ? "" : "info")),
-        h("div", { class: "snippet" }, sk.description))))
+        h("div", { class: "row" }, h("strong", { class: "grow mono" }, sk.name), sk.off ? badge("off", "bad") : null, badge(sk.shared ? "shared" : "own", sk.shared ? "" : "info"),
+          h("button", { type: "button", class: "btn small", disabled: sk.off_in_config, title: sk.off_in_config ? "Turned off in config.yaml (skills.disabled)" : "",
+            onclick: e => flip(e, sk) }, sk.off ? "Turn on" : "Turn off")),
+        h("div", { class: "snippet" }, sk.description), sk.note ? h("div", { class: "small muted" }, sk.note) : null)))
         : emptyState("No skills yet. A skill is a routine your agent follows the same way every time. Ask it to write one, install one with hk skills install, or add a folder with a SKILL.md under skills/.",
           askBtn("Write a skill", "Write a skill for how you should summarise long articles for me: three bullets, then one line on why it matters.")));
     } catch (err) { out.textContent = ""; out.append(h("div", { class: "empty err" }, err.message)); }
@@ -1533,6 +1543,444 @@ function pushPanel() {
   return panel;
 }
 
+// Control panel
+
+// Plain words for schedules: "@every 1m" reads "Every minute", "0 10 * * 2,4"
+// reads "Tuesdays and Thursdays at 10am". Anything unusual shows as written.
+
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+function clock(hh, mm) {
+  const h24 = +hh, m = +mm, ampm = h24 < 12 ? "am" : "pm", h12 = h24 % 12 || 12;
+  return m ? `${h12}:${String(m).padStart(2, "0")}${ampm}` : `${h12}${ampm}`;
+}
+function plainDays(dow) {
+  if (dow === "*") return "Every day";
+  if (dow === "1-5") return "Weekdays";
+  if (dow === "0,6" || dow === "6,0" || dow === "6-7") return "Weekends";
+  let m = dow.match(/^(\d)-(\d)$/);
+  if (m) return `${DAY_NAMES[+m[1] % 7]} to ${DAY_NAMES[+m[2] % 7]}`;
+  if (/^\d(,\d)*$/.test(dow)) {
+    const names = dow.split(",").map(d => DAY_NAMES[+d % 7] + "s");
+    return names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " and " + names.at(-1);
+  }
+  return null;
+}
+function plainWhen(spec) {
+  spec = String(spec || "").trim();
+  let m;
+  if ((m = spec.match(/^@every\s+(\d+)\s*([smhd])$/))) {
+    const n = +m[1], unit = { s: "second", m: "minute", h: "hour", d: "day" }[m[2]];
+    return n === 1 ? `Every ${unit}` : `Every ${n} ${unit}s`;
+  }
+  const named = { "@hourly": "Every hour", "@daily": "Every day at midnight", "@midnight": "Every day at midnight", "@weekly": "Every Sunday at midnight", "@monthly": "On the 1st of every month" };
+  if (named[spec]) return named[spec];
+  if ((m = spec.match(/^at\s+(.+)$/i))) return "Once, " + (when(m[1]) || m[1]);
+  const f = spec.split(/\s+/);
+  if (f.length !== 5) return spec;
+  const [mi, ho, dom, mon, dow] = f;
+  if (dom !== "*" || mon !== "*") return spec;
+  if (mi === "*" && ho === "*" && dow === "*") return "Every minute";
+  if ((m = mi.match(/^\*\/(\d+)$/)) && ho === "*") {
+    const d = plainDays(dow);
+    return d && `Every ${m[1]} minutes` + (dow === "*" ? "" : ", " + d.toLowerCase());
+  }
+  if (/^\d+$/.test(mi) && ho === "*" && dow === "*") return `Every hour at ${String(mi).padStart(2, "0")} past`;
+  if (/^\d+$/.test(mi) && /^\d+(,\d+)*$/.test(ho)) {
+    const d = plainDays(dow);
+    if (!d) return spec;
+    const times = ho.split(",").map(x => clock(x, mi));
+    return `${d} at ${times.length === 1 ? times[0] : times.slice(0, -1).join(", ") + " and " + times.at(-1)}`;
+  }
+  return spec;
+}
+// What a schedule does, in a line: its prompt's first sentence, or that it
+// runs a script.
+function plainWhat(sc) {
+  if (sc.command) return sc.on_output === "agent" ? "Runs a script, then the agent acts on what it finds" : "Runs a script";
+  const p = String(sc.prompt || "").replace(/^\[[^\]]*\]\s*/, "").trim();
+  const first = p.split(/(?<=[.!?])\s|\n/)[0] || p;
+  return first.length > 140 ? first.slice(0, 137) + "…" : first;
+}
+
+// Sign-in link: an address ending in #token=... signs this browser in. The
+// part after # is never sent to the server, and it is removed at once.
+(function signInLink() {
+  const m = location.hash.match(/^#token=([^&]+)/);
+  if (!m) return;
+  token = decodeURIComponent(m[1]);
+  store.set("token", token);
+  history.replaceState(null, "", location.pathname + location.search + "#/overview");
+})();
+
+// Saved changes that wait for a restart, and the button that applies them.
+
+function showRestart(r) {
+  if (app) app.restart = r;
+  const bar = $("restartBar");
+  bar.textContent = "";
+  if (!r || !r.pending?.length) { bar.hidden = true; return; }
+  bar.append(h("span", { class: "grow" }, "You saved changes that take effect after a restart (" + r.pending.join(", ") + ")."),
+    r.can_restart ? h("button", { type: "button", class: "primary small", onclick: applyNow }, "Apply now")
+      : h("span", { class: "muted" }, "Restart the server to apply them."));
+  bar.hidden = false;
+}
+async function applyNow(e) {
+  const bar = $("restartBar");
+  e.target.disabled = true;
+  try { await api("restart", { method: "POST" }); } catch (err) { e.target.disabled = false; fail(err); return; }
+  bar.textContent = "";
+  bar.append(h("span", { class: "grow" }, "Restarting to apply your changes. This usually takes under a minute; chats pick up where they left off."));
+  await sleep(3000);
+  for (let i = 0; i < 60; i++) {
+    try {
+      const a = await api("app");
+      if (!a.restart?.pending?.length) {
+        toast("Changes applied");
+        boot();
+        return;
+      }
+    } catch {}
+    await sleep(2000);
+  }
+  bar.textContent = "";
+  bar.append(h("span", { class: "grow" }, "The server has not come back yet. Reload this page in a minute; if it still fails, check the server's log."));
+}
+
+// Team: every agent, what it does, its model, tools, where it answers and
+// what it may spend. Saving edits config.yaml; the bar above applies it.
+
+const TOOLSET_INFO = {
+  core: ["Files, commands and documents", "Read and write files, run commands, read PDFs and images, send files"],
+  memory: ["Memory", "Remember things between chats"],
+  skills: ["Skills", "Follow saved routines the same way every time"],
+  schedule: ["Schedules", "Set up repeating tasks and reminders"],
+  delegate: ["Hand off work", "Ask another agent to do a task"],
+  board: ["Task board", "Create and follow tasks for the team"],
+  browser: ["Web browser", "Open websites, fill in forms, take screenshots"],
+  computer: ["Computer use", "Use desktop apps with the mouse and keyboard"],
+  meeting: ["Meetings", "Join video calls and take notes"],
+  homeassistant: ["Home Assistant", "Control smart home devices"],
+  a2a: ["Other agents", "Work with agents outside this install"],
+};
+function toolsetInfo(ts) {
+  if (TOOLSET_INFO[ts]) return TOOLSET_INFO[ts];
+  if (ts.startsWith("mcp:")) return [ts.slice(4), "A connected service and its tools"];
+  return [ts, ""];
+}
+function placeLabel(p) {
+  if (!p.conversation) return `everything else on ${p.channel}`;
+  return `${p.channel}: ${p.label || p.conversation}`;
+}
+let modelChoices = null;
+async function modelOptions() {
+  if (!modelChoices) {
+    modelChoices = h("datalist", { id: "modelChoices" });
+    document.body.append(modelChoices);
+    await sleep(0);
+    try {
+      const j = await api("models");
+      for (const p of j.providers) for (const m of p.models) modelChoices.append(h("option", { value: `${p.provider}/${m}` }));
+    } catch {}
+  }
+  return modelChoices;
+}
+// chipList edits a list of strings as removable chips plus an input.
+function chipList(values, placeholder, list) {
+  let vals = values.slice();
+  const box = h("div", { class: "chips" });
+  const input = h("input", { type: "text", placeholder, list, "aria-label": placeholder, style: "min-width:220px" });
+  const draw = () => {
+    box.textContent = "";
+    vals.forEach((v, i) => box.append(h("span", { class: "chip mono" }, v,
+      h("button", { type: "button", "aria-label": "Remove " + v, onclick: () => { vals.splice(i, 1); draw(); } }, "×"))));
+    box.append(input);
+  };
+  const add = () => { const v = input.value.trim(); if (v && !vals.includes(v)) vals.push(v); input.value = ""; draw(); input.focus(); };
+  input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } });
+  input.addEventListener("change", add);
+  draw();
+  return { el: box, get: () => vals.slice() };
+}
+
+pages.team = async view => {
+  loading(view);
+  let j;
+  try { j = await api("team"); } catch (err) { view.textContent = ""; view.append(h("div", { class: "empty err" }, err.message)); return; }
+  modelOptions(); // fills the model suggestions when the providers answer
+  view.textContent = "";
+  view.append(h("p", { class: "muted" },
+    "Each agent below has its own job, model and tools. Change what you need and press Save; changes to models, tools and where they post take effect after the restart the bar at the top offers."));
+  for (const a of j.agents) view.append(agentCard(a, j));
+};
+
+function agentCard(a, j) {
+  const desc = h("input", { type: "text", value: a.description, placeholder: "What this agent does, in a sentence", disabled: !j.writable });
+  const model = h("input", { type: "text", value: a.model, list: "modelChoices", class: "mono", disabled: !j.writable, "aria-label": "Main model" });
+  const backups = chipList(a.fallbacks, "Add a backup model", "modelChoices");
+  const boxes = {};
+  const checks = h("div", { class: "checks" }, j.toolsets.map(ts => {
+    const [title, help] = toolsetInfo(ts);
+    boxes[ts] = h("input", { type: "checkbox", checked: a.toolsets.includes(ts), disabled: !j.writable });
+    return h("label", {}, boxes[ts], h("span", {}, title, help ? h("small", {}, help) : null));
+  }));
+  const home = h("input", { type: "text", value: a.home || "", class: "mono", placeholder: "CHANNEL:CHAT, e.g. slack:T0123/C0456", disabled: !j.writable });
+  const report = h("select", { disabled: !j.writable, "aria-label": "Post automatically" },
+    [["", "Results (default)"], ["results", "Results"], ["all", "When it starts and when it finishes"], ["off", "Nothing automatic"]]
+      .map(([v, t]) => h("option", { value: v, selected: (a.report_home || "") === v }, t)));
+  const daily = h("input", { type: "number", min: "0", step: "0.5", value: a.daily || "", placeholder: "no limit", style: "max-width:120px" });
+  const monthly = h("input", { type: "number", min: "0", step: "1", value: a.monthly || "", placeholder: "no limit", style: "max-width:120px" });
+  const save = h("button", { type: "submit", class: "primary", disabled: !j.writable }, "Save");
+  const f = h("form", { class: "panel agentcard" },
+    h("div", { class: "row" }, h("h2", { class: "grow" }, a.name),
+      a.permission ? badge(a.permission === "full" ? "full access" : a.permission, a.permission === "full" ? "warn" : "") : null),
+    h("div", { class: "desc" }, a.description || h("span", { class: "muted" }, "No description yet")),
+    h("div", { class: "small muted" }, "Answers in"),
+    h("div", { class: "chips", style: "margin:4px 0 12px" }, a.answers.length ? a.answers.map(p => h("span", { class: "chip" }, placeLabel(p)))
+      : h("span", { class: "muted small" }, "No chat yet. Other agents can still hand it work; use Who answers where to give it a channel.")),
+    h("div", { class: "twocol" }, field("Main model", model), h("label", { class: "field" }, "Backup models, tried in order", backups.el)),
+    h("div", { class: "small muted", style: "margin-top:10px" }, "What it can do"),
+    checks,
+    a.default_toolsets ? h("div", { class: "small muted" }, "It has the standard set. Changing a box saves an exact list for this agent.") : null,
+    h("div", { class: "twocol" }, field("Spending limit per day (US$)", daily), field("Spending limit per month (US$)", monthly)),
+    h("details", { class: "more" }, h("summary", {}, "Description and where it posts updates"),
+      field("Description", desc), h("div", { class: "twocol" }, field("Posts its updates and questions to", home), field("Posts automatically", report))),
+    h("div", { class: "row end", style: "margin-top:10px" }, save));
+  f.addEventListener("submit", async e => {
+    e.preventDefault();
+    const toolsets = j.toolsets.filter(ts => boxes[ts].checked);
+    if (!toolsets.includes("core") && !confirm(`Without "Files, commands and documents", ${a.name} can only talk. Save anyway?`)) return;
+    const body = {
+      description: desc.value, model: model.value.trim(), fallbacks: backups.get(), home: home.value.trim(), report_home: report.value,
+      daily: +daily.value || 0, monthly: +monthly.value || 0,
+    };
+    const same = toolsets.length === a.toolsets.length && toolsets.every(t => a.toolsets.includes(t));
+    if (!same) body.toolsets = toolsets;
+    save.disabled = true;
+    try {
+      const r = await api("agents/" + encodeURIComponent(a.name), { method: "PUT", body });
+      toast(`Saved ${a.name}`);
+      showRestart(r);
+    } catch (err) { fail(err); } finally { save.disabled = false; }
+  });
+  return f;
+}
+
+// Who answers where: each channel's default agent, and the chats sent to
+// someone else. Labels are names for people; they are kept in config.yaml
+// next to each chat.
+
+pages.routing = async view => {
+  loading(view);
+  let j;
+  try { j = await api("routing"); } catch (err) { view.textContent = ""; view.append(h("div", { class: "empty err" }, err.message)); return; }
+  view.textContent = "";
+  view.append(h("p", { class: "muted" },
+    "Pick which agent answers in each place. A channel's main agent answers everywhere on it, except the chats you give to someone else below. A chat is its id on that platform (in Slack, the workspace id, a slash and the channel id: T0123/C0456)."));
+  if (!j.channels.length) view.append(emptyState("No chat channels yet. Run hk setup channel in a terminal to add WhatsApp, Telegram, Slack and more."));
+  for (const c of j.channels) view.append(routingPanel(c, j));
+};
+
+function routingPanel(c, j) {
+  const pickAgent = (value, label) => {
+    const sel = h("select", { "aria-label": label, disabled: !j.writable });
+    for (const a of j.agents) sel.append(h("option", { value: a, selected: a === value }, a));
+    sel.value = value;
+    return sel;
+  };
+  const main = pickAgent(c.agent, `Main agent for ${c.account}`);
+  const rows = [];
+  const tbody = h("tbody");
+  const addRow = r => {
+    const row = {
+      label: h("input", { type: "text", value: r.label || "", placeholder: "#sales", "aria-label": "Name", disabled: !j.writable }),
+      conv: h("input", { type: "text", value: r.conversation || "", placeholder: "chat id", class: "mono", "aria-label": "Chat id", disabled: !j.writable }),
+      agent: pickAgent(r.agent || c.agent, "Agent"),
+    };
+    row.tr = h("tr", {}, h("td", {}, row.label), h("td", {}, row.conv), h("td", {}, row.agent),
+      h("td", {}, h("button", { type: "button", class: "danger small", disabled: !j.writable, onclick: () => { row.tr.remove(); rows.splice(rows.indexOf(row), 1); } }, "Remove")));
+    rows.push(row);
+    tbody.append(row.tr);
+  };
+  c.routes.forEach(addRow);
+  const save = h("button", { type: "submit", class: "primary", disabled: !j.writable }, "Save");
+  const f = h("form", { class: "panel" },
+    h("div", { class: "row" }, h("h2", { class: "grow" }, c.account), h("span", { class: "muted" }, c.type)),
+    h("div", { class: "row" }, field("Main agent", main)),
+    h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Chat"), h("th", {}, "Answered by"), h("th", {}))), tbody)),
+    h("div", { class: "row end", style: "margin-top:10px" },
+      h("button", { type: "button", class: "btn", disabled: !j.writable, onclick: () => addRow({}) }, "Add a chat"), save));
+  f.addEventListener("submit", async e => {
+    e.preventDefault();
+    const routes = rows.map(r => ({ conversation: r.conv.value.trim(), agent: r.agent.value, label: r.label.value.trim() })).filter(r => r.conversation);
+    save.disabled = true;
+    try {
+      const r = await api("routing/" + encodeURIComponent(c.account), { method: "PUT", body: { agent: main.value, routes } });
+      toast(`Saved ${c.account}`);
+      showRestart(r);
+    } catch (err) { fail(err); } finally { save.disabled = false; }
+  });
+  return f;
+}
+
+// Pages that plugins add, listed under the menu.
+function showExtensions() {
+  const nav = $("extNav");
+  nav.textContent = "";
+  for (const e of app?.extensions || []) nav.append(h("a", { href: e.url }, icon(["M4 4h7v7H4z", "M13 4h7v7h-7z", "M4 13h7v7H4z", "M16.5 13v7", "M13 16.5h7"]), e.title));
+}
+
+// Menu icons: simple strokes, drawn here so the page needs nothing else.
+const NAV_ICONS = {
+  home: ["M3 11l9-8 9 8", "M5 10v10h14V10", "M10 20v-6h4v6"],
+  overview: ["M3 12h4l3-8 4 16 3-8h4"],
+  chat: ["M4 5h16v11H9l-5 4z"],
+  team: ["M9 3.5a3.5 3.5 0 1 1 0 7a3.5 3.5 0 1 1 0-7z", "M2.5 20a6.5 6.5 0 0 1 13 0", "M16 4a3.5 3.5 0 0 1 0 6.5", "M21.5 20a6.5 6.5 0 0 0-4-6"],
+  routing: ["M3 12h7l4-6h7", "M10 12l4 6h7", "M18 3l3 3-3 3", "M18 15l3 3-3 3"],
+  sessions: ["M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18z", "M12 7v5l3 2"],
+  board: ["M4 4h6v16H4z", "M14 4h6v10h-6z"],
+  schedules: ["M4 6h16v14H4z", "M4 10h16", "M8 3v4", "M16 3v4"],
+  memory: ["M6 4h12v16l-6-4-6 4z"],
+  skills: ["M13 3L5 14h6l-1 7 8-11h-6z"],
+  usage: ["M4 20V11", "M10 20V5", "M16 20v-6", "M21 20H3"],
+  nodes: ["M3 5h13v9H3z", "M1 18h17", "M19 8h3v11h-3z"],
+  approvals: ["M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z", "M9 12l2 2 4-4"],
+  config: ["M4 6h9", "M17 6h3", "M15 4v4", "M4 12h3", "M11 12h9", "M9 10v4", "M4 18h11", "M19 18h1", "M17 16v4"],
+};
+function navIcons() {
+  for (const a of document.querySelectorAll("nav a[data-page]")) {
+    if (a.querySelector("svg")) continue;
+    const paths = NAV_ICONS[a.dataset.page];
+    if (paths) a.prepend(icon(paths));
+  }
+}
+
+// Home: the clock and greeting, what needs you, the team, routines,
+// today's numbers and recent work, in a grid of cards.
+
+function greeting(d) {
+  const hr = d.getHours();
+  return hr < 5 ? "Working late" : hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
+}
+function ringCard(pct, big, label) {
+  const r = 34, c = 2 * Math.PI * r, p = Math.max(0, Math.min(1, pct || 0));
+  return h("div", { class: "ring" },
+    s("svg", { viewBox: "0 0 84 84", "aria-hidden": "true" },
+      s("circle", { class: "track", cx: "42", cy: "42", r: String(r) }),
+      s("circle", { class: "fill", cx: "42", cy: "42", r: String(r), "stroke-dasharray": String(c), "stroke-dashoffset": String(c * (1 - p)) })),
+    h("div", { class: "metric" }, h("div", { class: "n" }, big), h("div", { class: "l" }, label)));
+}
+function initials(name) { return (name || "?").split(/[-_\s]+/).map(w => w[0]).join("").slice(0, 2).toUpperCase(); }
+function cap(name) { return name ? name[0].toUpperCase() + name.slice(1) : ""; }
+
+pages.home = view => {
+  view.className = "home";
+  const grid = h("div", { class: "bento" });
+  view.append(grid);
+  const assistant = cap(app?.default || "your agent");
+  // Hero: clock, greeting, health and a box to ask the main agent.
+  const clock = h("div", { class: "clock" });
+  const date = h("div", { class: "greet" });
+  const health = h("span", { class: "health" }, h("i"), "Checking…");
+  const tickClock = () => {
+    const d = new Date();
+    let hh = d.getHours() % 12 || 12;
+    clock.textContent = "";
+    clock.append(`${hh}:${String(d.getMinutes()).padStart(2, "0")}`, h("small", {}, d.getHours() < 12 ? "am" : "pm"));
+    date.textContent = `${greeting(d)}. ${d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}`;
+  };
+  tickClock();
+  const clockTimer = setInterval(tickClock, 10000);
+  onLeave(() => clearInterval(clockTimer));
+  const q = h("input", { type: "text", placeholder: `Ask ${assistant} anything`, "aria-label": `Ask ${assistant}` });
+  q.addEventListener("keydown", e => { if (e.key === "Enter" && q.value.trim()) ask(q.value.trim()); });
+  grid.append(h("div", { class: "panel span-8" },
+    h("div", { class: "hero" }, h("div", { class: "grow" }, date, clock), h("div", { style: "align-self:flex-start" }, health)),
+    h("div", { class: "askbar" }, q, h("button", { type: "button", class: "primary", onclick: () => q.value.trim() && ask(q.value.trim()) }, "Ask"))));
+  // Today: spend against the day's limit, or routines running.
+  const today = h("div", { class: "panel span-4" }, h("div", { class: "cardhead" }, h("h3", {}, "Today"), h("a", { href: "#/usage" }, "Usage")));
+  const todayBody = h("div");
+  today.append(todayBody);
+  grid.append(today);
+  // Needs you, team, routines, recent work.
+  const needs = h("div", { class: "lines needs" });
+  grid.append(h("div", { class: "panel span-7" }, h("div", { class: "cardhead" }, h("h3", {}, "Needs you"), h("a", { href: "#/approvals" }, "All approvals")), needs));
+  const team = h("div");
+  grid.append(h("div", { class: "panel span-5" }, h("div", { class: "cardhead" }, h("h3", {}, "Your team"), h("a", { href: "#/team" }, "Manage")), team));
+  const routines = h("div", { class: "lines" });
+  grid.append(h("div", { class: "panel span-7" }, h("div", { class: "cardhead" }, h("h3", {}, "Routines"), h("a", { href: "#/schedules" }, "All routines")), routines));
+  const recent = h("div", { class: "lines" });
+  grid.append(h("div", { class: "panel span-5" }, h("div", { class: "cardhead" }, h("h3", {}, "Recent work"), h("a", { href: "#/sessions" }, "History")), recent));
+
+  const load = async () => {
+    const [o, ap, tm, sc, us, bu, se] = await Promise.all(["overview", "approvals", "team", "schedules", "usage?days=1", "budget", "sessions"]
+      .map(p => api(p).catch(() => null)));
+    if (o) {
+      const down = o.channels.filter(c => c.state !== "connected");
+      health.className = "health" + (down.length || o.errors.length ? " bad" : "");
+      health.textContent = "";
+      health.append(h("i"), down.length ? `${down.map(c => c.account).join(", ")} not connected`
+        : o.errors.length ? `${o.errors.length} recent problem${o.errors.length > 1 ? "s" : ""}` : `All ${o.channels.length} channels connected`);
+      health.onclick = () => go("#/overview");
+      health.style.cursor = "pointer";
+    }
+    // Today
+    todayBody.textContent = "";
+    const spent = us?.total?.cost || 0;
+    const limit = bu?.install?.today?.limit || 0;
+    const on = o?.schedules?.enabled || 0, all = o?.schedules?.total || 0;
+    todayBody.append(limit ? ringCard(spent / limit, money(spent), `of ${money(limit)} today`) : ringCard(all ? on / all : 0, `${on}/${all}`, "routines on"),
+      h("div", { class: "row", style: "margin-top:16px;gap:22px;flex-wrap:nowrap" },
+        h("div", { class: "metric" }, h("div", { class: "n" }, limit ? `${on}/${all}` : money(spent)), h("div", { class: "l" }, limit ? "routines on" : "spent today")),
+        h("div", { class: "metric" }, h("div", { class: "n" }, String(us?.total?.calls || 0)), h("div", { class: "l" }, "model calls")),
+        h("div", { class: "metric" }, h("div", { class: "n" }, String(o?.open_cards || 0)), h("div", { class: "l" }, "open tasks"))));
+    // Needs you
+    needs.textContent = "";
+    const list = ap?.approvals || [];
+    setApprovalCount(list.length);
+    if (!list.length) needs.append(h("div", {}, h("span", { class: "what sub" }, "Nothing is waiting for you.")));
+    for (const a of list.slice(0, 5)) {
+      const decide = async ok => {
+        try { await api("approvals/" + a.id, { method: "POST", body: { approve: ok } }); toast(ok ? "Approved" : "Denied"); load(); } catch (err) { fail(err); }
+      };
+      needs.append(h("div", {},
+        h("div", { class: "what" }, h("div", { class: "q" }, String(a.summary || a.tool).split("\n")[0]), h("div", { class: "sub" }, `${a.agent || ""} · waiting ${ago(a.since).replace(" ago", "")}`)),
+        h("button", { type: "button", class: "btn small", onclick: () => decide(false) }, "No"),
+        h("button", { type: "button", class: "primary small", onclick: () => decide(true) }, "Yes")));
+    }
+    // Team
+    team.textContent = "";
+    const busy = new Set((o?.running || []).map(r => r.agent));
+    const spend = Object.fromEntries((us?.by_agent || []).map(r => [r.key, r.cost]));
+    for (const a of tm?.agents || []) {
+      team.append(h("div", { class: "member" }, h("div", { class: "avatar" }, initials(a.name)),
+        h("div", { style: "min-width:0" }, h("div", { class: "row", style: "gap:6px" }, h("strong", {}, cap(a.name)), h("span", { class: "dotstate " + (busy.has(a.name) ? "busy" : "ok") })),
+          h("div", { class: "sub small muted", style: "white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, busy.has(a.name) ? "Working now" : (a.description || "Ready"))),
+        h("span", { class: "small muted" }, money(spend[a.name] || 0))));
+    }
+    if (!tm?.agents?.length) team.append(h("div", { class: "muted small" }, "No agents yet."));
+    // Routines
+    routines.textContent = "";
+    const items = (sc?.schedules || []).slice().sort((x, y) => (y.enabled - x.enabled) || String(x.next_run).localeCompare(String(y.next_run))).slice(0, 6);
+    if (!items.length) routines.append(h("div", {}, h("span", { class: "what sub" }, "No routines yet. Ask in plain words, for example: every weekday at 8am, brief me.")));
+    for (const r of items) {
+      const t = h("button", { type: "button", class: "toggle" + (r.enabled ? " on" : ""), "aria-label": (r.enabled ? "Pause " : "Resume ") + r.name, title: r.enabled ? "On" : "Paused" });
+      t.addEventListener("click", async () => {
+        try { await api(`schedules/${r.id}/${r.enabled ? "pause" : "resume"}`, { method: "POST" }); r.enabled = !r.enabled; t.classList.toggle("on", r.enabled); toast(r.enabled ? "Resumed" : "Paused"); }
+        catch (err) { fail(err); }
+      });
+      routines.append(h("div", {}, h("div", { class: "what" }, h("div", {}, r.name), h("div", { class: "sub" }, plainWhen(r.spec) + (r.last_status && !/^ok/.test(r.last_status) ? " · last run: " + r.last_status : ""))), t));
+    }
+    // Recent work
+    recent.textContent = "";
+    const ss = (se?.sessions || []).slice(0, 6);
+    if (!ss.length) recent.append(h("div", {}, h("span", { class: "what sub" }, "Nothing yet today.")));
+    for (const x of ss) recent.append(h("div", { class: "click", onclick: () => go("#/sessions/" + x.id) },
+      h("span", { class: "avatar", style: "width:26px;height:26px;border-radius:8px;font-size:11px" }, initials(x.agent)),
+      h("div", { class: "what" }, h("div", {}, x.title || "Untitled chat"), h("div", { class: "sub" }, cap(x.agent))), h("span", { class: "sub" }, ago(x.updated_at))));
+  };
+  every(10000, load);
+};
+
 // Start
 
 let poll = 0;
@@ -1544,6 +1992,9 @@ async function boot() {
     return;
   }
   clearInterval(poll);
+  showRestart(app.restart);
+  showExtensions();
+  navIcons();
   const tick = async () => {
     if (document.hidden) return;
     try { setApprovalCount((await api("approvals")).approvals.length); $("dot").className = "dot on"; }

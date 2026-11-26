@@ -66,6 +66,7 @@ Plugins you've enabled add MCP servers, skills, hooks and commands to the loaded
 
 | Key | Default | Meaning |
 |---|---|---|
+| `description` | | What the agent does, in a sentence, for people. The dashboard shows it; it is never sent to the model |
 | `model` | | `<provider>/<model id>` |
 | `fallbacks` | | Models tried in order after `model` |
 | `fast_model` | | A cheaper model for quick messages and chores ([routing](../models/routing.md)) |

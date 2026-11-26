@@ -107,8 +107,11 @@ type Provider struct {
 }
 
 type Agent struct {
-	Model     string   `yaml:"model"`     // "<provider>/<model id>"
-	Fallbacks []string `yaml:"fallbacks"` // same format, tried in order
+	// Description says in a sentence what the agent does, for people: the
+	// dashboard shows it, and it is never sent to the model.
+	Description string   `yaml:"description"`
+	Model       string   `yaml:"model"`     // "<provider>/<model id>"
+	Fallbacks   []string `yaml:"fallbacks"` // same format, tried in order
 	// FastModel ("<provider>/<model>") is a cheaper model for light turns
 	// and chores (titles, summaries, memory review). Routing decides which
 	// turns use it: auto (default), fast or smart. EscalateAfter is how many

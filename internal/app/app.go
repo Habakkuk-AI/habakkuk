@@ -61,34 +61,37 @@ import (
 const MCPTurnWait = 15 * time.Second
 
 type App struct {
-	Cfg         *config.Config
-	Control     *sql.DB
-	Transcripts *sql.DB
-	Queue       *jobs.Queue
-	Sessions    *session.Store
-	Blobs       *store.Blobs
-	Bus         *events.Bus
-	Router      *llm.Router
-	Tools       *tools.Registry
-	MCP         *mcp.Manager
-	Runner      *agent.Runner
-	Gateway     *channel.Gateway // nil when no channels are configured
-	Web         *web.Server      // nil when http is not configured
-	Schedules   *schedule.Store
-	Scheduler   *schedule.Scheduler
-	Board       *board.Store
-	Dispatcher  *board.Dispatcher
-	Memory      *memory.Store
-	Skills      *skills.Library
-	Work        *Work           // background processes, sandboxes, checkpoints
-	State       *state.Store    // per-session settings, goals, task lists, drafts (state.db)
-	Hooks       *hooks.Runner   // commands run on events
-	Usage       *usage.Store    // per-call token usage and per-session model choices
-	Pricer      *usage.Pricer   // prices usage for hk usage and /usage
-	Budget      *budget.Tracker // spending limits, checked before every model call
-	Auth        *auth.Store     // subscription logins (auth.json)
-	Telemetry   *Telemetry      // metrics and trace export
-	Log         *slog.Logger
+	Cfg *config.Config
+	// RequestRestart, set by hk serve, stops the server gently and starts
+	// it again, so a change saved from the dashboard takes effect.
+	RequestRestart func() error
+	Control        *sql.DB
+	Transcripts    *sql.DB
+	Queue          *jobs.Queue
+	Sessions       *session.Store
+	Blobs          *store.Blobs
+	Bus            *events.Bus
+	Router         *llm.Router
+	Tools          *tools.Registry
+	MCP            *mcp.Manager
+	Runner         *agent.Runner
+	Gateway        *channel.Gateway // nil when no channels are configured
+	Web            *web.Server      // nil when http is not configured
+	Schedules      *schedule.Store
+	Scheduler      *schedule.Scheduler
+	Board          *board.Store
+	Dispatcher     *board.Dispatcher
+	Memory         *memory.Store
+	Skills         *skills.Library
+	Work           *Work           // background processes, sandboxes, checkpoints
+	State          *state.Store    // per-session settings, goals, task lists, drafts (state.db)
+	Hooks          *hooks.Runner   // commands run on events
+	Usage          *usage.Store    // per-call token usage and per-session model choices
+	Pricer         *usage.Pricer   // prices usage for hk usage and /usage
+	Budget         *budget.Tracker // spending limits, checked before every model call
+	Auth           *auth.Store     // subscription logins (auth.json)
+	Telemetry      *Telemetry      // metrics and trace export
+	Log            *slog.Logger
 	// Meetings attends video calls (meeting.go).
 	Meetings *meeting.Manager
 	// Consolidate reviews idle sessions into memory; nil unless memory.review.

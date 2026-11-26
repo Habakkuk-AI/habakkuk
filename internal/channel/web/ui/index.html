@@ -20,8 +20,10 @@
 <div class="shell">
   <nav id="nav" aria-label="Pages">
     <div class="brand"><svg class="logo" role="img" aria-label="Habakkuk" viewBox="-12 0 554.0 118"><g transform="translate(-8,-9.41) scale(0.9688)"><g fill="currentColor"><path d="M26 108 V50 A15 15 0 0 1 56 50 V108 a4 4 0 0 1 -4 4 H30 a4 4 0 0 1 -4 -4 Z"/><path d="M72 108 V50 A15 15 0 0 1 102 50 V108 a4 4 0 0 1 -4 4 H76 a4 4 0 0 1 -4 -4 Z"/><rect x="54" y="70" width="20" height="14"/></g><circle cx="64" cy="24" r="9" fill="#FFB020"/></g><g transform="translate(118,0)" fill="none" stroke="currentColor" stroke-width="13.0" stroke-linejoin="round" stroke-linecap="round"><path d="M6.5 30 V100"/><path d="M6.5 78 A16.5 16.5 0 0 1 39.5 78" stroke-linecap="butt"/><path d="M39.5 78 V100"/><path d="M93.5 78 A16.5 16.5 0 1 0 60.5 78 A16.5 16.5 0 1 0 93.5 78 Z"/><path d="M93.5 56 V100"/><path d="M114.5 30 V100"/><path d="M147.5 78 A16.5 16.5 0 1 0 114.5 78 A16.5 16.5 0 1 0 147.5 78 Z"/><path d="M201.5 78 A16.5 16.5 0 1 0 168.5 78 A16.5 16.5 0 1 0 201.5 78 Z"/><path d="M201.5 56 V100"/><path d="M222.5 30 V100"/><path d="M250.5 56 L226.5 79"/><path d="M232.5 76 L251.5 100"/><path d="M272.5 30 V100"/><path d="M300.5 56 L276.5 79"/><path d="M282.5 76 L301.5 100"/><path d="M322.5 56 V78"/><path d="M322.5 78 A16.5 16.5 0 0 0 355.5 78" stroke-linecap="butt"/><path d="M355.5 56 V100"/><path d="M376.5 30 V100"/><path d="M404.5 56 L380.5 79"/><path d="M386.5 76 L405.5 100"/></g></svg></div>
-    <a href="#/overview" data-page="overview">Overview</a>
+    <a href="#/home" data-page="home">Home</a>
     <a href="#/chat" data-page="chat">Chat</a>
+    <a href="#/team" data-page="team">Team</a>
+    <a href="#/routing" data-page="routing">Who answers where</a>
     <a href="#/sessions" data-page="sessions">Sessions</a>
     <a href="#/board" data-page="board">Board</a>
     <a href="#/schedules" data-page="schedules">Schedules</a>
@@ -30,7 +32,9 @@
     <a href="#/usage" data-page="usage">Usage</a>
     <a href="#/nodes" data-page="nodes">Nodes</a>
     <a href="#/approvals" data-page="approvals">Approvals <span id="approvalCount" class="count" hidden></span></a>
-    <a href="#/config" data-page="config">Config</a>
+    <a href="#/overview" data-page="overview">Status</a>
+    <a href="#/config" data-page="config">Settings</a>
+    <div id="extNav"></div>
     <div class="navfoot">
       <button id="themeBtn" type="button" class="link">Theme: auto</button>
       <button id="tokenBtn" type="button" class="link">Token</button>
@@ -44,13 +48,14 @@
       <h1 id="title">Habakkuk</h1>
       <span id="dot" class="dot" title="offline"></span>
     </header>
+    <div id="restartBar" class="restartbar" hidden></div>
     <main id="view" tabindex="-1"></main>
   </div>
 </div>
 <dialog id="gate">
   <form method="dialog" id="gateForm">
     <h2>Access token</h2>
-    <p>Enter the token from the variable named by <code>http.token_env</code>. It is kept in this browser only.</p>
+    <p>Open the sign-in link you were given, or enter the token from the variable named by <code>http.token_env</code>. It is kept in this browser only.</p>
     <input id="tok" type="password" autocomplete="off" placeholder="token" aria-label="token">
     <div class="row end"><button type="submit" class="primary">Save</button></div>
   </form>

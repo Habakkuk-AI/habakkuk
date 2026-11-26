@@ -22,6 +22,7 @@ agents:
 
 | Setting | Meaning |
 |---|---|
+| `description` | What the agent does, in a sentence, for people. The dashboard shows it; it is never sent to the model |
 | `model`, `fallbacks` | `<provider>/<model id>`, then models tried in order when one fails in a way another can fix. See [Model providers](../models/providers.md) |
 | `fast_model`, `routing`, `escalate_after` | A cheaper model for quick messages and chores, and how turns are split between it and `model`. See [Routing](../models/routing.md) |
 | `effort` | The reasoning effort sent with each request; `/think` overrides it per session |
